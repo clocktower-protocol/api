@@ -1,0 +1,89 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build & typecheck
+dist/
+build/
+*.tsbuildinfo
+.turbo/
+
+# Cloudflare Workers / Wrangler
+.wrangler/
+.dev.vars
+.mf/
+worker-configuration.d.ts
+
+# Environment & secrets (RPC URLs, API keys, wallet keys)
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.p12
+
+# EVM tooling (if contracts live in-repo)
+cache/
+out/
+artifacts/
+typechain/
+typechain-types/
+coverage/
+coverage.json
+lcov.info
+.openzeppelin/
+
+# Foundry
+broadcast/
+cache_foundry/
+
+# Hardhat
+cache_hardhat/
+
+# Logs & debug
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Test & coverage
+.nyc_output/
+*.lcov
+junit.xml
+
+# IDE & editors
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Misc
+*.local
+.cache/
+.temp/
+tmp/
+temp/
+.vercel
+.netlify
