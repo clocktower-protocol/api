@@ -1,7 +1,10 @@
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc.js';
+import { formatUnits } from 'viem';
 
 dayjs.extend(utc);
+
+export const PROTOCOL_DECIMALS = 18;
 
 export const FREQUENCY_TYPES = {
 	WEEKLY: 0,
@@ -65,6 +68,28 @@ export function getStatusLabel(status: number | bigint): string {
 
 export function getSubscriptEventLabel(event: number | bigint): string {
 	return SUBSCRIPT_EVENT_LABELS[Number(event)] ?? 'UNKNOWN';
+}
+
+export function convertProtocolAmountToTokenNative(amount: bigint, tokenDecimals: number): bigint {
+	if (tokenDecimals > PROTOCOL_DECIMALS) {
+		return amount * 10n ** BigInt(tokenDecimals - PROTOCOL_DECIMALS);
+	}
+
+	if (tokenDecimals < PROTOCOL_DECIMALS) {
+		return amount / 10n ** BigInt(PROTOCOL_DECIMALS - tokenDecimals);
+	}
+
+	return amount;
+}
+
+export function formatProtocolStoredAmount(protocolAmount: bigint, tokenDecimals: number) {
+	const amountRaw = convertProtocolAmountToTokenNative(protocolAmount, tokenDecimals);
+
+	return {
+		amount: formatUnits(amountRaw, tokenDecimals),
+		amountRaw,
+		tokenDecimals,
+	};
 }
 
 export function getCurrentDay(): number {

@@ -5,6 +5,7 @@ import { resolveChain } from '../chain.js';
 import { createClocktowerClient } from '../client.js';
 import {
 	dayNumberToDayjs,
+	formatProtocolStoredAmount,
 	FREQUENCY_TYPES,
 	getCurrentDay,
 	getDueDay,
@@ -55,22 +56,117 @@ function normalizeAccountSubscription(raw: unknown): AccountSubscriptionRecord {
 	};
 }
 
-function formatSubscription(subscription: SubscriptionRecord) {
-	const frequency = Number(subscription.frequency);
+type ApprovedTokenRecord = {
+	tokenAddress: `0x${string}`;
+	decimals: number;
+	paused: boolean;
+	minimum: bigint;
+};
+
+type SubscriberRecord = {
+	subscriber: `0x${string}`;
+	feeBalance: bigint;
+};
+
+function normalizeApprovedToken(raw: unknown): ApprovedTokenRecord {
+	if (Array.isArray(raw)) {
+		const [tokenAddress, decimals, paused, minimum] = raw;
+		return { tokenAddress, decimals: Number(decimals), paused, minimum };
+	}
+
+	const entry = raw as ApprovedTokenRecord;
 	return {
-		...subscription,
-		frequency,
-		frequencyLabel: getFrequencyLabel(frequency),
+		...entry,
+		decimals: Number(entry.decimals),
 	};
 }
 
-function formatAccountSubscription(entry: AccountSubscriptionRecord) {
+function normalizeSubscriberRecord(raw: unknown): SubscriberRecord {
+	if (Array.isArray(raw)) {
+		const [subscriber, feeBalance] = raw;
+		return { subscriber, feeBalance };
+	}
+
+	return raw as SubscriberRecord;
+}
+
+type ClocktowerClient = ReturnType<typeof createClocktowerClient>;
+
+async function fetchTokenDecimals(
+	client: ClocktowerClient,
+	contractAddress: `0x${string}`,
+	token: `0x${string}`,
+	cache: Map<string, number>,
+): Promise<number> {
+	const key = token.toLowerCase();
+	const cached = cache.get(key);
+	if (cached !== undefined) {
+		return cached;
+	}
+
+	const approvedToken = await client.readContract({
+		address: contractAddress,
+		abi: CLOCKTOWER_READ_ABI,
+		functionName: 'approvedERC20',
+		args: [token],
+	});
+
+	const { decimals } = normalizeApprovedToken(approvedToken);
+	cache.set(key, decimals);
+	return decimals;
+}
+
+function formatSubscription(subscription: SubscriptionRecord, tokenDecimals: number) {
+	const frequency = Number(subscription.frequency);
+	const { amount, amountRaw } = formatProtocolStoredAmount(subscription.amount, tokenDecimals);
+
+	return {
+		id: subscription.id,
+		provider: subscription.provider,
+		token: subscription.token,
+		cancelled: subscription.cancelled,
+		dueDay: subscription.dueDay,
+		frequency,
+		frequencyLabel: getFrequencyLabel(frequency),
+		amount,
+		amountRaw,
+		tokenDecimals,
+	};
+}
+
+function formatAccountSubscription(entry: AccountSubscriptionRecord, tokenDecimals: number) {
 	const status = Number(entry.status);
 	return {
-		...entry,
-		subscription: formatSubscription(entry.subscription),
+		subscription: formatSubscription(entry.subscription, tokenDecimals),
 		status,
 		statusLabel: getStatusLabel(status),
+		totalSubscribers: entry.totalSubscribers,
+	};
+}
+
+function formatApprovedToken(approvedToken: ApprovedTokenRecord) {
+	const { amount, amountRaw, tokenDecimals } = formatProtocolStoredAmount(
+		approvedToken.minimum,
+		approvedToken.decimals,
+	);
+
+	return {
+		tokenAddress: approvedToken.tokenAddress,
+		decimals: tokenDecimals,
+		paused: approvedToken.paused,
+		minimum: amount,
+		minimumRaw: amountRaw,
+	};
+}
+
+function formatSubscriber(subscriber: SubscriberRecord, tokenDecimals: number) {
+	const { amount, amountRaw } = formatProtocolStoredAmount(subscriber.feeBalance, tokenDecimals);
+
+	return {
+		subscriber: subscriber.subscriber,
+		feeBalance: amount,
+		feeBalanceRaw: amountRaw,
+		tokenDecimals,
 	};
 }
 
@@ -147,9 +243,12 @@ export async function getSubscription(env: Env, chainId: number, id: `0x${string
 		args: [id],
 	});
 
+	const normalized = normalizeSubscriptionRecord(subscription);
+	const tokenDecimals = await fetchTokenDecimals(client, chain.contractAddress, normalized.token, new Map());
+
 	return {
 		chainId,
-		subscription: formatSubscription(normalizeSubscriptionRecord(subscription)),
+		subscription: formatSubscription(normalized, tokenDecimals),
 	};
 }
 
@@ -168,12 +267,22 @@ export async function getAccountSubscriptions(
 		args: [bySubscriber, account],
 	});
 
+	const normalized = (subscriptions as unknown[]).map((entry) => normalizeAccountSubscription(entry));
+	const decimalsCache = new Map<string, number>();
+	const uniqueTokens = [...new Set(normalized.map((entry) => entry.subscription.token.toLowerCase()))];
+
+	await Promise.all(
+		uniqueTokens.map((token) =>
+			fetchTokenDecimals(client, chain.contractAddress, token as `0x${string}`, decimalsCache),
+		),
+	);
+
 	return {
 		chainId,
 		bySubscriber,
 		account,
-		subscriptions: (subscriptions as unknown[]).map((entry) =>
-			formatAccountSubscription(normalizeAccountSubscription(entry)),
+		subscriptions: normalized.map((entry) =>
+			formatAccountSubscription(entry, decimalsCache.get(entry.subscription.token.toLowerCase()) ?? 18),
 		),
 	};
 }
@@ -181,14 +290,31 @@ export async function getAccountSubscriptions(
 export async function getSubscribers(env: Env, chainId: number, id: `0x${string}`) {
 	const { chain, client } = getContractContext(env, chainId);
 
-	const subscribers = await client.readContract({
-		address: chain.contractAddress,
-		abi: CLOCKTOWER_READ_ABI,
-		functionName: 'getSubscribersById',
-		args: [id],
-	});
+	const [subscribers, subscription] = await Promise.all([
+		client.readContract({
+			address: chain.contractAddress,
+			abi: CLOCKTOWER_READ_ABI,
+			functionName: 'getSubscribersById',
+			args: [id],
+		}),
+		client.readContract({
+			address: chain.contractAddress,
+			abi: CLOCKTOWER_READ_ABI,
+			functionName: 'idSubMap',
+			args: [id],
+		}),
+	]);
 
-	return { chainId, id, subscribers };
+	const { token } = normalizeSubscriptionRecord(subscription);
+	const tokenDecimals = await fetchTokenDecimals(client, chain.contractAddress, token, new Map());
+
+	return {
+		chainId,
+		id,
+		subscribers: (subscribers as unknown[]).map((entry) =>
+			formatSubscriber(normalizeSubscriberRecord(entry), tokenDecimals),
+		),
+	};
 }
 
 export async function getApprovedToken(env: Env, chainId: number, token: `0x${string}`) {
@@ -201,7 +327,11 @@ export async function getApprovedToken(env: Env, chainId: number, token: `0x${st
 		args: [token],
 	});
 
-	return { chainId, token, approvedToken };
+	return {
+		chainId,
+		token,
+		approvedToken: formatApprovedToken(normalizeApprovedToken(approvedToken)),
+	};
 }
 
 export async function getSubscriptionsDue(
