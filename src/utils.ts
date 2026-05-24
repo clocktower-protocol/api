@@ -10,6 +10,63 @@ export const FREQUENCY_TYPES = {
 	YEARLY: 3,
 } as const;
 
+export const STATUS_TYPES = {
+	ACTIVE: 0,
+	CANCELLED: 1,
+	UNSUBSCRIBED: 2,
+} as const;
+
+export const SUBSCRIPT_EVENT_TYPES = {
+	CREATE: 0,
+	CANCEL: 1,
+	PROVPAID: 2,
+	FAILED: 3,
+	PROVREFUND: 4,
+	SUBPAID: 5,
+	SUBSCRIBED: 6,
+	UNSUBSCRIBED: 7,
+	FEEFILL: 8,
+	SUBREFUND: 9,
+} as const;
+
+const FREQUENCY_LABELS: Record<number, string> = {
+	[FREQUENCY_TYPES.WEEKLY]: 'WEEKLY',
+	[FREQUENCY_TYPES.MONTHLY]: 'MONTHLY',
+	[FREQUENCY_TYPES.QUARTERLY]: 'QUARTERLY',
+	[FREQUENCY_TYPES.YEARLY]: 'YEARLY',
+};
+
+const STATUS_LABELS: Record<number, string> = {
+	[STATUS_TYPES.ACTIVE]: 'ACTIVE',
+	[STATUS_TYPES.CANCELLED]: 'CANCELLED',
+	[STATUS_TYPES.UNSUBSCRIBED]: 'UNSUBSCRIBED',
+};
+
+const SUBSCRIPT_EVENT_LABELS: Record<number, string> = {
+	[SUBSCRIPT_EVENT_TYPES.CREATE]: 'CREATE',
+	[SUBSCRIPT_EVENT_TYPES.CANCEL]: 'CANCEL',
+	[SUBSCRIPT_EVENT_TYPES.PROVPAID]: 'PROVPAID',
+	[SUBSCRIPT_EVENT_TYPES.FAILED]: 'FAILED',
+	[SUBSCRIPT_EVENT_TYPES.PROVREFUND]: 'PROVREFUND',
+	[SUBSCRIPT_EVENT_TYPES.SUBPAID]: 'SUBPAID',
+	[SUBSCRIPT_EVENT_TYPES.SUBSCRIBED]: 'SUBSCRIBED',
+	[SUBSCRIPT_EVENT_TYPES.UNSUBSCRIBED]: 'UNSUBSCRIBED',
+	[SUBSCRIPT_EVENT_TYPES.FEEFILL]: 'FEEFILL',
+	[SUBSCRIPT_EVENT_TYPES.SUBREFUND]: 'SUBREFUND',
+};
+
+export function getFrequencyLabel(frequency: number | bigint): string {
+	return FREQUENCY_LABELS[Number(frequency)] ?? 'UNKNOWN';
+}
+
+export function getStatusLabel(status: number | bigint): string {
+	return STATUS_LABELS[Number(status)] ?? 'UNKNOWN';
+}
+
+export function getSubscriptEventLabel(event: number | bigint): string {
+	return SUBSCRIPT_EVENT_LABELS[Number(event)] ?? 'UNKNOWN';
+}
+
 export function getCurrentDay(): number {
 	return Math.floor(Date.now() / 1000 / 86400);
 }

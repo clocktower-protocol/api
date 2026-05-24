@@ -8,8 +8,71 @@ import {
 	FREQUENCY_TYPES,
 	getCurrentDay,
 	getDueDay,
+	getFrequencyLabel,
+	getStatusLabel,
 	textResult,
 } from '../utils.js';
+
+type SubscriptionRecord = {
+	id: `0x${string}`;
+	amount: bigint;
+	provider: `0x${string}`;
+	token: `0x${string}`;
+	cancelled: boolean;
+	frequency: bigint | number;
+	dueDay: number;
+};
+
+type AccountSubscriptionRecord = {
+	subscription: SubscriptionRecord;
+	status: number;
+	totalSubscribers: bigint;
+};
+
+function normalizeSubscriptionRecord(raw: unknown): SubscriptionRecord {
+	if (Array.isArray(raw)) {
+		const [id, amount, provider, token, cancelled, frequency, dueDay] = raw;
+		return { id, amount, provider, token, cancelled, frequency, dueDay };
+	}
+
+	return raw as SubscriptionRecord;
+}
+
+function normalizeAccountSubscription(raw: unknown): AccountSubscriptionRecord {
+	if (Array.isArray(raw)) {
+		const [subscription, status, totalSubscribers] = raw;
+		return {
+			subscription: normalizeSubscriptionRecord(subscription),
+			status: Number(status),
+			totalSubscribers,
+		};
+	}
+
+	const entry = raw as AccountSubscriptionRecord;
+	return {
+		...entry,
+		subscription: normalizeSubscriptionRecord(entry.subscription),
+	};
+}
+
+function formatSubscription(subscription: SubscriptionRecord) {
+	const frequency = Number(subscription.frequency);
+	return {
+		...subscription,
+		frequency,
+		frequencyLabel: getFrequencyLabel(frequency),
+	};
+}
+
+function formatAccountSubscription(entry: AccountSubscriptionRecord) {
+	const status = Number(entry.status);
+	return {
+		...entry,
+		subscription: formatSubscription(entry.subscription),
+		status,
+		statusLabel: getStatusLabel(status),
+	};
+}
 
 export const chainIdSchema = z.union([z.literal(8453), z.literal(84532)]);
 export const addressSchema = z.string().regex(/^0x[a-fA-F0-9]{40}$/);
@@ -84,7 +147,10 @@ export async function getSubscription(env: Env, chainId: number, id: `0x${string
 		args: [id],
 	});
 
-	return { chainId, subscription };
+	return {
+		chainId,
+		subscription: formatSubscription(normalizeSubscriptionRecord(subscription)),
+	};
 }
 
 export async function getAccountSubscriptions(
@@ -102,7 +168,14 @@ export async function getAccountSubscriptions(
 		args: [bySubscriber, account],
 	});
 
-	return { chainId, bySubscriber, account, subscriptions };
+	return {
+		chainId,
+		bySubscriber,
+		account,
+		subscriptions: (subscriptions as unknown[]).map((entry) =>
+			formatAccountSubscription(normalizeAccountSubscription(entry)),
+		),
+	};
 }
 
 export async function getSubscribers(env: Env, chainId: number, id: `0x${string}`) {
@@ -157,6 +230,7 @@ export async function getSubscriptionsDue(
 		if (dueDayInfo.shouldSkip || dueDayInfo.dueDay === undefined) {
 			results.push({
 				frequency,
+				frequencyLabel: getFrequencyLabel(frequency),
 				dayNumber,
 				skipped: true,
 				skipReason: dueDayInfo.skipReason,
@@ -174,6 +248,7 @@ export async function getSubscriptionsDue(
 
 		results.push({
 			frequency,
+			frequencyLabel: getFrequencyLabel(frequency),
 			dayNumber,
 			dueDay: dueDayInfo.dueDay,
 			skipped: false,
