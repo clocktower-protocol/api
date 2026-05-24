@@ -1,12 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { BASE_CHAIN_ID } from '../src/chain.js';
 import { getProtocolState } from '../src/tools/read.js';
 
 const env = {
 	ALCHEMY_API_KEY: 'test-alchemy-key',
-	ALCHEMY_URL_BASE: 'https://base-mainnet.g.alchemy.com/v2/',
-	ALCHEMY_URL_SEPOLIA_BASE: 'https://base-sepolia.g.alchemy.com/v2/',
-	CLOCKTOWER_ADDRESS_BASE: '0xFaF5fc2f77b21BC188f492b827D366B03a07c61f',
-	CLOCKTOWER_ADDRESS_SEPOLIA_BASE: '0x6A0791Cd884f2199dC8F372f6715f675D2950922',
+	ALCHEMY_URL: 'https://base-mainnet.g.alchemy.com/v2/',
+	CLOCKTOWER_ADDRESS: '0xFaF5fc2f77b21BC188f492b827D366B03a07c61f',
 } as Env;
 
 function encodeUint(value: bigint | number): string {
@@ -44,9 +43,9 @@ describe('getProtocolState', () => {
 	});
 
 	it('returns protocol state from mocked RPC calls', async () => {
-		const state = await getProtocolState(env, 84532);
+		const state = await getProtocolState(env);
 
-		expect(state.chainId).toBe(84532);
+		expect(state.chainId).toBe(BASE_CHAIN_ID);
 		expect(state.nextUncheckedDay).toBe(12345);
 		expect(state.callerFee).toBe(10500n);
 		expect(state.systemFee).toBe(200n);

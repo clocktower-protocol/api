@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { SUPPORTED_CHAIN_IDS } from './chain.js';
 
 export const MAX_REQUEST_BYTES = 1024 * 1024;
 export const MAX_JSON_DEPTH = 10;
@@ -22,8 +21,6 @@ export function isAddress(value: string): boolean {
 export function isBytes32(value: string): boolean {
 	return BYTES32_PATTERN.test(value);
 }
-
-export const chainIdSchema = z.union([z.literal(8453), z.literal(84532)]);
 
 export const addressSchema = z
 	.string()
@@ -160,21 +157,11 @@ function assertAddress(value: unknown, name: string): `0x${string}` {
 
 export function validateEnv(env: Env): void {
 	assertRequiredString(env.ALCHEMY_API_KEY, 'ALCHEMY_API_KEY');
-	assertHttpsUrl(env.ALCHEMY_URL_BASE, 'ALCHEMY_URL_BASE');
-	assertHttpsUrl(env.ALCHEMY_URL_SEPOLIA_BASE, 'ALCHEMY_URL_SEPOLIA_BASE');
-	assertAddress(env.CLOCKTOWER_ADDRESS_BASE, 'CLOCKTOWER_ADDRESS_BASE');
-	assertAddress(env.CLOCKTOWER_ADDRESS_SEPOLIA_BASE, 'CLOCKTOWER_ADDRESS_SEPOLIA_BASE');
-	assertRequiredString(env.X402_NETWORK, 'X402_NETWORK');
-	assertRequiredString(env.X402_FACILITATOR_URL, 'X402_FACILITATOR_URL');
+	assertHttpsUrl(env.ALCHEMY_URL, 'ALCHEMY_URL');
+	assertAddress(env.CLOCKTOWER_ADDRESS, 'CLOCKTOWER_ADDRESS');
+	assertRequiredString(env.CDP_API_KEY_ID, 'CDP_API_KEY_ID');
+	assertRequiredString(env.CDP_API_KEY_SECRET, 'CDP_API_KEY_SECRET');
 	assertAddress(env.X402_RECIPIENT, 'X402_RECIPIENT');
-
-	if (env.CHAIN_ID_BASE !== String(SUPPORTED_CHAIN_IDS[0])) {
-		throw new Error(`CHAIN_ID_BASE must be ${SUPPORTED_CHAIN_IDS[0]}`);
-	}
-
-	if (env.CHAIN_ID_SEPOLIA_BASE !== String(SUPPORTED_CHAIN_IDS[1])) {
-		throw new Error(`CHAIN_ID_SEPOLIA_BASE must be ${SUPPORTED_CHAIN_IDS[1]}`);
-	}
 }
 
 function assertBytes32(value: unknown, field: string): `0x${string}` {

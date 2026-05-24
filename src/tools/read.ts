@@ -17,7 +17,6 @@ import {
 	addressSchema,
 	bySubscriberSchema,
 	bytes32Schema,
-	chainIdSchema,
 	dayNumberSchema,
 	frequencySchema,
 	parseAccountSubscriptionRecord,
@@ -108,7 +107,7 @@ function formatSubscriber(subscriber: ReturnType<typeof parseSubscriberRecord>, 
 	};
 }
 
-export { chainIdSchema, addressSchema, bytes32Schema } from '../validation.js';
+export { addressSchema, bytes32Schema } from '../validation.js';
 
 export const TOOL_PRICE = 0.01;
 
@@ -123,14 +122,14 @@ type X402McpServer = McpServer & {
 	) => void;
 };
 
-function getContractContext(env: Env, chainId: number) {
-	const chain = resolveChain(env, chainId);
+function getContractContext(env: Env) {
+	const chain = resolveChain(env);
 	const client = createClocktowerClient(chain);
 	return { chain, client };
 }
 
-export async function getProtocolState(env: Env, chainId: number) {
-	const { chain, client } = getContractContext(env, chainId);
+export async function getProtocolState(env: Env) {
+	const { chain, client } = getContractContext(env);
 
 	const [nextUncheckedDay, callerFee, systemFee, maxRemits, cancelLimit] = await Promise.all([
 		client.readContract({
@@ -161,7 +160,7 @@ export async function getProtocolState(env: Env, chainId: number) {
 	]);
 
 	return {
-		chainId,
+		chainId: chain.chainId,
 		contractAddress: chain.contractAddress,
 		nextUncheckedDay,
 		callerFee,
@@ -171,8 +170,8 @@ export async function getProtocolState(env: Env, chainId: number) {
 	};
 }
 
-export async function getSubscription(env: Env, chainId: number, id: `0x${string}`) {
-	const { chain, client } = getContractContext(env, chainId);
+export async function getSubscription(env: Env, id: `0x${string}`) {
+	const { chain, client } = getContractContext(env);
 
 	const subscription = await client.readContract({
 		address: chain.contractAddress,
@@ -185,18 +184,17 @@ export async function getSubscription(env: Env, chainId: number, id: `0x${string
 	const tokenDecimals = await fetchTokenDecimals(client, chain.contractAddress, normalized.token, new Map());
 
 	return {
-		chainId,
+		chainId: chain.chainId,
 		subscription: formatSubscription(normalized, tokenDecimals),
 	};
 }
 
 export async function getAccountSubscriptions(
 	env: Env,
-	chainId: number,
 	bySubscriber: boolean,
 	account: `0x${string}`,
 ) {
-	const { chain, client } = getContractContext(env, chainId);
+	const { chain, client } = getContractContext(env);
 
 	const subscriptions = await client.readContract({
 		address: chain.contractAddress,
@@ -216,7 +214,7 @@ export async function getAccountSubscriptions(
 	);
 
 	return {
-		chainId,
+		chainId: chain.chainId,
 		bySubscriber,
 		account,
 		subscriptions: normalized.map((entry) =>
@@ -225,8 +223,8 @@ export async function getAccountSubscriptions(
 	};
 }
 
-export async function getSubscribers(env: Env, chainId: number, id: `0x${string}`) {
-	const { chain, client } = getContractContext(env, chainId);
+export async function getSubscribers(env: Env, id: `0x${string}`) {
+	const { chain, client } = getContractContext(env);
 
 	const [subscribers, subscription] = await Promise.all([
 		client.readContract({
@@ -247,7 +245,7 @@ export async function getSubscribers(env: Env, chainId: number, id: `0x${string}
 	const tokenDecimals = await fetchTokenDecimals(client, chain.contractAddress, token, new Map());
 
 	return {
-		chainId,
+		chainId: chain.chainId,
 		id,
 		subscribers: (subscribers as unknown[]).map((entry) =>
 			formatSubscriber(parseSubscriberRecord(entry), tokenDecimals),
@@ -255,8 +253,8 @@ export async function getSubscribers(env: Env, chainId: number, id: `0x${string}
 	};
 }
 
-export async function getApprovedToken(env: Env, chainId: number, token: `0x${string}`) {
-	const { chain, client } = getContractContext(env, chainId);
+export async function getApprovedToken(env: Env, token: `0x${string}`) {
+	const { chain, client } = getContractContext(env);
 
 	const approvedToken = await client.readContract({
 		address: chain.contractAddress,
@@ -266,7 +264,7 @@ export async function getApprovedToken(env: Env, chainId: number, token: `0x${st
 	});
 
 	return {
-		chainId,
+		chainId: chain.chainId,
 		token,
 		approvedToken: formatApprovedToken(parseApprovedTokenRecord(approvedToken)),
 	};
@@ -274,10 +272,9 @@ export async function getApprovedToken(env: Env, chainId: number, token: `0x${st
 
 export async function getSubscriptionsDue(
 	env: Env,
-	chainId: number,
 	options: { dayNumber?: number; frequency?: number } = {},
 ) {
-	const { chain, client } = getContractContext(env, chainId);
+	const { chain, client } = getContractContext(env);
 	const dayNumber = options.dayNumber ?? getCurrentDay();
 	const day = dayNumberToDayjs(dayNumber);
 
@@ -324,93 +321,79 @@ export async function getSubscriptionsDue(
 		});
 	}
 
-	return { chainId, dayNumber, results };
+	return { chainId: chain.chainId, dayNumber, results };
 }
 
 export function registerPaidTools(server: X402McpServer, env: Env) {
 	server.paidTool(
 		'get_protocol_state',
-		'Read Clocktower protocol configuration and remit state for a chain',
+		'Read Clocktower protocol configuration and remit state on Base mainnet',
 		TOOL_PRICE,
-		{
-			chainId: chainIdSchema.describe('8453 for Base mainnet, 84532 for Base Sepolia'),
-		},
 		{},
-		async ({ chainId }) => textResult(await getProtocolState(env, chainId as 8453 | 84532)),
+		{},
+		async () => textResult(await getProtocolState(env)),
 	);
 
 	server.paidTool(
 		'get_subscription',
-		'Read a subscription by id from ClockTowerSubscribe',
+		'Read a subscription by id from ClockTowerSubscribe on Base mainnet',
 		TOOL_PRICE,
 		{
-			chainId: chainIdSchema,
 			id: bytes32Schema.describe('Subscription id (bytes32 hex)'),
 		},
 		{},
-		async ({ chainId, id }) =>
-			textResult(await getSubscription(env, chainId as 8453 | 84532, id as `0x${string}`)),
+		async ({ id }) => textResult(await getSubscription(env, id as `0x${string}`)),
 	);
 
 	server.paidTool(
 		'get_account_subscriptions',
-		'List subscriptions for an account as provider or subscriber',
+		'List subscriptions for an account as provider or subscriber on Base mainnet',
 		TOOL_PRICE,
 		{
-			chainId: chainIdSchema,
 			bySubscriber: bySubscriberSchema,
 			account: addressSchema,
 		},
 		{},
-		async ({ chainId, bySubscriber, account }) =>
+		async ({ bySubscriber, account }) =>
 			textResult(
-				await getAccountSubscriptions(
-					env,
-					chainId as 8453 | 84532,
-					bySubscriber as boolean,
-					account as `0x${string}`,
-				),
+				await getAccountSubscriptions(env, bySubscriber as boolean, account as `0x${string}`),
 			),
 	);
 
 	server.paidTool(
 		'get_subscribers',
-		'List subscribers and fee balances for a subscription id',
+		'List subscribers and fee balances for a subscription id on Base mainnet',
 		TOOL_PRICE,
 		{
-			chainId: chainIdSchema,
 			id: bytes32Schema,
 		},
 		{},
-		async ({ chainId, id }) => textResult(await getSubscribers(env, chainId as 8453 | 84532, id as `0x${string}`)),
+		async ({ id }) => textResult(await getSubscribers(env, id as `0x${string}`)),
 	);
 
 	server.paidTool(
 		'get_approved_token',
-		'Read approved ERC20 token configuration from the Clocktower contract',
+		'Read approved ERC20 token configuration from the Clocktower contract on Base mainnet',
 		TOOL_PRICE,
 		{
-			chainId: chainIdSchema,
 			token: addressSchema,
 		},
 		{},
-		async ({ chainId, token }) =>
-			textResult(await getApprovedToken(env, chainId as 8453 | 84532, token as `0x${string}`)),
+		async ({ token }) => textResult(await getApprovedToken(env, token as `0x${string}`)),
 	);
 
 	server.paidTool(
 		'get_subscriptions_due',
-		'Find subscription ids due on a given day by frequency (mirrors caller remit scanning)',
+		'Find subscription ids due on a given day by frequency on Base mainnet (mirrors caller remit scanning)',
 		TOOL_PRICE,
 		{
-			chainId: chainIdSchema,
 			dayNumber: dayNumberSchema,
 			frequency: frequencySchema,
 		},
 		{},
-		async ({ chainId, dayNumber, frequency }) =>
+		async ({ dayNumber, frequency }) =>
 			textResult(
-				await getSubscriptionsDue(env, chainId as 8453 | 84532, {
+				await getSubscriptionsDue(env, {
 					dayNumber: dayNumber as number | undefined,
 					frequency: frequency as number | undefined,
 				}),

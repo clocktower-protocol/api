@@ -2,14 +2,10 @@ interface Env {
 	CLOCKTOWER_MCP: DurableObjectNamespace;
 	RATE_LIMIT: KVNamespace;
 	ALCHEMY_API_KEY: string;
-	ALCHEMY_URL_BASE: string;
-	ALCHEMY_URL_SEPOLIA_BASE: string;
-	CLOCKTOWER_ADDRESS_BASE: string;
-	CLOCKTOWER_ADDRESS_SEPOLIA_BASE: string;
-	CHAIN_ID_BASE: string;
-	CHAIN_ID_SEPOLIA_BASE: string;
-	X402_NETWORK: string;
-	X402_FACILITATOR_URL: string;
+	ALCHEMY_URL: string;
+	CLOCKTOWER_ADDRESS: string;
+	CDP_API_KEY_ID: string;
+	CDP_API_KEY_SECRET: string;
 	X402_RECIPIENT: string;
 	RATE_LIMIT_REQUESTS_PER_MINUTE?: string;
 	ENABLE_AUTH?: string;

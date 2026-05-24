@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
 	addressSchema,
 	bytes32Schema,
-	chainIdSchema,
 	dayNumberSchema,
 	frequencySchema,
 	MAX_DAY_NUMBER,
@@ -17,14 +16,10 @@ import {
 
 const validEnv = {
 	ALCHEMY_API_KEY: 'test-alchemy-key',
-	ALCHEMY_URL_BASE: 'https://base-mainnet.g.alchemy.com/v2/',
-	ALCHEMY_URL_SEPOLIA_BASE: 'https://base-sepolia.g.alchemy.com/v2/',
-	CLOCKTOWER_ADDRESS_BASE: '0xFaF5fc2f77b21BC188f492b827D366B03a07c61f',
-	CLOCKTOWER_ADDRESS_SEPOLIA_BASE: '0x6A0791Cd884f2199dC8F372f6715f675D2950922',
-	CHAIN_ID_BASE: '8453',
-	CHAIN_ID_SEPOLIA_BASE: '84532',
-	X402_NETWORK: 'eip155:84532',
-	X402_FACILITATOR_URL: 'https://x402.org/facilitator',
+	ALCHEMY_URL: 'https://base-mainnet.g.alchemy.com/v2/',
+	CLOCKTOWER_ADDRESS: '0xFaF5fc2f77b21BC188f492b827D366B03a07c61f',
+	CDP_API_KEY_ID: 'test-cdp-key-id',
+	CDP_API_KEY_SECRET: 'test-cdp-key-secret',
 	X402_RECIPIENT: '0x0000000000000000000000000000000000000001',
 } as Env;
 
@@ -38,11 +33,6 @@ describe('tool schemas', () => {
 	it('rejects invalid addresses and bytes32 values', () => {
 		expect(() => addressSchema.parse('0x123')).toThrow();
 		expect(() => bytes32Schema.parse('0x123')).toThrow();
-	});
-
-	it('accepts supported chain ids only', () => {
-		expect(chainIdSchema.parse(8453)).toBe(8453);
-		expect(() => chainIdSchema.parse(1)).toThrow();
 	});
 
 	it('bounds dayNumber and frequency', () => {
@@ -63,9 +53,11 @@ describe('validateEnv', () => {
 	});
 
 	it('rejects invalid contract address', () => {
-		expect(() => validateEnv({ ...validEnv, CLOCKTOWER_ADDRESS_BASE: '0x123' })).toThrow(
-			'CLOCKTOWER_ADDRESS_BASE',
-		);
+		expect(() => validateEnv({ ...validEnv, CLOCKTOWER_ADDRESS: '0x123' })).toThrow('CLOCKTOWER_ADDRESS');
+	});
+
+	it('rejects missing CDP credentials', () => {
+		expect(() => validateEnv({ ...validEnv, CDP_API_KEY_ID: '' })).toThrow('CDP_API_KEY_ID');
 	});
 });
 

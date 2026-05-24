@@ -1,5 +1,7 @@
 # Copy to .dev.vars and fill in values for local development.
 ALCHEMY_API_KEY=your-alchemy-api-key
+CDP_API_KEY_ID=your-cdp-api-key-id
+CDP_API_KEY_SECRET=your-cdp-api-key-secret
 X402_RECIPIENT=0xYourWalletAddress
 
 # Optional HTTP Basic auth for /mcp (set ENABLE_AUTH=true to enforce)
