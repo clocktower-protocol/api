@@ -1,3 +1,4 @@
+import { enforceBasicAuth } from './auth.js';
 import { ClocktowerMCP } from './mcp.js';
 import { enforceRateLimit } from './rateLimit.js';
 import { validateMcpRequest } from './validation.js';
@@ -10,6 +11,11 @@ export default {
 			const invalidRequest = await validateMcpRequest(request);
 			if (invalidRequest) {
 				return invalidRequest;
+			}
+
+			const unauthorized = enforceBasicAuth(request, env);
+			if (unauthorized) {
+				return unauthorized;
 			}
 
 			const rateLimited = await enforceRateLimit(request, env);

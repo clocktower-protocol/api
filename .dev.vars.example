@@ -1,3 +1,8 @@
 # Copy to .dev.vars and fill in values for local development.
 ALCHEMY_API_KEY=your-alchemy-api-key
 X402_RECIPIENT=0xYourWalletAddress
+
+# Optional HTTP Basic auth for /mcp (set ENABLE_AUTH=true to enforce)
+# ENABLE_AUTH=true
+# CFP_USERNAME=your-username
+# CFP_PASSWORD=your-password

@@ -12,4 +12,7 @@ interface Env {
 	X402_FACILITATOR_URL: string;
 	X402_RECIPIENT: string;
 	RATE_LIMIT_REQUESTS_PER_MINUTE?: string;
+	ENABLE_AUTH?: string;
+	CFP_USERNAME?: string;
+	CFP_PASSWORD?: string;
 }
