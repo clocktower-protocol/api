@@ -1,0 +1,31 @@
+{
+  "name": "clocktower-mcp",
+  "version": "1.0.0",
+  "description": "MCP Server for the Clocktower Protocol",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "start": "wrangler dev",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "types": "wrangler types env.d.ts --include-runtime false"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@x402/core": "^2.13.0",
+    "@x402/evm": "^2.13.0",
+    "agents": "^0.13.2",
+    "dayjs": "^1.11.13",
+    "viem": "^2.50.4",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.13.2",
+    "@cloudflare/workers-types": "^4.20260519.1",
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.0",
+    "wrangler": "^4.59.1"
+  }
+}

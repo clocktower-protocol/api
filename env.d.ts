@@ -1,0 +1,13 @@
+interface Env {
+	CLOCKTOWER_MCP: DurableObjectNamespace;
+	ALCHEMY_API_KEY: string;
+	ALCHEMY_URL_BASE: string;
+	ALCHEMY_URL_SEPOLIA_BASE: string;
+	CLOCKTOWER_ADDRESS_BASE: string;
+	CLOCKTOWER_ADDRESS_SEPOLIA_BASE: string;
+	CHAIN_ID_BASE: string;
+	CHAIN_ID_SEPOLIA_BASE: string;
+	X402_NETWORK: string;
+	X402_FACILITATOR_URL: string;
+	X402_RECIPIENT: string;
+}
