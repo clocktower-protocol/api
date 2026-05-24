@@ -1,5 +1,5 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { z } from 'zod';
+import type { ZodTypeAny } from 'zod';
 import { CLOCKTOWER_READ_ABI } from '../abi/clocktower.js';
 import { resolveChain } from '../chain.js';
 import { createClocktowerClient } from '../client.js';
@@ -13,82 +13,19 @@ import {
 	getStatusLabel,
 	textResult,
 } from '../utils.js';
-
-type SubscriptionRecord = {
-	id: `0x${string}`;
-	amount: bigint;
-	provider: `0x${string}`;
-	token: `0x${string}`;
-	cancelled: boolean;
-	frequency: bigint | number;
-	dueDay: number;
-};
-
-type AccountSubscriptionRecord = {
-	subscription: SubscriptionRecord;
-	status: number;
-	totalSubscribers: bigint;
-};
-
-function normalizeSubscriptionRecord(raw: unknown): SubscriptionRecord {
-	if (Array.isArray(raw)) {
-		const [id, amount, provider, token, cancelled, frequency, dueDay] = raw;
-		return { id, amount, provider, token, cancelled, frequency, dueDay };
-	}
-
-	return raw as SubscriptionRecord;
-}
-
-function normalizeAccountSubscription(raw: unknown): AccountSubscriptionRecord {
-	if (Array.isArray(raw)) {
-		const [subscription, status, totalSubscribers] = raw;
-		return {
-			subscription: normalizeSubscriptionRecord(subscription),
-			status: Number(status),
-			totalSubscribers,
-		};
-	}
-
-	const entry = raw as AccountSubscriptionRecord;
-	return {
-		...entry,
-		subscription: normalizeSubscriptionRecord(entry.subscription),
-	};
-}
-
-type ApprovedTokenRecord = {
-	tokenAddress: `0x${string}`;
-	decimals: number;
-	paused: boolean;
-	minimum: bigint;
-};
-
-type SubscriberRecord = {
-	subscriber: `0x${string}`;
-	feeBalance: bigint;
-};
-
-function normalizeApprovedToken(raw: unknown): ApprovedTokenRecord {
-	if (Array.isArray(raw)) {
-		const [tokenAddress, decimals, paused, minimum] = raw;
-		return { tokenAddress, decimals: Number(decimals), paused, minimum };
-	}
-
-	const entry = raw as ApprovedTokenRecord;
-	return {
-		...entry,
-		decimals: Number(entry.decimals),
-	};
-}
-
-function normalizeSubscriberRecord(raw: unknown): SubscriberRecord {
-	if (Array.isArray(raw)) {
-		const [subscriber, feeBalance] = raw;
-		return { subscriber, feeBalance };
-	}
-
-	return raw as SubscriberRecord;
-}
+import {
+	addressSchema,
+	bySubscriberSchema,
+	bytes32Schema,
+	chainIdSchema,
+	dayNumberSchema,
+	frequencySchema,
+	parseAccountSubscriptionRecord,
+	parseApprovedTokenRecord,
+	parseSubscriberRecord,
+	parseSubscriptionRecord,
+	type SubscriptionRecord,
+} from '../validation.js';
 
 type ClocktowerClient = ReturnType<typeof createClocktowerClient>;
 
@@ -111,13 +48,12 @@ async function fetchTokenDecimals(
 		args: [token],
 	});
 
-	const { decimals } = normalizeApprovedToken(approvedToken);
+	const { decimals } = parseApprovedTokenRecord(approvedToken);
 	cache.set(key, decimals);
 	return decimals;
 }
 
 function formatSubscription(subscription: SubscriptionRecord, tokenDecimals: number) {
-	const frequency = Number(subscription.frequency);
 	const { amount, amountRaw } = formatProtocolStoredAmount(subscription.amount, tokenDecimals);
 
 	return {
@@ -126,25 +62,27 @@ function formatSubscription(subscription: SubscriptionRecord, tokenDecimals: num
 		token: subscription.token,
 		cancelled: subscription.cancelled,
 		dueDay: subscription.dueDay,
-		frequency,
-		frequencyLabel: getFrequencyLabel(frequency),
+		frequency: subscription.frequency,
+		frequencyLabel: getFrequencyLabel(subscription.frequency),
 		amount,
 		amountRaw,
 		tokenDecimals,
 	};
 }
 
-function formatAccountSubscription(entry: AccountSubscriptionRecord, tokenDecimals: number) {
-	const status = Number(entry.status);
+function formatAccountSubscription(
+	entry: ReturnType<typeof parseAccountSubscriptionRecord>,
+	tokenDecimals: number,
+) {
 	return {
 		subscription: formatSubscription(entry.subscription, tokenDecimals),
-		status,
-		statusLabel: getStatusLabel(status),
+		status: entry.status,
+		statusLabel: getStatusLabel(entry.status),
 		totalSubscribers: entry.totalSubscribers,
 	};
 }
 
-function formatApprovedToken(approvedToken: ApprovedTokenRecord) {
+function formatApprovedToken(approvedToken: ReturnType<typeof parseApprovedTokenRecord>) {
 	const { amount, amountRaw, tokenDecimals } = formatProtocolStoredAmount(
 		approvedToken.minimum,
 		approvedToken.decimals,
@@ -159,7 +97,7 @@ function formatApprovedToken(approvedToken: ApprovedTokenRecord) {
 	};
 }
 
-function formatSubscriber(subscriber: SubscriberRecord, tokenDecimals: number) {
+function formatSubscriber(subscriber: ReturnType<typeof parseSubscriberRecord>, tokenDecimals: number) {
 	const { amount, amountRaw } = formatProtocolStoredAmount(subscriber.feeBalance, tokenDecimals);
 
 	return {
@@ -170,9 +108,7 @@ function formatSubscriber(subscriber: SubscriberRecord, tokenDecimals: number) {
 	};
 }
 
-export const chainIdSchema = z.union([z.literal(8453), z.literal(84532)]);
-export const addressSchema = z.string().regex(/^0x[a-fA-F0-9]{40}$/);
-export const bytes32Schema = z.string().regex(/^0x[a-fA-F0-9]{64}$/);
+export { chainIdSchema, addressSchema, bytes32Schema } from '../validation.js';
 
 export const TOOL_PRICE = 0.01;
 
@@ -181,7 +117,7 @@ type X402McpServer = McpServer & {
 		name: string,
 		description: string,
 		price: number,
-		inputSchema: Record<string, z.ZodTypeAny>,
+		inputSchema: Record<string, ZodTypeAny>,
 		annotations: Record<string, unknown>,
 		handler: (args: Record<string, unknown>) => Promise<{ content: Array<{ type: 'text'; text: string }> }>,
 	) => void;
@@ -245,7 +181,7 @@ export async function getSubscription(env: Env, chainId: number, id: `0x${string
 		args: [id],
 	});
 
-	const normalized = normalizeSubscriptionRecord(subscription);
+	const normalized = parseSubscriptionRecord(subscription);
 	const tokenDecimals = await fetchTokenDecimals(client, chain.contractAddress, normalized.token, new Map());
 
 	return {
@@ -269,7 +205,7 @@ export async function getAccountSubscriptions(
 		args: [bySubscriber, account],
 	});
 
-	const normalized = (subscriptions as unknown[]).map((entry) => normalizeAccountSubscription(entry));
+	const normalized = (subscriptions as unknown[]).map((entry) => parseAccountSubscriptionRecord(entry));
 	const decimalsCache = new Map<string, number>();
 	const uniqueTokens = [...new Set(normalized.map((entry) => entry.subscription.token.toLowerCase()))];
 
@@ -307,14 +243,14 @@ export async function getSubscribers(env: Env, chainId: number, id: `0x${string}
 		}),
 	]);
 
-	const { token } = normalizeSubscriptionRecord(subscription);
+	const { token } = parseSubscriptionRecord(subscription);
 	const tokenDecimals = await fetchTokenDecimals(client, chain.contractAddress, token, new Map());
 
 	return {
 		chainId,
 		id,
 		subscribers: (subscribers as unknown[]).map((entry) =>
-			formatSubscriber(normalizeSubscriberRecord(entry), tokenDecimals),
+			formatSubscriber(parseSubscriberRecord(entry), tokenDecimals),
 		),
 	};
 }
@@ -332,7 +268,7 @@ export async function getApprovedToken(env: Env, chainId: number, token: `0x${st
 	return {
 		chainId,
 		token,
-		approvedToken: formatApprovedToken(normalizeApprovedToken(approvedToken)),
+		approvedToken: formatApprovedToken(parseApprovedTokenRecord(approvedToken)),
 	};
 }
 
@@ -412,7 +348,8 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 			id: bytes32Schema.describe('Subscription id (bytes32 hex)'),
 		},
 		{},
-		async ({ chainId, id }) => textResult(await getSubscription(env, chainId as 8453 | 84532, id as `0x${string}`)),
+		async ({ chainId, id }) =>
+			textResult(await getSubscription(env, chainId as 8453 | 84532, id as `0x${string}`)),
 	);
 
 	server.paidTool(
@@ -421,9 +358,7 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 		TOOL_PRICE,
 		{
 			chainId: chainIdSchema,
-			bySubscriber: z
-				.boolean()
-				.describe('true = subscriptions the account is subscribed to; false = subscriptions created by the account'),
+			bySubscriber: bySubscriberSchema,
 			account: addressSchema,
 		},
 		{},
@@ -469,14 +404,8 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 		TOOL_PRICE,
 		{
 			chainId: chainIdSchema,
-			dayNumber: z.number().int().nonnegative().optional().describe('Day number since Unix epoch; defaults to today'),
-			frequency: z
-				.number()
-				.int()
-				.min(0)
-				.max(3)
-				.optional()
-				.describe('0=weekly, 1=monthly, 2=quarterly, 3=yearly; omit to query all frequencies'),
+			dayNumber: dayNumberSchema,
+			frequency: frequencySchema,
 		},
 		{},
 		async ({ chainId, dayNumber, frequency }) =>

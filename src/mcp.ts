@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { McpAgent } from 'agents/mcp';
 import { withX402, type X402Config } from 'agents/x402';
 import { registerPaidTools } from './tools/read.js';
+import { validateEnv } from './validation.js';
 
 function buildX402Config(env: Env): X402Config {
 	return {
@@ -19,6 +20,8 @@ export class ClocktowerMCP extends McpAgent<Env> {
 	});
 
 	async init() {
+		validateEnv(this.env);
+
 		this.server = withX402(
 			new McpServer({ name: 'clocktower-mcp', version: '1.0.0' }),
 			buildX402Config(this.env),
