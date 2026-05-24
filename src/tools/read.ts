@@ -1,5 +1,4 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { ZodTypeAny } from 'zod';
+import type { X402McpServer } from './types.js';
 import { CLOCKTOWER_READ_ABI } from '../abi/clocktower.js';
 import { resolveChain } from '../chain.js';
 import { createClocktowerClient } from '../client.js';
@@ -110,17 +109,6 @@ function formatSubscriber(subscriber: ReturnType<typeof parseSubscriberRecord>, 
 export { addressSchema, bytes32Schema } from '../validation.js';
 
 export const TOOL_PRICE = 0.01;
-
-type X402McpServer = McpServer & {
-	paidTool: (
-		name: string,
-		description: string,
-		price: number,
-		inputSchema: Record<string, ZodTypeAny>,
-		annotations: Record<string, unknown>,
-		handler: (args: Record<string, unknown>) => Promise<{ content: Array<{ type: 'text'; text: string }> }>,
-	) => void;
-};
 
 function getContractContext(env: Env) {
 	const chain = resolveChain(env);

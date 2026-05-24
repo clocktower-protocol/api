@@ -8,6 +8,8 @@ interface Env {
 	CDP_API_KEY_SECRET: string;
 	X402_RECIPIENT: string;
 	RATE_LIMIT_REQUESTS_PER_MINUTE?: string;
+	WRITE_RATE_LIMIT_REQUESTS_PER_MINUTE?: string;
+	PREPARE_INTENT_TTL_SECONDS?: string;
 	ENABLE_AUTH?: string;
 	CFP_USERNAME?: string;
 	CFP_PASSWORD?: string;

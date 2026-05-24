@@ -37,3 +37,30 @@ export async function enforceRateLimit(request: Request, env: Env): Promise<Resp
 	await env.RATE_LIMIT.put(key, String(current + 1), { expirationTtl: 120 });
 	return null;
 }
+
+const DEFAULT_WRITE_REQUESTS_PER_MINUTE = 10;
+
+export function getWriteRateLimit(env: Env): number {
+	const configured = env.WRITE_RATE_LIMIT_REQUESTS_PER_MINUTE;
+	if (configured === undefined) {
+		return DEFAULT_WRITE_REQUESTS_PER_MINUTE;
+	}
+	const parsed = Number.parseInt(configured, 10);
+	return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_WRITE_REQUESTS_PER_MINUTE;
+}
+
+export async function enforceWriteRateLimitForAddress(
+	env: Env,
+	address: string,
+): Promise<void> {
+	const limit = getWriteRateLimit(env);
+	const windowKey = Math.floor(Date.now() / WINDOW_MS);
+	const key = `wrl:${address.toLowerCase()}:${windowKey}`;
+
+	const current = Number.parseInt((await env.RATE_LIMIT.get(key)) ?? '0', 10);
+	if (current >= limit) {
+		throw new Error(`Write rate limit exceeded (${limit} requests per minute)`);
+	}
+
+	await env.RATE_LIMIT.put(key, String(current + 1), { expirationTtl: 120 });
+}

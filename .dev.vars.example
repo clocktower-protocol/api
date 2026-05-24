@@ -4,6 +4,10 @@ CDP_API_KEY_ID=your-cdp-api-key-id
 CDP_API_KEY_SECRET=your-cdp-api-key-secret
 X402_RECIPIENT=0xYourWalletAddress
 
+# Optional write-tool limits
+# WRITE_RATE_LIMIT_REQUESTS_PER_MINUTE=10
+# PREPARE_INTENT_TTL_SECONDS=900
+
 # Optional HTTP Basic auth for /mcp (set ENABLE_AUTH=true to enforce)
 # ENABLE_AUTH=true
 # CFP_USERNAME=your-username
