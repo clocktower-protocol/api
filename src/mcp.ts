@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { McpAgent } from 'agents/mcp';
 import { withX402, type X402Config } from 'agents/x402';
-import { registerFreeTools, registerPaidTools } from './tools/read.js';
+import { registerPaidTools } from './tools/read.js';
 
 function buildX402Config(env: Env): X402Config {
 	return {
@@ -24,7 +24,6 @@ export class ClocktowerMCP extends McpAgent<Env> {
 			buildX402Config(this.env),
 		);
 
-		registerFreeTools(this.server, this.env);
 		registerPaidTools(this.server, this.env);
 	}
 }

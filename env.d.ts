@@ -1,5 +1,6 @@
 interface Env {
 	CLOCKTOWER_MCP: DurableObjectNamespace;
+	RATE_LIMIT: KVNamespace;
 	ALCHEMY_API_KEY: string;
 	ALCHEMY_URL_BASE: string;
 	ALCHEMY_URL_SEPOLIA_BASE: string;
@@ -10,4 +11,5 @@ interface Env {
 	X402_NETWORK: string;
 	X402_FACILITATOR_URL: string;
 	X402_RECIPIENT: string;
+	RATE_LIMIT_REQUESTS_PER_MINUTE?: string;
 }

@@ -174,6 +174,8 @@ export const chainIdSchema = z.union([z.literal(8453), z.literal(84532)]);
 export const addressSchema = z.string().regex(/^0x[a-fA-F0-9]{40}$/);
 export const bytes32Schema = z.string().regex(/^0x[a-fA-F0-9]{64}$/);
 
+export const TOOL_PRICE = 0.01;
+
 type X402McpServer = McpServer & {
 	paidTool: (
 		name: string,
@@ -389,76 +391,82 @@ export async function getSubscriptionsDue(
 	return { chainId, dayNumber, results };
 }
 
-export function registerFreeTools(server: McpServer, env: Env) {
-	server.registerTool(
-		'get_protocol_state',
-		{
-			description: 'Read Clocktower protocol configuration and remit state for a chain',
-			inputSchema: {
-				chainId: chainIdSchema.describe('8453 for Base mainnet, 84532 for Base Sepolia'),
-			},
-		},
-		async ({ chainId }) => textResult(await getProtocolState(env, chainId)),
-	);
-
-	server.registerTool(
-		'get_subscription',
-		{
-			description: 'Read a subscription by id from ClockTowerSubscribe',
-			inputSchema: {
-				chainId: chainIdSchema,
-				id: bytes32Schema.describe('Subscription id (bytes32 hex)'),
-			},
-		},
-		async ({ chainId, id }) => textResult(await getSubscription(env, chainId, id as `0x${string}`)),
-	);
-
-	server.registerTool(
-		'get_account_subscriptions',
-		{
-			description: 'List subscriptions for an account as provider or subscriber',
-			inputSchema: {
-				chainId: chainIdSchema,
-				bySubscriber: z
-					.boolean()
-					.describe('true = subscriptions the account is subscribed to; false = subscriptions created by the account'),
-				account: addressSchema,
-			},
-		},
-		async ({ chainId, bySubscriber, account }) =>
-			textResult(await getAccountSubscriptions(env, chainId, bySubscriber, account as `0x${string}`)),
-	);
-
-	server.registerTool(
-		'get_subscribers',
-		{
-			description: 'List subscribers and fee balances for a subscription id',
-			inputSchema: {
-				chainId: chainIdSchema,
-				id: bytes32Schema,
-			},
-		},
-		async ({ chainId, id }) => textResult(await getSubscribers(env, chainId, id as `0x${string}`)),
-	);
-
-	server.registerTool(
-		'get_approved_token',
-		{
-			description: 'Read approved ERC20 token configuration from the Clocktower contract',
-			inputSchema: {
-				chainId: chainIdSchema,
-				token: addressSchema,
-			},
-		},
-		async ({ chainId, token }) => textResult(await getApprovedToken(env, chainId, token as `0x${string}`)),
-	);
-}
-
 export function registerPaidTools(server: X402McpServer, env: Env) {
+	server.paidTool(
+		'get_protocol_state',
+		'Read Clocktower protocol configuration and remit state for a chain',
+		TOOL_PRICE,
+		{
+			chainId: chainIdSchema.describe('8453 for Base mainnet, 84532 for Base Sepolia'),
+		},
+		{},
+		async ({ chainId }) => textResult(await getProtocolState(env, chainId as 8453 | 84532)),
+	);
+
+	server.paidTool(
+		'get_subscription',
+		'Read a subscription by id from ClockTowerSubscribe',
+		TOOL_PRICE,
+		{
+			chainId: chainIdSchema,
+			id: bytes32Schema.describe('Subscription id (bytes32 hex)'),
+		},
+		{},
+		async ({ chainId, id }) => textResult(await getSubscription(env, chainId as 8453 | 84532, id as `0x${string}`)),
+	);
+
+	server.paidTool(
+		'get_account_subscriptions',
+		'List subscriptions for an account as provider or subscriber',
+		TOOL_PRICE,
+		{
+			chainId: chainIdSchema,
+			bySubscriber: z
+				.boolean()
+				.describe('true = subscriptions the account is subscribed to; false = subscriptions created by the account'),
+			account: addressSchema,
+		},
+		{},
+		async ({ chainId, bySubscriber, account }) =>
+			textResult(
+				await getAccountSubscriptions(
+					env,
+					chainId as 8453 | 84532,
+					bySubscriber as boolean,
+					account as `0x${string}`,
+				),
+			),
+	);
+
+	server.paidTool(
+		'get_subscribers',
+		'List subscribers and fee balances for a subscription id',
+		TOOL_PRICE,
+		{
+			chainId: chainIdSchema,
+			id: bytes32Schema,
+		},
+		{},
+		async ({ chainId, id }) => textResult(await getSubscribers(env, chainId as 8453 | 84532, id as `0x${string}`)),
+	);
+
+	server.paidTool(
+		'get_approved_token',
+		'Read approved ERC20 token configuration from the Clocktower contract',
+		TOOL_PRICE,
+		{
+			chainId: chainIdSchema,
+			token: addressSchema,
+		},
+		{},
+		async ({ chainId, token }) =>
+			textResult(await getApprovedToken(env, chainId as 8453 | 84532, token as `0x${string}`)),
+	);
+
 	server.paidTool(
 		'get_subscriptions_due',
 		'Find subscription ids due on a given day by frequency (mirrors caller remit scanning)',
-		0.01,
+		TOOL_PRICE,
 		{
 			chainId: chainIdSchema,
 			dayNumber: z.number().int().nonnegative().optional().describe('Day number since Unix epoch; defaults to today'),
