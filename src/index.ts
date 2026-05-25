@@ -1,10 +1,16 @@
 import { enforceBasicAuth } from './auth.js';
+import { enforceGeoBlock } from './geoBlock.js';
 import { ClocktowerMCP } from './mcp.js';
 import { enforceRateLimit } from './rateLimit.js';
 import { validateMcpRequest } from './validation.js';
 
 export default {
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+		const geoBlocked = enforceGeoBlock(request);
+		if (geoBlocked) {
+			return geoBlocked;
+		}
+
 		const url = new URL(request.url);
 
 		if (url.pathname === '/mcp') {
