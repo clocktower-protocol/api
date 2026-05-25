@@ -1,12 +1,5 @@
 export const CLOCKTOWER_READ_ABI = [
 	{
-		name: 'nextUncheckedDay',
-		type: 'function',
-		inputs: [],
-		outputs: [{ type: 'uint40' }],
-		stateMutability: 'view',
-	},
-	{
 		name: 'callerFee',
 		type: 'function',
 		inputs: [],
@@ -15,20 +8,6 @@ export const CLOCKTOWER_READ_ABI = [
 	},
 	{
 		name: 'systemFee',
-		type: 'function',
-		inputs: [],
-		outputs: [{ type: 'uint256' }],
-		stateMutability: 'view',
-	},
-	{
-		name: 'maxRemits',
-		type: 'function',
-		inputs: [],
-		outputs: [{ type: 'uint256' }],
-		stateMutability: 'view',
-	},
-	{
-		name: 'cancelLimit',
 		type: 'function',
 		inputs: [],
 		outputs: [{ type: 'uint256' }],

@@ -119,12 +119,7 @@ function getContractContext(env: Env) {
 export async function getProtocolState(env: Env) {
 	const { chain, client } = getContractContext(env);
 
-	const [nextUncheckedDay, callerFee, systemFee, maxRemits, cancelLimit] = await Promise.all([
-		client.readContract({
-			address: chain.contractAddress,
-			abi: CLOCKTOWER_READ_ABI,
-			functionName: 'nextUncheckedDay',
-		}),
+	const [callerFee, systemFee] = await Promise.all([
 		client.readContract({
 			address: chain.contractAddress,
 			abi: CLOCKTOWER_READ_ABI,
@@ -135,26 +130,13 @@ export async function getProtocolState(env: Env) {
 			abi: CLOCKTOWER_READ_ABI,
 			functionName: 'systemFee',
 		}),
-		client.readContract({
-			address: chain.contractAddress,
-			abi: CLOCKTOWER_READ_ABI,
-			functionName: 'maxRemits',
-		}),
-		client.readContract({
-			address: chain.contractAddress,
-			abi: CLOCKTOWER_READ_ABI,
-			functionName: 'cancelLimit',
-		}),
 	]);
 
 	return {
 		chainId: chain.chainId,
 		contractAddress: chain.contractAddress,
-		nextUncheckedDay,
 		callerFee,
 		systemFee,
-		maxRemits,
-		cancelLimit,
 	};
 }
 
@@ -315,7 +297,7 @@ export async function getSubscriptionsDue(
 export function registerPaidTools(server: X402McpServer, env: Env) {
 	server.paidTool(
 		'get_protocol_state',
-		'Read Clocktower protocol configuration and remit state on Base mainnet',
+		'Read Clocktower protocol fee configuration on Base mainnet',
 		TOOL_PRICE,
 		{},
 		{},

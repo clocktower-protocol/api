@@ -20,11 +20,8 @@ describe('getProtocolState', () => {
 		callCount = 0;
 		globalThis.fetch = vi.fn(async () => {
 			const results = [
-				encodeUint(12345), // nextUncheckedDay
 				encodeUint(10500), // callerFee
 				encodeUint(200), // systemFee
-				encodeUint(50), // maxRemits
-				encodeUint(10), // cancelLimit
 			];
 
 			const result = results[callCount] ?? encodeUint(0);
@@ -46,11 +43,8 @@ describe('getProtocolState', () => {
 		const state = await getProtocolState(env);
 
 		expect(state.chainId).toBe(BASE_CHAIN_ID);
-		expect(state.nextUncheckedDay).toBe(12345);
 		expect(state.callerFee).toBe(10500n);
 		expect(state.systemFee).toBe(200n);
-		expect(state.maxRemits).toBe(50n);
-		expect(state.cancelLimit).toBe(10n);
-		expect(globalThis.fetch).toHaveBeenCalledTimes(5);
+		expect(globalThis.fetch).toHaveBeenCalledTimes(2);
 	});
 });
