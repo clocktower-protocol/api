@@ -87,3 +87,6 @@ tmp/
 temp/
 .vercel
 .netlify
+
+# Local-only security review notes (not for distribution)
+SECURITY_FOLLOWUPS.md

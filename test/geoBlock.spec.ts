@@ -134,7 +134,7 @@ describe('worker geo blocking', () => {
 		});
 
 		expect(res.status).toBe(403);
-		const body = await res.json();
+		const body = (await res.json()) as { error: string };
 		expect(body.error).toBe('Access restricted');
 	});
 
