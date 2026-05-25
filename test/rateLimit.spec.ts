@@ -13,8 +13,7 @@ async function fetchWorker(pathname: string, init: RequestInit = {}) {
 
 describe('rate limiting', () => {
 	it('uses configured requests per minute from env', () => {
-		const request = new Request('http://example.com/mcp');
-		expect(getRateLimit(request, env)).toBe(2);
+		expect(getRateLimit(env)).toBe(2);
 	});
 
 	it('returns 429 after exceeding the configured limit on /mcp', async () => {

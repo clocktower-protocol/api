@@ -146,6 +146,18 @@ function assertHttpsUrl(value: unknown, name: string): string {
 	return url;
 }
 
+// ALCHEMY_URL is concatenated with ALCHEMY_API_KEY in `resolveChain`. A missing
+// trailing slash silently produces a malformed RPC URL like
+// `https://base-mainnet.g.alchemy.com/v2KEY`. Fail fast at startup instead.
+function assertHttpsUrlWithTrailingSlash(value: unknown, name: string): string {
+	const url = assertHttpsUrl(value, name);
+	if (!url.endsWith('/')) {
+		throw new Error(`Env var ${name} must end with a trailing '/'`);
+	}
+
+	return url;
+}
+
 function assertAddress(value: unknown, name: string): `0x${string}` {
 	const address = assertRequiredString(value, name);
 	if (!isAddress(address)) {
@@ -157,7 +169,7 @@ function assertAddress(value: unknown, name: string): `0x${string}` {
 
 export function validateEnv(env: Env): void {
 	assertRequiredString(env.ALCHEMY_API_KEY, 'ALCHEMY_API_KEY');
-	assertHttpsUrl(env.ALCHEMY_URL, 'ALCHEMY_URL');
+	assertHttpsUrlWithTrailingSlash(env.ALCHEMY_URL, 'ALCHEMY_URL');
 	assertAddress(env.CLOCKTOWER_ADDRESS, 'CLOCKTOWER_ADDRESS');
 	assertRequiredString(env.CDP_API_KEY_ID, 'CDP_API_KEY_ID');
 	assertRequiredString(env.CDP_API_KEY_SECRET, 'CDP_API_KEY_SECRET');

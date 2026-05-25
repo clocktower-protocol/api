@@ -172,4 +172,49 @@ describe('submitSignedTransactions', () => {
 			globalThis.fetch = originalFetch;
 		}
 	});
+
+	it('broadcasts successfully when signer, calldata, and nonce all validate', async () => {
+		// Guards against regressing the C1 fix: covers the full happy path
+		// through eth_sendRawTransaction. Mock returns matching nonce (0) for
+		// getTransactionCount and a real-shaped tx hash for sendRawTransaction.
+		const txHash =
+			'0x1111111111111111111111111111111111111111111111111111111111111111';
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const body = typeof init?.body === 'string' ? init.body : '';
+			const method = JSON.parse(body).method as string;
+			if (method === 'eth_getTransactionCount') {
+				return Response.json({ jsonrpc: '2.0', id: 1, result: '0x0' });
+			}
+			if (method === 'eth_sendRawTransaction') {
+				return Response.json({ jsonrpc: '2.0', id: 1, result: txHash });
+			}
+			throw new Error(`unexpected rpc method: ${method}`);
+		}) as typeof fetch;
+
+		try {
+			const unsigned = [buildUnsigned(account.address)];
+			const intent = await storePrepareIntent(testEnv, account.address, unsigned);
+
+			const signed = await account.signTransaction({
+				chainId: BASE_CHAIN_ID,
+				to: unsigned[0].to,
+				data: unsigned[0].data,
+				value: 0n,
+				nonce: 0,
+				maxFeePerGas: 1_000_000_000n,
+				maxPriorityFeePerGas: 1_000_000_000n,
+				gas: 100_000n,
+			});
+
+			const result = await submitSignedTransactions(testEnv, intent.prepareId, [signed]);
+
+			expect(result.txHashes).toEqual([txHash]);
+			// Intent must be consumed exactly once on the success path.
+			const after = await loadPrepareIntent(testEnv, intent.prepareId);
+			expect(after).toBeNull();
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
 });

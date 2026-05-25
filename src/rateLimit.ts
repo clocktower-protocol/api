@@ -3,7 +3,7 @@ import { checkRateLimit, RATE_LIMITER_WINDOW_MS } from './RateLimiter.js';
 const WINDOW_MS = RATE_LIMITER_WINDOW_MS;
 const DEFAULT_REQUESTS_PER_MINUTE = 60;
 
-export function getRateLimit(_request: Request, env: Env): number {
+export function getRateLimit(env: Env): number {
 	const configured = env.RATE_LIMIT_REQUESTS_PER_MINUTE;
 	if (configured === undefined) {
 		return DEFAULT_REQUESTS_PER_MINUTE;
@@ -14,7 +14,7 @@ export function getRateLimit(_request: Request, env: Env): number {
 }
 
 export async function enforceRateLimit(request: Request, env: Env): Promise<Response | null> {
-	const limit = getRateLimit(request, env);
+	const limit = getRateLimit(env);
 	const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown';
 
 	const result = await checkRateLimit(env.RATE_LIMITER, `ip:${ip}`, limit, WINDOW_MS);

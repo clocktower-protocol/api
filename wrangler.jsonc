@@ -64,6 +64,10 @@
 					"tag": "v2"
 				}
 			],
+			// CI / runbook note: the `id` below is a sentinel string consumed only
+			// by the @cloudflare/vitest-pool-workers in-memory KV. Never override
+			// it in CI with a real Cloudflare KV namespace id — doing so would
+			// route test traffic at production prepare-intents storage.
 			"kv_namespaces": [
 				{
 					"binding": "PREPARE_INTENTS",

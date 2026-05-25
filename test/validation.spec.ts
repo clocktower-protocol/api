@@ -59,6 +59,12 @@ describe('validateEnv', () => {
 	it('rejects missing CDP credentials', () => {
 		expect(() => validateEnv({ ...validEnv, CDP_API_KEY_ID: '' })).toThrow('CDP_API_KEY_ID');
 	});
+
+	it('rejects ALCHEMY_URL without trailing slash', () => {
+		expect(() =>
+			validateEnv({ ...validEnv, ALCHEMY_URL: 'https://base-mainnet.g.alchemy.com/v2' }),
+		).toThrow(/trailing/);
+	});
 });
 
 describe('validateMcpRequest', () => {
