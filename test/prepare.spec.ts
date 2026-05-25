@@ -99,7 +99,7 @@ describe('prepareCreateSubscription', () => {
 		expect(result.unsignedTransactions).toHaveLength(1);
 		expect(result.eip5792.calls).toHaveLength(1);
 
-		const stored = await testEnv.RATE_LIMIT.get(`${PREPARE_KV_PREFIX}${result.prepareId}`);
+		const stored = await testEnv.PREPARE_INTENTS.get(`${PREPARE_KV_PREFIX}${result.prepareId}`);
 		expect(stored).not.toBeNull();
 	});
 });

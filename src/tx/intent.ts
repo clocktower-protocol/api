@@ -41,7 +41,7 @@ export async function storePrepareIntent(
 		expiresAt,
 	};
 
-	await env.RATE_LIMIT.put(`${PREPARE_KV_PREFIX}${prepareId}`, JSON.stringify(intent), {
+	await env.PREPARE_INTENTS.put(`${PREPARE_KV_PREFIX}${prepareId}`, JSON.stringify(intent), {
 		expirationTtl: ttl + 60,
 	});
 
@@ -49,14 +49,14 @@ export async function storePrepareIntent(
 }
 
 export async function loadPrepareIntent(env: Env, prepareId: string): Promise<PrepareIntent | null> {
-	const raw = await env.RATE_LIMIT.get(`${PREPARE_KV_PREFIX}${prepareId}`);
+	const raw = await env.PREPARE_INTENTS.get(`${PREPARE_KV_PREFIX}${prepareId}`);
 	if (!raw) {
 		return null;
 	}
 
 	const intent = JSON.parse(raw) as PrepareIntent;
 	if (Date.now() > intent.expiresAt) {
-		await env.RATE_LIMIT.delete(`${PREPARE_KV_PREFIX}${prepareId}`);
+		await env.PREPARE_INTENTS.delete(`${PREPARE_KV_PREFIX}${prepareId}`);
 		return null;
 	}
 
@@ -68,10 +68,10 @@ export async function consumePrepareIntent(env: Env, prepareId: string): Promise
 	if (!intent) {
 		return null;
 	}
-	await env.RATE_LIMIT.delete(`${PREPARE_KV_PREFIX}${prepareId}`);
+	await env.PREPARE_INTENTS.delete(`${PREPARE_KV_PREFIX}${prepareId}`);
 	return intent;
 }
 
 export async function deletePrepareIntent(env: Env, prepareId: string): Promise<void> {
-	await env.RATE_LIMIT.delete(`${PREPARE_KV_PREFIX}${prepareId}`);
+	await env.PREPARE_INTENTS.delete(`${PREPARE_KV_PREFIX}${prepareId}`);
 }

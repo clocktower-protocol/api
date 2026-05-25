@@ -35,7 +35,7 @@ async function fetchWorker(pathname: string, init: RequestInit = {}) {
 }
 
 describe('isNewYorkBlocked', () => {
-	it('blocks US + New York from CF headers', () => {
+	it('blocks US + New York from CF headers (fallback when no request.cf)', () => {
 		const request = requestWithGeo('http://example.com/mcp', {
 			country: 'US',
 			region: 'New York',
@@ -69,6 +69,30 @@ describe('isNewYorkBlocked', () => {
 
 	it('allows requests with no geo data', () => {
 		expect(isNewYorkBlocked(new Request('http://example.com/mcp'))).toBe(false);
+	});
+
+	it('trusts request.cf over conflicting client-set headers (NY in cf wins)', () => {
+		// Attacker tries to bypass NY block by sending non-NY CF-* headers,
+		// but the server-populated cf-object correctly reports NY.
+		const request = requestWithGeo('http://example.com/mcp', {
+			country: 'US',
+			region: 'California',
+			cfCountry: 'US',
+			cfRegion: 'NY',
+		});
+		expect(isNewYorkBlocked(request)).toBe(true);
+	});
+
+	it('trusts request.cf over conflicting client-set headers (non-NY in cf wins)', () => {
+		// Conversely: attacker can't *cause* a block by spoofing NY headers when
+		// CF says they are elsewhere.
+		const request = requestWithGeo('http://example.com/mcp', {
+			country: 'US',
+			region: 'New York',
+			cfCountry: 'US',
+			cfRegion: 'CA',
+		});
+		expect(isNewYorkBlocked(request)).toBe(false);
 	});
 });
 

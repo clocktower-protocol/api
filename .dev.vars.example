@@ -12,3 +12,11 @@ X402_RECIPIENT=0xYourWalletAddress
 # ENABLE_AUTH=true
 # CFP_USERNAME=your-username
 # CFP_PASSWORD=your-password
+
+# Optional CSRF protection. When ENABLE_AUTH=true, browser cross-origin POSTs
+# carrying cached Basic credentials are rejected unless their Origin header
+# matches one of these comma-separated entries. Server-to-server clients
+# (which omit Origin) are unaffected.
+# Use "*" to allow any Origin (NOT recommended with ENABLE_AUTH=true).
+# Leave unset to deny ALL browser-set Origins (server-to-server only).
+# CFP_ALLOWED_ORIGINS=https://app.example.com,https://admin.example.com

@@ -31,7 +31,7 @@
 	],
 	"kv_namespaces": [
 		{
-			"binding": "RATE_LIMIT",
+			"binding": "PREPARE_INTENTS",
 			"id": "REPLACE_WITH_KV_NAMESPACE_ID"
 		}
 	],
@@ -66,8 +66,8 @@
 			],
 			"kv_namespaces": [
 				{
-					"binding": "RATE_LIMIT",
-					"id": "test-rate-limit"
+					"binding": "PREPARE_INTENTS",
+					"id": "test-prepare-intents"
 				}
 			],
 			"vars": {

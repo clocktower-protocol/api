@@ -1,4 +1,5 @@
 import { enforceBasicAuth } from './auth.js';
+import { enforceOriginAllowlist } from './csrf.js';
 import { enforceGeoBlock } from './geoBlock.js';
 import { ClocktowerMCP } from './mcp.js';
 import { RateLimiter } from './RateLimiter.js';
@@ -18,6 +19,13 @@ export default {
 			const invalidRequest = await validateMcpRequest(request);
 			if (invalidRequest) {
 				return invalidRequest;
+			}
+
+			// CSRF defense runs before auth so we never even compare credentials
+			// for a cross-origin browser POST that wouldn't be allowed anyway.
+			const forbiddenOrigin = enforceOriginAllowlist(request, env);
+			if (forbiddenOrigin) {
+				return forbiddenOrigin;
 			}
 
 			const unauthorized = enforceBasicAuth(request, env);

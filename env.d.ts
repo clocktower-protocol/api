@@ -1,7 +1,7 @@
 interface Env {
 	CLOCKTOWER_MCP: DurableObjectNamespace;
 	RATE_LIMITER: DurableObjectNamespace;
-	RATE_LIMIT: KVNamespace;
+	PREPARE_INTENTS: KVNamespace;
 	ALCHEMY_API_KEY: string;
 	ALCHEMY_URL: string;
 	CLOCKTOWER_ADDRESS: string;
@@ -14,4 +14,5 @@ interface Env {
 	ENABLE_AUTH?: string;
 	CFP_USERNAME?: string;
 	CFP_PASSWORD?: string;
+	CFP_ALLOWED_ORIGINS?: string;
 }
