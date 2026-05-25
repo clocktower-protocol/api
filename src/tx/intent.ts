@@ -71,3 +71,7 @@ export async function consumePrepareIntent(env: Env, prepareId: string): Promise
 	await env.RATE_LIMIT.delete(`${PREPARE_KV_PREFIX}${prepareId}`);
 	return intent;
 }
+
+export async function deletePrepareIntent(env: Env, prepareId: string): Promise<void> {
+	await env.RATE_LIMIT.delete(`${PREPARE_KV_PREFIX}${prepareId}`);
+}

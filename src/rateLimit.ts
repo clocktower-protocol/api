@@ -1,7 +1,9 @@
-const WINDOW_MS = 60_000;
+import { checkRateLimit, RATE_LIMITER_WINDOW_MS } from './RateLimiter.js';
+
+const WINDOW_MS = RATE_LIMITER_WINDOW_MS;
 const DEFAULT_REQUESTS_PER_MINUTE = 60;
 
-export function getRateLimit(request: Request, env: Env): number {
+export function getRateLimit(_request: Request, env: Env): number {
 	const configured = env.RATE_LIMIT_REQUESTS_PER_MINUTE;
 	if (configured === undefined) {
 		return DEFAULT_REQUESTS_PER_MINUTE;
@@ -14,11 +16,9 @@ export function getRateLimit(request: Request, env: Env): number {
 export async function enforceRateLimit(request: Request, env: Env): Promise<Response | null> {
 	const limit = getRateLimit(request, env);
 	const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown';
-	const windowKey = Math.floor(Date.now() / WINDOW_MS);
-	const key = `rl:${ip}:${windowKey}`;
 
-	const current = Number.parseInt((await env.RATE_LIMIT.get(key)) ?? '0', 10);
-	if (current >= limit) {
+	const result = await checkRateLimit(env.RATE_LIMITER, `ip:${ip}`, limit, WINDOW_MS);
+	if (!result.ok) {
 		return Response.json(
 			{
 				error: 'Rate limit exceeded',
@@ -28,13 +28,12 @@ export async function enforceRateLimit(request: Request, env: Env): Promise<Resp
 			{
 				status: 429,
 				headers: {
-					'Retry-After': String(Math.ceil(WINDOW_MS / 1000)),
+					'Retry-After': String(Math.ceil(result.resetMs / 1000)),
 				},
 			},
 		);
 	}
 
-	await env.RATE_LIMIT.put(key, String(current + 1), { expirationTtl: 120 });
 	return null;
 }
 
@@ -54,13 +53,13 @@ export async function enforceWriteRateLimitForAddress(
 	address: string,
 ): Promise<void> {
 	const limit = getWriteRateLimit(env);
-	const windowKey = Math.floor(Date.now() / WINDOW_MS);
-	const key = `wrl:${address.toLowerCase()}:${windowKey}`;
-
-	const current = Number.parseInt((await env.RATE_LIMIT.get(key)) ?? '0', 10);
-	if (current >= limit) {
+	const result = await checkRateLimit(
+		env.RATE_LIMITER,
+		`wr:${address.toLowerCase()}`,
+		limit,
+		WINDOW_MS,
+	);
+	if (!result.ok) {
 		throw new Error(`Write rate limit exceeded (${limit} requests per minute)`);
 	}
-
-	await env.RATE_LIMIT.put(key, String(current + 1), { expirationTtl: 120 });
 }

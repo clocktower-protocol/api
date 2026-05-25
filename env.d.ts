@@ -1,5 +1,6 @@
 interface Env {
 	CLOCKTOWER_MCP: DurableObjectNamespace;
+	RATE_LIMITER: DurableObjectNamespace;
 	RATE_LIMIT: KVNamespace;
 	ALCHEMY_API_KEY: string;
 	ALCHEMY_URL: string;

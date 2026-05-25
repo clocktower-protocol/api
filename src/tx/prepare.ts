@@ -1,8 +1,8 @@
 import type { WriteDetails, WriteSubscription } from '../abi/clocktower-write.js';
-import { BASE_CHAIN_ID, resolveChain } from '../chain.js';
+import { BASE_CHAIN_ID, resolveChain, type ChainConfig } from '../chain.js';
 import { createClocktowerClient } from '../client.js';
 import { CLOCKTOWER_READ_ABI } from '../abi/clocktower.js';
-import { parseApprovedTokenRecord } from '../validation.js';
+import { parseApprovedTokenRecord, parseSubscriptionRecord } from '../validation.js';
 import {
 	encodeApprove,
 	encodeCancelSubscription,
@@ -19,6 +19,40 @@ import type { PrepareResult, UnsignedTransaction } from './types.js';
 
 function toChainIdHex(chainId: number): `0x${string}` {
 	return `0x${chainId.toString(16)}` as `0x${string}`;
+}
+
+/**
+ * Reads the authoritative subscription from chain for the given id.
+ * All prepare* write paths build their calldata from this canonical tuple,
+ * never from user-supplied fields, so callers cannot smuggle mismatched
+ * (id, amount, provider, token, frequency, dueDay) values that would either
+ * confuse downstream consumers or pass weak local authorization checks.
+ */
+async function fetchCanonicalSubscription(
+	client: ReturnType<typeof createClocktowerClient>,
+	chain: ChainConfig,
+	id: `0x${string}`,
+): Promise<WriteSubscription> {
+	const raw = await client.readContract({
+		address: chain.contractAddress,
+		abi: CLOCKTOWER_READ_ABI,
+		functionName: 'idSubMap',
+		args: [id],
+	});
+	const parsed = parseSubscriptionRecord(raw);
+	// The contract returns a zero id for unknown ids.
+	if (parsed.id === `0x${'00'.repeat(32)}`) {
+		throw new Error('Subscription not found on chain');
+	}
+	return {
+		id: parsed.id,
+		amount: parsed.amount,
+		provider: parsed.provider,
+		token: parsed.token,
+		cancelled: parsed.cancelled,
+		frequency: parsed.frequency,
+		dueDay: parsed.dueDay,
+	};
 }
 
 function buildUnsigned(
@@ -160,13 +194,16 @@ export async function prepareCancelSubscription(
 	subscription: WriteSubscription,
 ): Promise<PrepareResult> {
 	const chain = resolveChain(env);
-	if (subscription.provider.toLowerCase() !== from.toLowerCase()) {
+	const client = createClocktowerClient(chain);
+
+	const canonical = await fetchCanonicalSubscription(client, chain, subscription.id);
+	if (canonical.provider.toLowerCase() !== from.toLowerCase()) {
 		throw new Error('Only the subscription provider can cancel');
 	}
 
-	const data = encodeCancelSubscription(subscription);
+	const data = encodeCancelSubscription(canonical);
 	const unsigned = [buildUnsigned(from, chain.contractAddress, data)];
-	return buildPrepareResult(env, from, unsigned);
+	return buildPrepareResult(env, from, unsigned, { id: canonical.id });
 }
 
 export async function prepareUnsubscribe(
@@ -175,9 +212,13 @@ export async function prepareUnsubscribe(
 	subscription: WriteSubscription,
 ): Promise<PrepareResult> {
 	const chain = resolveChain(env);
-	const data = encodeUnsubscribe(subscription);
+	const client = createClocktowerClient(chain);
+
+	const canonical = await fetchCanonicalSubscription(client, chain, subscription.id);
+	const data = encodeUnsubscribe(canonical);
 	const unsigned = [buildUnsigned(from, chain.contractAddress, data)];
 	return buildPrepareResult(env, from, unsigned, {
+		id: canonical.id,
 		note: 'Caller must be an active subscriber',
 	});
 }
@@ -189,13 +230,16 @@ export async function prepareUnsubscribeByProvider(
 	subscriber: `0x${string}`,
 ): Promise<PrepareResult> {
 	const chain = resolveChain(env);
-	if (subscription.provider.toLowerCase() !== from.toLowerCase()) {
+	const client = createClocktowerClient(chain);
+
+	const canonical = await fetchCanonicalSubscription(client, chain, subscription.id);
+	if (canonical.provider.toLowerCase() !== from.toLowerCase()) {
 		throw new Error('Only the subscription provider can unsubscribe a subscriber');
 	}
 
-	const data = encodeUnsubscribeByProvider(subscription, subscriber);
+	const data = encodeUnsubscribeByProvider(canonical, subscriber);
 	const unsigned = [buildUnsigned(from, chain.contractAddress, data)];
-	return buildPrepareResult(env, from, unsigned, { subscriber });
+	return buildPrepareResult(env, from, unsigned, { id: canonical.id, subscriber });
 }
 
 export async function prepareEditDetails(
@@ -205,9 +249,20 @@ export async function prepareEditDetails(
 	details: WriteDetails,
 ): Promise<PrepareResult> {
 	const chain = resolveChain(env);
+	const client = createClocktowerClient(chain);
+
+	// Validate the subscription exists and the caller is the provider before
+	// encoding calldata. The on-chain check is authoritative, but failing here
+	// avoids burning the user's gas on a guaranteed revert.
+	const canonical = await fetchCanonicalSubscription(client, chain, id);
+	if (canonical.provider.toLowerCase() !== from.toLowerCase()) {
+		throw new Error('Only the subscription provider can edit details');
+	}
+
 	const data = encodeEditDetails(details, id);
 	const unsigned = [buildUnsigned(from, chain.contractAddress, data)];
 	return buildPrepareResult(env, from, unsigned, {
+		id: canonical.id,
 		note: 'Caller must be the subscription provider (createdSubs)',
 	});
 }

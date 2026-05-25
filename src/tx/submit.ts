@@ -1,8 +1,13 @@
-import { parseTransaction, type Hash } from 'viem';
+import {
+	parseTransaction,
+	recoverTransactionAddress,
+	type Hash,
+	type TransactionSerialized,
+} from 'viem';
 import { resolveChain } from '../chain.js';
 import { createClocktowerClient } from '../client.js';
 import { enforceWriteRateLimitForAddress } from '../rateLimit.js';
-import { consumePrepareIntent } from './intent.js';
+import { deletePrepareIntent, loadPrepareIntent } from './intent.js';
 import type { IntentTransaction } from './types.js';
 
 function normalizeValue(value: bigint): string {
@@ -28,7 +33,10 @@ export async function submitSignedTransactions(
 	prepareId: string,
 	signedTransactions: `0x${string}`[],
 ): Promise<{ txHashes: Hash[] }> {
-	const intent = await consumePrepareIntent(env, prepareId);
+	// Load (don't consume) the intent first so we can validate before destroying it.
+	// This avoids losing the user's paid prepare intent when rate limit / validation
+	// rejects the submission.
+	const intent = await loadPrepareIntent(env, prepareId);
 	if (!intent) {
 		throw new Error('Prepare intent not found or expired');
 	}
@@ -44,19 +52,24 @@ export async function submitSignedTransactions(
 	const chain = resolveChain(env);
 	const client = createClocktowerClient(chain);
 
-	const parsed = signedTransactions.map((serialized) => {
-		const tx = parseTransaction(serialized);
-		if (!tx.from) {
-			throw new Error('Signed transaction missing from address');
-		}
-		if (tx.from.toLowerCase() !== intent.from.toLowerCase()) {
-			throw new Error('Signed transaction from address does not match prepare intent');
-		}
-		if (tx.chainId !== undefined && Number(tx.chainId) !== intent.chainId) {
-			throw new Error('Signed transaction chainId does not match prepare intent');
-		}
-		return tx;
-	});
+	// Parse each signed transaction and recover its signer.
+	// viem's parseTransaction does NOT populate `from`; we MUST recover it
+	// cryptographically from the signature.
+	const parsed = await Promise.all(
+		signedTransactions.map(async (serialized) => {
+			const tx = parseTransaction(serialized);
+			const signer = await recoverTransactionAddress({
+				serializedTransaction: serialized as TransactionSerialized,
+			});
+			if (signer.toLowerCase() !== intent.from.toLowerCase()) {
+				throw new Error('Signed transaction signer does not match prepare intent');
+			}
+			if (tx.chainId !== undefined && Number(tx.chainId) !== intent.chainId) {
+				throw new Error('Signed transaction chainId does not match prepare intent');
+			}
+			return tx;
+		}),
+	);
 
 	for (let i = 0; i < intent.transactions.length; i++) {
 		if (!intentMatchesSigned(intent.transactions[i], parsed[i])) {
@@ -74,12 +87,16 @@ export async function submitSignedTransactions(
 		if (nonce === undefined) {
 			throw new Error(`Signed transaction ${i} missing nonce`);
 		}
-		if (nonce !== expectedNonce + BigInt(i)) {
+		if (BigInt(nonce) !== BigInt(expectedNonce) + BigInt(i)) {
 			throw new Error(
-				`Invalid nonce for transaction ${i}: expected ${expectedNonce + BigInt(i)}, got ${nonce}`,
+				`Invalid nonce for transaction ${i}: expected ${BigInt(expectedNonce) + BigInt(i)}, got ${nonce}`,
 			);
 		}
 	}
+
+	// Only consume the intent after all validation passes. If broadcast fails
+	// midway, the consumed intent is gone (acceptable: the first hash is on-chain).
+	await deletePrepareIntent(env, prepareId);
 
 	const txHashes: Hash[] = [];
 	for (const serialized of signedTransactions) {

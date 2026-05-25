@@ -12,6 +12,10 @@
 			{
 				"class_name": "ClocktowerMCP",
 				"name": "CLOCKTOWER_MCP"
+			},
+			{
+				"class_name": "RateLimiter",
+				"name": "RATE_LIMITER"
 			}
 		]
 	},
@@ -19,6 +23,10 @@
 		{
 			"new_sqlite_classes": ["ClocktowerMCP"],
 			"tag": "v1"
+		},
+		{
+			"new_sqlite_classes": ["RateLimiter"],
+			"tag": "v2"
 		}
 	],
 	"kv_namespaces": [
@@ -39,6 +47,10 @@
 					{
 						"class_name": "ClocktowerMCP",
 						"name": "CLOCKTOWER_MCP"
+					},
+					{
+						"class_name": "RateLimiter",
+						"name": "RATE_LIMITER"
 					}
 				]
 			},
@@ -46,6 +58,10 @@
 				{
 					"new_sqlite_classes": ["ClocktowerMCP"],
 					"tag": "v1"
+				},
+				{
+					"new_sqlite_classes": ["RateLimiter"],
+					"tag": "v2"
 				}
 			],
 			"kv_namespaces": [

@@ -5,8 +5,34 @@ import { DUEDAY_RANGES } from './tx/constants.js';
 import { PROTOCOL_DECIMALS } from './utils.js';
 import { addressSchema, bytes32Schema } from './validation.js';
 
-const URL_PATTERN =
-	/((([A-Za-z]{3,9}:(?:\/\/)?)(?:[\-;:&=\+\$,\w]+@)?[A-Za-z0-9.\-]+|(?:www\.|[\-;:&=\+\$,\w]+@)[A-Za-z0-9.\-]+)((?:\/[\+~%\/.\w\-_]*)?\??(?:[\-\+=&;%@\.\w_]*)#?(?:[\.\!\/\\\w]*))?)/;
+/**
+ * Anchored https-only URL validation. Subscription details.url is written
+ * on-chain and likely rendered by downstream UIs; permissive schemes
+ * (javascript:, data:, vbscript:, etc.) would enable stored XSS.
+ *
+ * Validation runs in two layers:
+ *   1) anchored regex prefix check (cheap)
+ *   2) WHATWG URL parser sanity check (catches malformed inputs)
+ */
+const HTTPS_URL_PREFIX = /^https:\/\/[^\s"'<>`]+$/;
+
+function isSafeHttpsUrl(value: string): boolean {
+	if (!HTTPS_URL_PREFIX.test(value)) {
+		return false;
+	}
+	try {
+		const parsed = new URL(value);
+		if (parsed.protocol !== 'https:') {
+			return false;
+		}
+		if (!parsed.hostname) {
+			return false;
+		}
+		return true;
+	} catch {
+		return false;
+	}
+}
 
 const bigintStringSchema = z
 	.union([z.string(), z.number(), z.bigint()])
@@ -25,7 +51,10 @@ export const detailsSchema = z.object({
 	url: z
 		.string()
 		.max(2048)
-		.refine((value) => value === '' || URL_PATTERN.test(value), 'Invalid URL'),
+		.refine(
+			(value) => value === '' || isSafeHttpsUrl(value),
+			'Invalid URL: must be empty or an absolute https:// URL',
+		),
 	description: z.string().max(255),
 });
 

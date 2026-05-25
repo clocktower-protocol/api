@@ -38,3 +38,35 @@ describe('validation-write', () => {
 		expect(result.success).toBe(true);
 	});
 });
+
+describe('detailsSchema url hardening', () => {
+	const cases: { input: string; ok: boolean; reason: string }[] = [
+		{ input: '', ok: true, reason: 'empty allowed' },
+		{ input: 'https://example.com', ok: true, reason: 'plain https' },
+		{ input: 'https://example.com/path?q=1#frag', ok: true, reason: 'with path/query/hash' },
+		{ input: 'https://sub.example.co.uk/x', ok: true, reason: 'subdomain' },
+		// XSS-relevant schemes that the old regex accepted:
+		{ input: 'javascript:alert(1)', ok: false, reason: 'javascript:' },
+		{ input: 'JAVASCRIPT:alert(1)', ok: false, reason: 'JAVASCRIPT: uppercase' },
+		{ input: 'data:text/html,<script>alert(1)</script>', ok: false, reason: 'data:' },
+		{ input: 'vbscript:msgbox(1)', ok: false, reason: 'vbscript:' },
+		{ input: 'file:///etc/passwd', ok: false, reason: 'file:' },
+		// non-https network schemes:
+		{ input: 'http://example.com', ok: false, reason: 'plain http' },
+		{ input: 'ftp://example.com', ok: false, reason: 'ftp' },
+		// regex-bypass attempts:
+		{ input: 'https://example.com" onerror=alert(1)', ok: false, reason: 'embedded quote' },
+		{ input: 'https://example.com<script>', ok: false, reason: 'embedded angle bracket' },
+		{ input: 'https://example.com\nhttps://evil.com', ok: false, reason: 'newline smuggling' },
+		// previously-permissive forms:
+		{ input: 'www.example.com', ok: false, reason: 'no scheme' },
+		{ input: 'mailto:foo@example.com', ok: false, reason: 'mailto' },
+	];
+
+	for (const { input, ok, reason } of cases) {
+		it(`${ok ? 'accepts' : 'rejects'} ${reason}: ${JSON.stringify(input)}`, () => {
+			const result = detailsSchema.safeParse({ url: input, description: 'x' });
+			expect(result.success).toBe(ok);
+		});
+	}
+});

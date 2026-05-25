@@ -1,6 +1,7 @@
 import { enforceBasicAuth } from './auth.js';
 import { enforceGeoBlock } from './geoBlock.js';
 import { ClocktowerMCP } from './mcp.js';
+import { RateLimiter } from './RateLimiter.js';
 import { enforceRateLimit } from './rateLimit.js';
 import { validateMcpRequest } from './validation.js';
 
@@ -40,4 +41,4 @@ export default {
 	},
 };
 
-export { ClocktowerMCP };
+export { ClocktowerMCP, RateLimiter };
