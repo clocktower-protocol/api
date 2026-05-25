@@ -6,6 +6,7 @@ import {
 	frequencySchema,
 	MAX_DAY_NUMBER,
 	MAX_JSON_DEPTH,
+	MAX_REQUEST_BYTES,
 	normalizeHex,
 	parseApprovedTokenRecord,
 	parseSubscriptionRecord,
@@ -112,6 +113,37 @@ describe('validateMcpRequest', () => {
 	it('allows GET requests without a body', async () => {
 		const request = new Request('http://example.com/mcp', { method: 'GET' });
 		expect(await validateMcpRequest(request)).toBeNull();
+	});
+
+	// M6: chunked POST with no content-length must still be rejected before
+	// the full body is buffered into memory. Construct a streaming body whose
+	// total size exceeds MAX_REQUEST_BYTES and confirm we get a 413.
+	it('rejects oversized streamed POST bodies without content-length', async () => {
+		const chunkSize = 64 * 1024;
+		const oversize = MAX_REQUEST_BYTES + chunkSize;
+		const stream = new ReadableStream<Uint8Array>({
+			start(controller) {
+				const chunk = new Uint8Array(chunkSize).fill(0x78); // 'x'
+				let sent = 0;
+				while (sent < oversize) {
+					controller.enqueue(chunk);
+					sent += chunkSize;
+				}
+				controller.close();
+			},
+		});
+
+		const request = new Request('http://example.com/mcp', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: stream,
+			// `duplex: 'half'` is required by the Fetch spec when streaming a
+			// body; workerd accepts it but TS lib types lag behind.
+			duplex: 'half',
+		} as RequestInit & { duplex: 'half' });
+
+		const response = await validateMcpRequest(request);
+		expect(response?.status).toBe(413);
 	});
 });
 

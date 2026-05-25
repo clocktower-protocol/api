@@ -68,6 +68,51 @@ export function validateJsonDepth(value: unknown, maxDepth = MAX_JSON_DEPTH, dep
 	return true;
 }
 
+/**
+ * Streams the body of `request.clone()` chunk-by-chunk and aborts the moment
+ * cumulative bytes exceed `maxBytes`. The original `request.body` stream is
+ * never read here, so downstream consumers (e.g. `ClocktowerMCP.serve`) can
+ * still read the body normally.
+ *
+ * Without this, M6's chunked-encoding DoS vector applies: a client that omits
+ * `content-length` and streams a body larger than MAX_REQUEST_BYTES would have
+ * the entire body buffered into memory by `request.clone().text()` before the
+ * post-hoc size check fires.
+ */
+async function readClonedBodyWithCap(
+	request: Request,
+	maxBytes: number,
+): Promise<{ ok: true; text: string } | { ok: false }> {
+	const reader = request.clone().body?.getReader();
+	if (!reader) {
+		return { ok: true, text: '' };
+	}
+
+	const decoder = new TextDecoder('utf-8');
+	let total = 0;
+	let text = '';
+	try {
+		while (true) {
+			const { value, done } = await reader.read();
+			if (done) break;
+			total += value.byteLength;
+			if (total > maxBytes) {
+				await reader.cancel();
+				return { ok: false };
+			}
+			text += decoder.decode(value, { stream: true });
+		}
+		text += decoder.decode();
+		return { ok: true, text };
+	} finally {
+		try {
+			reader.releaseLock();
+		} catch {
+			// ignore: lock is already released after cancel/done
+		}
+	}
+}
+
 export async function validateMcpRequest(request: Request): Promise<Response | null> {
 	if (!MCP_METHODS.has(request.method)) {
 		return Response.json({ error: 'Method not allowed' }, { status: 405 });
@@ -83,6 +128,7 @@ export async function validateMcpRequest(request: Request): Promise<Response | n
 			return Response.json({ error: 'Content-Type must be application/json' }, { status: 415 });
 		}
 
+		// Fast-path: reject obviously oversized bodies before reading anything.
 		const contentLength = request.headers.get('content-length');
 		if (contentLength) {
 			const size = Number.parseInt(contentLength, 10);
@@ -94,17 +140,19 @@ export async function validateMcpRequest(request: Request): Promise<Response | n
 			}
 		}
 
-		const bodyText = await request.clone().text();
-		if (bodyText.length === 0) {
-			return null;
-		}
-
-		const bodyBytes = new TextEncoder().encode(bodyText).length;
-		if (bodyBytes > MAX_REQUEST_BYTES) {
+		// Streaming size check on a clone, so the original body is left intact
+		// for the MCP server downstream. Aborts as soon as the cap is exceeded
+		// — required for chunked / missing-content-length requests (M6).
+		const bodyResult = await readClonedBodyWithCap(request, MAX_REQUEST_BYTES);
+		if (!bodyResult.ok) {
 			return Response.json(
 				{ error: `Request too large. Maximum size: ${MAX_REQUEST_BYTES / (1024 * 1024)}MB` },
 				{ status: 413 },
 			);
+		}
+		const bodyText = bodyResult.text;
+		if (bodyText.length === 0) {
+			return null;
 		}
 
 		let body: unknown;
