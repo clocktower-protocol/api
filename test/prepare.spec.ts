@@ -102,6 +102,65 @@ describe('prepareCreateSubscription', () => {
 		const stored = await testEnv.PREPARE_INTENTS.get(`${PREPARE_KV_PREFIX}${result.prepareId}`);
 		expect(stored).not.toBeNull();
 	});
+
+	// M1 — these failure modes must throw rather than return successfully.
+	// agents/x402 (verify-only-settle) skips settlement when the handler throws,
+	// so throws cost the caller nothing; silent-success paths charge them
+	// even though the prepare cannot succeed.
+	it('throws when token is paused on protocol', async () => {
+		// Override the success-path mock with a paused-token approvedERC20 response.
+		globalThis.fetch = vi.fn(async () => {
+			const result = `0x000000000000000000000000833589fcd6edb6e08f4c7c32d4f71b54bda02913${encodeUint(6).slice(2)}${encodeBool(true).slice(2)}${encodeUint(0).slice(2)}`;
+			return Response.json({ jsonrpc: '2.0', id: 1, result });
+		}) as typeof fetch;
+
+		await expect(
+			prepareCreateSubscription(
+				testEnv,
+				'0x0000000000000000000000000000000000000001',
+				10n ** 18n,
+				'0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+				{ url: 'https://example.com', description: 'test' },
+				1,
+				15,
+			),
+		).rejects.toThrow(/paused/);
+	});
+
+	it('throws when on-chain simulation reverts', async () => {
+		callIndex = 0;
+		globalThis.fetch = vi.fn(async () => {
+			const responses = [
+				// call 0: approvedERC20 — not paused, minimum 0
+				Response.json({
+					jsonrpc: '2.0',
+					id: 1,
+					result: `0x000000000000000000000000833589fcd6edb6e08f4c7c32d4f71b54bda02913${encodeUint(6).slice(2)}${encodeBool(false).slice(2)}${encodeUint(0).slice(2)}`,
+				}),
+				// call 1: simulation eth_call — JSON-RPC error (revert)
+				Response.json({
+					jsonrpc: '2.0',
+					id: 1,
+					error: { code: 3, message: 'execution reverted: SubAlreadyExists' },
+				}),
+			];
+			const idx = callIndex;
+			callIndex += 1;
+			return responses[idx] ?? responses[responses.length - 1];
+		}) as typeof fetch;
+
+		await expect(
+			prepareCreateSubscription(
+				testEnv,
+				'0x0000000000000000000000000000000000000001',
+				10n ** 18n,
+				'0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+				{ url: 'https://example.com', description: 'test' },
+				1,
+				15,
+			),
+		).rejects.toThrow(/Simulation failed/);
+	});
 });
 
 /**

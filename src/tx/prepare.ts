@@ -78,8 +78,20 @@ async function buildPrepareResult(
 ): Promise<PrepareResult> {
 	const chain = resolveChain(env);
 	const client = createClocktowerClient(chain);
-	const intent = await storePrepareIntent(env, from, unsigned);
+
+	// Simulate BEFORE storing the intent or returning. A failed simulation
+	// guarantees the eventual on-chain submit will revert, so throwing here
+	// lets `agents/x402` (verify-only-settle, see node_modules/agents/dist/mcp/x402.js
+	// `if (!failed)` around line 124) skip settlement so the caller is not
+	// charged for a doomed prepare. This is the M1 fix tracked in
+	// SECURITY_FOLLOWUPS.md.
 	const simulation = await simulateUnsignedTransactions(client, unsigned);
+	const firstFailure = simulation.find((s) => !s.success);
+	if (firstFailure) {
+		throw new Error(`Simulation failed: ${firstFailure.error ?? 'unknown error'}`);
+	}
+
+	const intent = await storePrepareIntent(env, from, unsigned);
 
 	const signingMode = unsigned.length > 1 ? 'eip5792' : 'raw';
 
@@ -130,9 +142,11 @@ export async function prepareCreateSubscription(
 		}),
 	);
 
-	const warnings: string[] = [];
+	// Throw rather than warn: a paused token cannot host new subscriptions, so
+	// any prepare against it is guaranteed to revert. Throwing lets x402 skip
+	// settlement (see comment in buildPrepareResult and M1 in SECURITY_FOLLOWUPS.md).
 	if (approvedToken.paused) {
-		warnings.push('Token is paused on protocol');
+		throw new Error('Token is paused on protocol');
 	}
 	if (amount < approvedToken.minimum) {
 		throw new Error(
@@ -147,7 +161,6 @@ export async function prepareCreateSubscription(
 		token,
 		frequency,
 		dueDay,
-		warnings,
 	});
 }
 
