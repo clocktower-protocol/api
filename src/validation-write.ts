@@ -47,6 +47,13 @@ const bigintStringSchema = z
 
 export const fromAddressSchema = addressSchema.describe('Address that will sign and send the transaction(s)');
 
+// Description is bounded by UTF-8 byte length, not JS char count, because the
+// downstream contract storage charges for bytes. A 255-char string of 4-byte
+// emoji would otherwise occupy ~1 KB on-chain (subscriber pays gas, but a
+// malicious provider can still bloat the protocol's index pages).
+const DESCRIPTION_MAX_BYTES = 255;
+const descriptionEncoder = new TextEncoder();
+
 export const detailsSchema = z.object({
 	url: z
 		.string()
@@ -55,7 +62,12 @@ export const detailsSchema = z.object({
 			(value) => value === '' || isSafeHttpsUrl(value),
 			'Invalid URL: must be empty or an absolute https:// URL',
 		),
-	description: z.string().max(255),
+	description: z
+		.string()
+		.refine(
+			(value) => descriptionEncoder.encode(value).length <= DESCRIPTION_MAX_BYTES,
+			`description must be <= ${DESCRIPTION_MAX_BYTES} UTF-8 bytes`,
+		),
 });
 
 export const dueDaySchema = z.number().int().nonnegative().max(65535);

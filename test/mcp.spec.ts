@@ -31,4 +31,22 @@ describe('clocktower-mcp worker', () => {
 		expect(body.status).toBe('ok');
 		expect(body.mcp).toBe('/mcp');
 	});
+
+	it('applies defensive security headers to root JSON', async () => {
+		const res = await fetchWorker('/');
+		expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+		expect(res.headers.get('x-frame-options')).toBe('DENY');
+		expect(res.headers.get('referrer-policy')).toBe('no-referrer');
+	});
+
+	it('applies defensive security headers to error responses', async () => {
+		// PUT is rejected by validateMcpRequest with 405; ensures the headers
+		// are added to non-200 paths too (i.e. the wrapper runs unconditionally
+		// at the worker boundary, not just on the success path).
+		const res = await fetchWorker('/mcp', { method: 'PUT' });
+		expect(res.status).toBe(405);
+		expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+		expect(res.headers.get('x-frame-options')).toBe('DENY');
+		expect(res.headers.get('referrer-policy')).toBe('no-referrer');
+	});
 });

@@ -2,7 +2,11 @@ import type { WriteDetails, WriteSubscription } from '../abi/clocktower-write.js
 import { BASE_CHAIN_ID, resolveChain, type ChainConfig } from '../chain.js';
 import { createClocktowerClient } from '../client.js';
 import { CLOCKTOWER_READ_ABI } from '../abi/clocktower.js';
-import { parseApprovedTokenRecord, parseSubscriptionRecord } from '../validation.js';
+import {
+	parseAccountSubscriptionRecord,
+	parseApprovedTokenRecord,
+	parseSubscriptionRecord,
+} from '../validation.js';
 import {
 	encodeApprove,
 	encodeCancelSubscription,
@@ -28,6 +32,39 @@ function toChainIdHex(chainId: number): `0x${string}` {
  * (id, amount, provider, token, frequency, dueDay) values that would either
  * confuse downstream consumers or pass weak local authorization checks.
  */
+/**
+ * L13 preflight: returns true if `account` is currently subscribed to the
+ * given canonical subscription id.
+ *
+ * The on-chain contract reverts cleanly on `unsubscribe` from a non-subscriber,
+ * but the user pays gas for the failed call. Throwing here also lets
+ * `agents/x402` (verify-only-settle, see `buildPrepareResult` comment) skip
+ * settlement so the caller is not charged for a doomed prepare.
+ *
+ * Note on consistency: this read hits the same RPC the user will eventually
+ * submit through, so a just-subscribed user hitting an archive node before
+ * reorg-finality could see a stale negative. The thrown error message guides
+ * the user to retry rather than treating the result as authoritative.
+ */
+async function isAccountSubscribedTo(
+	client: ReturnType<typeof createClocktowerClient>,
+	chain: ChainConfig,
+	account: `0x${string}`,
+	canonicalId: `0x${string}`,
+): Promise<boolean> {
+	const raw = await client.readContract({
+		address: chain.contractAddress,
+		abi: CLOCKTOWER_READ_ABI,
+		functionName: 'getAccountSubscriptions',
+		args: [true, account],
+	});
+	const target = canonicalId.toLowerCase();
+	return (raw as unknown[]).some((entry) => {
+		const parsed = parseAccountSubscriptionRecord(entry);
+		return parsed.subscription.id.toLowerCase() === target;
+	});
+}
+
 async function fetchCanonicalSubscription(
 	client: ReturnType<typeof createClocktowerClient>,
 	chain: ChainConfig,
@@ -228,6 +265,18 @@ export async function prepareUnsubscribe(
 	const client = createClocktowerClient(chain);
 
 	const canonical = await fetchCanonicalSubscription(client, chain, subscription.id);
+
+	// L13: confirm the caller is actually subscribed before encoding. The
+	// contract reverts cleanly otherwise; this check just spares the user
+	// gas (and, per M1, ensures x402 doesn't charge for a doomed prepare).
+	const isSubscriber = await isAccountSubscribedTo(client, chain, from, canonical.id);
+	if (!isSubscriber) {
+		throw new Error(
+			`Account ${from} is not currently subscribed to ${canonical.id}; ` +
+				'if you just subscribed, retry in a few seconds.',
+		);
+	}
+
 	const data = encodeUnsubscribe(canonical);
 	const unsigned = [buildUnsigned(from, chain.contractAddress, data)];
 	return buildPrepareResult(env, from, unsigned, {

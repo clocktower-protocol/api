@@ -74,13 +74,15 @@
 					"id": "test-prepare-intents"
 				}
 			],
+			// Credential-shaped test values (ALCHEMY_API_KEY, CDP_API_KEY_ID,
+			// CDP_API_KEY_SECRET, X402_RECIPIENT) are injected by
+			// `vitest.config.mts` via `miniflare.bindings` so that source-
+			// controlled config never carries *_KEY_* / *_SECRET shaped values
+			// — even placeholder ones. Production deploys supply these via
+			// `wrangler secret put`, never via this file.
 			"vars": {
 				"ALCHEMY_URL": "https://base-mainnet.g.alchemy.com/v2/",
 				"CLOCKTOWER_ADDRESS": "0xFaF5fc2f77b21BC188f492b827D366B03a07c61f",
-				"ALCHEMY_API_KEY": "test-alchemy-key",
-				"CDP_API_KEY_ID": "test-cdp-key-id",
-				"CDP_API_KEY_SECRET": "test-cdp-key-secret",
-				"X402_RECIPIENT": "0x0000000000000000000000000000000000000001",
 				"RATE_LIMIT_REQUESTS_PER_MINUTE": "2"
 			}
 		}

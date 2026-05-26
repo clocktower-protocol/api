@@ -18,12 +18,42 @@ describe('validation-write', () => {
 		expect(validateDueDayForFrequency(1, 29)).toMatch(/between 1 and 28/);
 	});
 
-	it('rejects descriptions longer than 255 characters', () => {
+	it('accepts ASCII descriptions exactly at the 255-byte cap', () => {
+		const result = detailsSchema.safeParse({
+			url: 'https://example.com',
+			description: 'x'.repeat(255),
+		});
+		expect(result.success).toBe(true);
+	});
+
+	it('rejects ASCII descriptions one byte over the 255-byte cap', () => {
 		const result = detailsSchema.safeParse({
 			url: 'https://example.com',
 			description: 'x'.repeat(256),
 		});
 		expect(result.success).toBe(false);
+	});
+
+	it('rejects emoji descriptions whose UTF-8 byte length exceeds the cap', () => {
+		// 64 × U+1F600 ("😀") = 64 × 4 bytes = 256 UTF-8 bytes, but only 64
+		// JS chars-as-pairs (128 UTF-16 code units). Pre-fix this passed
+		// `.max(255)` because it was JS char count, not byte count.
+		const description = '\u{1F600}'.repeat(64);
+		const result = detailsSchema.safeParse({
+			url: 'https://example.com',
+			description,
+		});
+		expect(result.success).toBe(false);
+	});
+
+	it('accepts emoji descriptions whose UTF-8 byte length is at the cap', () => {
+		// 63 × 4 bytes = 252 bytes, under the cap.
+		const description = '\u{1F600}'.repeat(63);
+		const result = detailsSchema.safeParse({
+			url: 'https://example.com',
+			description,
+		});
+		expect(result.success).toBe(true);
 	});
 
 	it('accepts empty url and valid create subscription input', () => {

@@ -1,11 +1,12 @@
 import { env } from 'cloudflare:test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { toFunctionSelector } from 'viem';
+import { encodeAbiParameters, toFunctionSelector } from 'viem';
 import { encodeCreateSubscription, encodeSubscribe, getFunctionSelector } from '../src/tx/encode.js';
 import {
 	prepareCancelSubscription,
 	prepareCreateSubscription,
 	prepareEditDetails,
+	prepareUnsubscribe,
 } from '../src/tx/prepare.js';
 import { PREPARE_KV_PREFIX } from '../src/tx/constants.js';
 
@@ -259,5 +260,140 @@ describe('prepare* canonicalization (H5)', () => {
 				{ url: 'https://example.com', description: 'updated' },
 			),
 		).rejects.toThrow(/Only the subscription provider can edit/);
+	});
+});
+
+/**
+ * L13 — `prepareUnsubscribe` must verify the caller is actually subscribed
+ * before encoding. The contract reverts cleanly otherwise, so this saves the
+ * user gas; combined with M1's verify-only-settle, throwing here also avoids
+ * charging x402 for a doomed prepare.
+ */
+describe('prepareUnsubscribe is-subscriber preflight (L13)', () => {
+	const originalFetch = globalThis.fetch;
+
+	const ID = `0x${'11'.repeat(32)}` as `0x${string}`;
+	const PROVIDER = '0x00000000000000000000000000000000000000aa' as `0x${string}`;
+	const TOKEN = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as `0x${string}`;
+	const FROM = '0x0000000000000000000000000000000000000001' as `0x${string}`;
+
+	function encodeAddressPadded(addr: string): string {
+		return addr.toLowerCase().replace(/^0x/, '').padStart(64, '0');
+	}
+
+	function mockIdSubMapResult(): string {
+		const id = ID.slice(2);
+		const amount = encodeUint(10n ** 18n).slice(2);
+		const providerHex = encodeAddressPadded(PROVIDER);
+		const tokenHex = encodeAddressPadded(TOKEN);
+		const cancelled = encodeBool(false).slice(2);
+		const frequency = encodeUint(1).slice(2);
+		const dueDay = encodeUint(15).slice(2);
+		return `0x${id}${amount}${providerHex}${tokenHex}${cancelled}${frequency}${dueDay}`;
+	}
+
+	const accountSubscriptionsAbi = [
+		{
+			type: 'tuple[]',
+			components: [
+				{
+					type: 'tuple',
+					name: 'subscription',
+					components: [
+						{ name: 'id', type: 'bytes32' },
+						{ name: 'amount', type: 'uint256' },
+						{ name: 'provider', type: 'address' },
+						{ name: 'token', type: 'address' },
+						{ name: 'cancelled', type: 'bool' },
+						{ name: 'frequency', type: 'uint256' },
+						{ name: 'dueDay', type: 'uint16' },
+					],
+				},
+				{ name: 'status', type: 'uint8' },
+				{ name: 'totalSubscribers', type: 'uint256' },
+			],
+		},
+	] as const;
+
+	function mockGetAccountSubscriptionsResult(ids: `0x${string}`[]): `0x${string}` {
+		return encodeAbiParameters(accountSubscriptionsAbi, [
+			ids.map((id) => ({
+				subscription: {
+					id,
+					amount: 1n,
+					provider: PROVIDER,
+					token: TOKEN,
+					cancelled: false,
+					frequency: 1n,
+					dueDay: 15,
+				},
+				status: 1,
+				totalSubscribers: 1n,
+			})),
+		]);
+	}
+
+	function makeSequencedFetch(results: string[]) {
+		let i = 0;
+		return vi.fn(async () => {
+			const result = results[i] ?? results[results.length - 1];
+			i += 1;
+			return Response.json({ jsonrpc: '2.0', id: 1, result });
+		}) as typeof fetch;
+	}
+
+	const subscriptionInput = {
+		id: ID,
+		amount: 1n,
+		provider: PROVIDER,
+		token: TOKEN,
+		cancelled: false,
+		frequency: 1,
+		dueDay: 15,
+	};
+
+	afterEach(() => {
+		globalThis.fetch = originalFetch;
+	});
+
+	it('throws when getAccountSubscriptions returns an empty list', async () => {
+		globalThis.fetch = makeSequencedFetch([
+			mockIdSubMapResult(),
+			mockGetAccountSubscriptionsResult([]),
+		]);
+
+		await expect(prepareUnsubscribe(testEnv, FROM, subscriptionInput)).rejects.toThrow(
+			/not currently subscribed/,
+		);
+	});
+
+	it('throws when getAccountSubscriptions does not include the canonical id', async () => {
+		const otherId = `0x${'22'.repeat(32)}` as `0x${string}`;
+		globalThis.fetch = makeSequencedFetch([
+			mockIdSubMapResult(),
+			mockGetAccountSubscriptionsResult([otherId]),
+		]);
+
+		await expect(prepareUnsubscribe(testEnv, FROM, subscriptionInput)).rejects.toThrow(
+			/not currently subscribed/,
+		);
+	});
+
+	it('returns a prepare result when caller is subscribed (case-insensitive id match)', async () => {
+		// Mixed-case id from the contract; the helper must compare lowercased.
+		const mixedCaseId = `0x${'11'.repeat(32)}`.toUpperCase().replace('0X', '0x') as `0x${string}`;
+		globalThis.fetch = makeSequencedFetch([
+			mockIdSubMapResult(),
+			mockGetAccountSubscriptionsResult([mixedCaseId]),
+			// Simulation eth_call success.
+			'0x',
+		]);
+
+		const result = await prepareUnsubscribe(testEnv, FROM, subscriptionInput);
+		expect(result.prepareId).toMatch(
+			/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+		);
+		expect(result.unsignedTransactions).toHaveLength(1);
+		expect(result.preflight).toMatchObject({ id: ID });
 	});
 });
