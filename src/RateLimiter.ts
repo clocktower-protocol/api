@@ -8,9 +8,21 @@ import { DurableObject } from 'cloudflare:workers';
  *
  * Instances are sharded by id (caller-chosen, e.g. IP or address) so each
  * key gets its own DO and they scale horizontally.
+ *
+ * Storage is bounded to a single row per DO: the current window id and its
+ * counter live under the `bucket` key, overwritten in place. When a new
+ * window starts the row is reset, so historical window keys never
+ * accumulate.
  */
 
 export const RATE_LIMITER_WINDOW_MS = 60_000;
+
+const BUCKET_KEY = 'bucket';
+
+type Bucket = {
+	window: number;
+	count: number;
+};
 
 export type RateLimitCheckRequest = {
 	limit: number;
@@ -31,18 +43,29 @@ export class RateLimiter extends DurableObject {
 		const windowMs = req.windowMs ?? RATE_LIMITER_WINDOW_MS;
 		const now = req.now ?? Date.now();
 		const windowKey = Math.floor(now / windowMs);
-		const key = `w:${windowKey}`;
 
 		// state.storage operations are serialized via the DO input gate, but use
 		// an explicit transaction for clarity and so a future caller doing
 		// multi-key updates inherits atomic-block semantics.
 		const result = await this.ctx.storage.transaction(async (txn) => {
-			const current = (await txn.get<number>(key)) ?? 0;
-			if (current >= limit) {
-				return { ok: false, current };
+			const bucket = await txn.get<Bucket>(BUCKET_KEY);
+
+			if (bucket === undefined || bucket.window !== windowKey) {
+				if (limit <= 0) {
+					return { ok: false, current: 0 };
+				}
+				const next: Bucket = { window: windowKey, count: 1 };
+				await txn.put(BUCKET_KEY, next);
+				return { ok: true, current: next.count };
 			}
-			await txn.put(key, current + 1);
-			return { ok: true, current: current + 1 };
+
+			if (bucket.count >= limit) {
+				return { ok: false, current: bucket.count };
+			}
+
+			const next: Bucket = { window: windowKey, count: bucket.count + 1 };
+			await txn.put(BUCKET_KEY, next);
+			return { ok: true, current: next.count };
 		});
 
 		const resetMs = (windowKey + 1) * windowMs - now;
