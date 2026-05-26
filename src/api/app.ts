@@ -11,19 +11,48 @@ import {
 import { withX402Payment } from './x402.js';
 import { API_PRICES } from './pricing.js';
 
+/**
+ * Clocktower REST API — Current Status (as of this commit)
+ *
+ * This module defines the REST API surface mounted under `/api`.
+ *
+ * Authentication (as of now):
+ *   - All routes are protected by Basic Auth (if ENABLE_AUTH=true) + IP rate limiting.
+ *   - All read endpoints are also wrapped with x402 micropayments.
+ *
+ * Endpoints:
+ *   - GET /api/protocol/state
+ *   - GET /api/subscriptions/due
+ *   - GET /api/subscriptions/:id
+ *   - GET /api/subscriptions/:id/subscribers
+ *   - GET /api/accounts/:address/subscriptions
+ *   - GET /api/tokens/:token
+ *
+ * Notes:
+ *   - This is still early / non-production. Basic Auth remains the primary gate
+ *     for internal testing.
+ *   - x402 is wired on all reads but is not yet the sole payment mechanism.
+ *   - Write endpoints (prepare/submit) have not been implemented yet.
+ *
+ * See also:
+ *   - src/api/x402.ts     → x402 payment wrapper
+ *   - src/api/pricing.ts  → pricing configuration
+ *   - src/api/responses.ts → consistent error/success helpers
+ */
+
 export const api = new Hono<{ Bindings: Env }>();
 
-// Health / info for the API surface (optional)
+// Health / info for the API surface
 api.get('/', (c) => {
   return jsonResponse({
     status: 'ok',
     message: 'Clocktower REST API',
-    version: 'stage-2',
+    version: 'x402-reads-wired',
+    note: 'All read endpoints are behind Basic Auth + x402 (non-live). Writes not yet implemented.',
   });
 });
 
-// Read endpoints (paths are relative to /api because we match on full pathname)
-// All endpoints are now wrapped with x402 payment (early / non-live integration)
+// === Read Endpoints (all protected with x402) ===
 
 api.get('/api/protocol/state', withX402Payment(
   API_PRICES.protocolState,
@@ -84,3 +113,13 @@ api.get('/api/tokens/:token', withX402Payment(
 api.all('*', (c) => {
   return Errors.notFound('Not Found');
 });
+
+// === Future Write Endpoints ===
+// These will be implemented in a later stage.
+// They will likely be POST routes and will also be wrapped with withX402Payment
+// (at higher prices than reads).
+//
+// Example shape we may follow:
+// api.post('/api/prepare/subscribe', withX402Payment(API_PRICES..., async (c) => { ... }))
+//
+// See src/api/write.ts for initial scaffolding and notes.
