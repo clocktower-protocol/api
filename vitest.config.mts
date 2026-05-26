@@ -20,4 +20,15 @@ export default defineConfig({
 			},
 		}),
 	],
+
+	// Suppress the very noisy "Sourcemap ... points to missing source files"
+	// warnings that come from @modelcontextprotocol/sdk (and a few other deps).
+	// These are harmless but flood the test output.
+	test: {
+		onConsoleLog(log) {
+			if (log.includes('Sourcemap for') && log.includes('points to missing source files')) {
+				return false; // suppress the line
+			}
+		},
+	},
 });

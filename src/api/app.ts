@@ -11,6 +11,9 @@ import {
 import { withX402Payment } from './x402.js';
 import { API_PRICES } from './pricing.js';
 
+// Write handlers (will be expanded)
+import * as writeHandlers from './write.js';
+
 /**
  * Clocktower REST API — Current Status (as of this commit)
  *
@@ -114,12 +117,61 @@ api.all('*', (c) => {
   return Errors.notFound('Not Found');
 });
 
-// === Future Write Endpoints ===
-// These will be implemented in a later stage.
-// They will likely be POST routes and will also be wrapped with withX402Payment
-// (at higher prices than reads).
-//
-// Example shape we may follow:
-// api.post('/api/prepare/subscribe', withX402Payment(API_PRICES..., async (c) => { ... }))
-//
-// See src/api/write.ts for initial scaffolding and notes.
+// === Write Endpoints (POST) ===
+// All write endpoints will be wrapped with x402 at higher prices.
+// They will delegate to src/tx/prepare.ts and src/tx/submit.ts.
+
+// Write routes - all protected by x402
+api.post('/api/check_subscribe_readiness', withX402Payment(
+  API_PRICES.checkSubscribeReadiness,
+  'Check subscribe readiness',
+  async (c) => writeHandlers.handleCheckSubscribeReadiness(c)
+));
+
+api.post('/api/prepare/create_subscription', withX402Payment(
+  API_PRICES.prepareCreateSubscription,
+  'Prepare create subscription',
+  async (c) => writeHandlers.handlePrepareCreateSubscription(c)
+));
+
+api.post('/api/prepare/subscribe', withX402Payment(
+  API_PRICES.prepareSubscribe,
+  'Prepare subscribe transaction(s)',
+  async (c) => writeHandlers.handlePrepareSubscribe(c)
+));
+
+api.post('/api/prepare/cancel_subscription', withX402Payment(
+  API_PRICES.prepareCancelSubscription,
+  'Prepare cancel subscription',
+  async (c) => writeHandlers.handlePrepareCancelSubscription(c)
+));
+
+api.post('/api/prepare/unsubscribe', withX402Payment(
+  API_PRICES.prepareUnsubscribe,
+  'Prepare unsubscribe',
+  async (c) => writeHandlers.handlePrepareUnsubscribe(c)
+));
+
+api.post('/api/prepare/unsubscribe_by_provider', withX402Payment(
+  API_PRICES.prepareUnsubscribeByProvider,
+  'Prepare unsubscribe by provider',
+  async (c) => writeHandlers.handlePrepareUnsubscribeByProvider(c)
+));
+
+api.post('/api/prepare/edit_details', withX402Payment(
+  API_PRICES.prepareEditDetails,
+  'Prepare edit details',
+  async (c) => writeHandlers.handlePrepareEditDetails(c)
+));
+
+api.post('/api/submit_signed_transactions', withX402Payment(
+  API_PRICES.submitSignedTransactions,
+  'Submit signed transactions',
+  async (c) => writeHandlers.handleSubmitSignedTransactions(c)
+));
+
+api.post('/api/transactions/status', withX402Payment(
+  API_PRICES.getTransactionStatus,
+  'Get transaction status',
+  async (c) => writeHandlers.handleGetTransactionStatus(c)
+));
