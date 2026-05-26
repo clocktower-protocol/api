@@ -118,4 +118,91 @@ describe('withX402Payment - runtime tests with mocking', () => {
     expect(mockFacilitator.verifyPayment).toHaveBeenCalled();
     expect(mockFacilitator.settlePayment).not.toHaveBeenCalled();
   });
+
+  it('returns 402 and does not settle when verify fails', async () => {
+    const mockFacilitator = createMockFacilitator({
+      verify: { isValid: false, invalidReason: 'Insufficient funds' },
+    });
+
+    const validPayment = btoa(JSON.stringify({ mock: 'payment' }));
+    const mockContext = createMockContext(validPayment);
+
+    const handler = vi.fn().mockResolvedValue(new Response('ok'));
+
+    const protectedFn = withX402Payment(
+      API_PRICES.protocolState,
+      'Test',
+      handler,
+      { facilitatorClient: mockFacilitator as any }
+    );
+
+    const res = await protectedFn(mockContext);
+
+    expect(res.status).toBe(402);
+    expect(handler).not.toHaveBeenCalled();
+    expect(mockFacilitator.settlePayment).not.toHaveBeenCalled();
+  });
+
+  it('still returns success when settle fails after successful handler', async () => {
+    const mockFacilitator = createMockFacilitator({
+      settle: { success: false, error: 'Settlement failed on chain' },
+    });
+
+    const validPayment = btoa(JSON.stringify({ mock: 'payment' }));
+    const mockContext = createMockContext(validPayment);
+
+    const handler = vi.fn().mockResolvedValue(new Response('success', { status: 200 }));
+
+    const protectedFn = withX402Payment(
+      API_PRICES.protocolState,
+      'Test',
+      handler,
+      { facilitatorClient: mockFacilitator as any }
+    );
+
+    const res = await protectedFn(mockContext);
+
+    expect(res.status).toBe(200);
+    expect(mockFacilitator.verifyPayment).toHaveBeenCalled();
+    expect(mockFacilitator.settlePayment).toHaveBeenCalled();
+  });
+
+  it('returns 402 with error info on invalid base64 payment header', async () => {
+    const mockContext = createMockContext('!!!not-valid-base64!!!');
+
+    const handler = vi.fn();
+
+    const protectedFn = withX402Payment(
+      API_PRICES.protocolState,
+      'Test',
+      handler
+    );
+
+    const res = await protectedFn(mockContext);
+
+    expect(res.status).toBe(400);
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('handles missing X402_RECIPIENT gracefully', async () => {
+    const badContext = {
+      env: {}, // missing X402_RECIPIENT
+      req: {
+        raw: new Request('http://example.com/api/test', { headers: {} }),
+      },
+    };
+
+    const handler = vi.fn();
+
+    const protectedFn = withX402Payment(
+      API_PRICES.protocolState,
+      'Test',
+      handler
+    );
+
+    const res = await protectedFn(badContext);
+
+    // Should still return 402 instead of crashing
+    expect(res.status).toBe(402);
+  });
 });
