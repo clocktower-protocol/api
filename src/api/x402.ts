@@ -1,41 +1,50 @@
-import { Hono } from 'hono';
 import { HTTPFacilitatorClient } from '@x402/core/server';
-import { ExactEvmScheme } from '@x402/evm/exact/server';
 import { encodePaymentRequiredHeader } from '@x402/core/http';
 import type { PaymentRequirements, PaymentPayload } from '@x402/core/types';
 
-import { buildX402Config, X402_NETWORK } from '../x402.js';
+import { buildX402Config } from '../x402.js';
 import { Errors } from './responses.js';
 import { API_PRICES, type ApiEndpoint } from './pricing.js';
 
-type Env = any; // Avoid circular imports during early stages
+type Env = any;
 
-let facilitatorClient: HTTPFacilitatorClient | null = null;
+// We keep a cached real client for production use.
+let realFacilitatorClient: HTTPFacilitatorClient | null = null;
+
+function createRealFacilitatorClient(env: Env): HTTPFacilitatorClient {
+  const config = buildX402Config(env);
+  return new HTTPFacilitatorClient({
+    url: config.facilitator?.url ?? 'https://x402.org/facilitator',
+    createAuthHeaders: config.facilitator?.createAuthHeaders,
+  });
+}
 
 function getFacilitatorClient(env: Env): HTTPFacilitatorClient {
-  if (!facilitatorClient) {
-    const config = buildX402Config(env);
-    facilitatorClient = new HTTPFacilitatorClient({
-      url: config.facilitator?.url ?? 'https://x402.org/facilitator',
-      createAuthHeaders: config.facilitator?.createAuthHeaders,
-    });
-    // Note: Scheme registration for ExactEvm is handled internally by
-    // the facilitator client in recent versions when using verify/settle.
+  if (!realFacilitatorClient) {
+    realFacilitatorClient = createRealFacilitatorClient(env);
   }
-  return facilitatorClient;
+  return realFacilitatorClient;
 }
 
 export type X402ProtectedHandler = (c: any) => Promise<Response>;
 
+export type X402Options = {
+  /** For testing: inject a mock facilitator client */
+  facilitatorClient?: HTTPFacilitatorClient;
+};
+
 /**
  * Higher-order wrapper that protects a handler with x402 payment.
  *
- * Usage:
+ * Usage (production):
  *   const protectedHandler = withX402Payment(
  *     API_PRICES.protocolState,
  *     'Get protocol state',
  *     async (c) => { ... }
  *   );
+ *
+ * For tests, you can pass a mock facilitator:
+ *   withX402Payment(price, desc, handler, { facilitatorClient: mockClient })
  *
  * This follows the critical invariant:
  *   - Verify payment first
@@ -45,13 +54,14 @@ export type X402ProtectedHandler = (c: any) => Promise<Response>;
 export function withX402Payment(
   priceUSD: number,
   description: string,
-  handler: X402ProtectedHandler
+  handler: X402ProtectedHandler,
+  options: X402Options = {}
 ): X402ProtectedHandler {
   return async (c: any) => {
     const env: Env = c.env;
     const request = c.req.raw;
 
-    const facilitator = getFacilitatorClient(env);
+    const facilitator = options.facilitatorClient ?? getFacilitatorClient(env);
     const recipient = env.X402_RECIPIENT as `0x${string}`;
 
     // Build payment requirements

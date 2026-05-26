@@ -1,79 +1,121 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { withX402Payment } from '../src/api/x402.js';
 import { API_PRICES } from '../src/api/pricing.js';
+import type { HTTPFacilitatorClient } from '@x402/core/server';
+
+type MockFacilitator = Partial<HTTPFacilitatorClient>;
 
 /**
- * Tests for the custom x402 middleware (Path 1).
+ * Improved runtime tests for the custom x402 middleware (Stage 2).
  *
- * These tests focus on:
- * - Proper 402 responses when no payment is provided
- * - Behavior on invalid payments
- * - The critical "only settle on success" invariant
+ * Focus: Better mocking of the facilitator to test the critical invariant.
  */
 
-describe('withX402Payment middleware', () => {
-  const originalEnv = process.env;
+function createMockContext(paymentHeader?: string) {
+  const headers = new Headers();
+  if (paymentHeader) {
+    headers.set('X-Payment', paymentHeader);
+  }
 
-  beforeEach(() => {
-    vi.resetModules();
-    process.env = {
-      ...originalEnv,
+  return {
+    env: {
       X402_RECIPIENT: '0x1234567890123456789012345678901234567890',
-      CDP_API_KEY_ID: 'test-id',
-      CDP_API_KEY_SECRET: 'test-secret',
-    };
-  });
+    },
+    req: {
+      raw: new Request('http://example.com/api/test', { headers }),
+    },
+  };
+}
 
-  afterEach(() => {
-    process.env = originalEnv;
-  });
+function createMockFacilitator(overrides: Partial<{
+  verify: any;
+  settle: any;
+}> = {}): MockFacilitator {
+  return {
+    verifyPayment: vi.fn().mockResolvedValue(overrides.verify ?? { isValid: true }),
+    settlePayment: vi.fn().mockResolvedValue(overrides.settle ?? { success: true, transaction: '0xtx' }),
+  };
+}
 
-  it('returns 402 when no X-Payment header is present', async () => {
-    const mockContext = {
-      env: process.env,
-      req: {
-        raw: new Request('http://example.com/api/test', {
-          headers: {},
-        }),
-      },
-    };
+describe('withX402Payment - runtime tests with mocking', () => {
+  it('returns 402 when no payment header is provided', async () => {
+    const mockContext = createMockContext();
 
-    const protectedHandler = withX402Payment(
+    const handler = vi.fn().mockResolvedValue(new Response('ok'));
+
+    const protectedFn = withX402Payment(
       API_PRICES.protocolState,
-      'Test endpoint',
-      async () => new Response('should not reach here')
+      'Test',
+      handler
     );
 
-    const res = await protectedHandler(mockContext);
+    const res = await protectedFn(mockContext);
 
     expect(res.status).toBe(402);
-    const body = await res.json();
-    expect(body.x402Version).toBe(1);
-    expect(body.accepts).toBeDefined();
+    expect(handler).not.toHaveBeenCalled();
   });
 
-  it('returns 400 on malformed payment header', async () => {
-    const mockContext = {
-      env: process.env,
-      req: {
-        raw: new Request('http://example.com/api/test', {
-          headers: { 'X-Payment': 'not-valid-base64!!!' },
-        }),
-      },
-    };
+  it('calls settle when handler succeeds', async () => {
+    const mockFacilitator = createMockFacilitator();
 
-    const protectedHandler = withX402Payment(
+    const validPayment = btoa(JSON.stringify({ mock: 'payment' }));
+    const mockContext = createMockContext(validPayment);
+
+    const handler = vi.fn().mockResolvedValue(new Response('success', { status: 200 }));
+
+    const protectedFn = withX402Payment(
       API_PRICES.protocolState,
-      'Test endpoint',
-      async () => new Response('ok')
+      'Test',
+      handler,
+      { facilitatorClient: mockFacilitator as any }
     );
 
-    const res = await protectedHandler(mockContext);
-    expect([400, 402]).toContain(res.status);
+    const res = await protectedFn(mockContext);
+
+    expect(res.status).toBe(200);
+    expect(mockFacilitator.verifyPayment).toHaveBeenCalled();
+    expect(mockFacilitator.settlePayment).toHaveBeenCalled();
   });
 
-  // Runtime settlement tests will be expanded once we have better facilitator mocking
-  it('has the correct function signature', () => {
-    expect(typeof withX402Payment).toBe('function');
+  it('does NOT call settle when handler fails (critical invariant)', async () => {
+    const mockFacilitator = createMockFacilitator();
+
+    const validPayment = btoa(JSON.stringify({ mock: 'payment' }));
+    const mockContext = createMockContext(validPayment);
+
+    const handler = vi.fn().mockResolvedValue(new Response('error', { status: 500 }));
+
+    const protectedFn = withX402Payment(
+      API_PRICES.protocolState,
+      'Test',
+      handler,
+      { facilitatorClient: mockFacilitator as any }
+    );
+
+    await protectedFn(mockContext);
+
+    expect(mockFacilitator.verifyPayment).toHaveBeenCalled();
+    expect(mockFacilitator.settlePayment).not.toHaveBeenCalled();
+  });
+
+  it('does NOT call settle when handler throws', async () => {
+    const mockFacilitator = createMockFacilitator();
+
+    const validPayment = btoa(JSON.stringify({ mock: 'payment' }));
+    const mockContext = createMockContext(validPayment);
+
+    const handler = vi.fn().mockRejectedValue(new Error('boom'));
+
+    const protectedFn = withX402Payment(
+      API_PRICES.protocolState,
+      'Test',
+      handler,
+      { facilitatorClient: mockFacilitator as any }
+    );
+
+    await protectedFn(mockContext);
+
+    expect(mockFacilitator.verifyPayment).toHaveBeenCalled();
+    expect(mockFacilitator.settlePayment).not.toHaveBeenCalled();
   });
 });
