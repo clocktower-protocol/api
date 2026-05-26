@@ -21,11 +21,11 @@ describe('clocktower-mcp worker - /api (Stage 1 read endpoints)', () => {
 	});
 
 	it('applies defensive security headers to API responses', async () => {
-		// /api/protocol/state is one of the simplest endpoints.
-		// In the test environment RPC calls often fail (fake Alchemy key),
-		// so we may get 200, 500 (our upstream error), 401, or 429.
+		// /api/protocol/state now has x402 protection (early wiring).
+		// In the test environment we may get:
+		// 200, 500 (RPC failure), 401 (auth), 429 (rate limit), or 402 (x402 payment required)
 		const res = await fetchWorker('/api/protocol/state');
-		expect([200, 500, 401, 429]).toContain(res.status);
+		expect([200, 500, 401, 429, 402]).toContain(res.status);
 
 		expect(res.headers.get('x-content-type-options')).toBe('nosniff');
 		expect(res.headers.get('x-frame-options')).toBe('DENY');

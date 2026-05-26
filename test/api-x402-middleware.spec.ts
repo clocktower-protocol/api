@@ -202,8 +202,8 @@ describe('withX402Payment - runtime tests with mocking', () => {
 
     const res = await protectedFn(badContext);
 
-    // Should still return 402 instead of crashing
-    expect(res.status).toBe(402);
+    // Missing recipient is a server configuration error → 500 is appropriate
+    expect(res.status).toBe(500);
   });
 
   it('returns a raw x402-style 402 response when no payment is provided', async () => {

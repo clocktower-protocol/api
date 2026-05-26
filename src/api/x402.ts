@@ -4,7 +4,22 @@ import type { PaymentRequirements, PaymentPayload } from '@x402/core/types';
 
 import { buildX402Config } from '../x402.js';
 import { Errors } from './responses.js';
-import { API_PRICES, type ApiEndpoint } from './pricing.js';
+
+/**
+ * Stage 2/3 x402 Payment Middleware (Path 1 - Low-level)
+ *
+ * Current limitations and assumptions (as of this stage):
+ * - Hardcoded to USDC on Base mainnet (eip155:8453)
+ * - Uses the "exact" scheme only
+ * - Returns raw x402 402 responses where possible
+ * - Does NOT yet support multiple assets or networks
+ * - Settlement metadata is attached via a custom header on success
+ *
+ * This implementation prioritizes:
+ * - The critical "verify first, only settle on success" invariant
+ * - Testability (facilitator can be injected)
+ * - Staying close to the raw x402 protocol for 402 responses
+ */
 
 type Env = any;
 
@@ -64,14 +79,28 @@ export function withX402Payment(
     const facilitator = options.facilitatorClient ?? getFacilitatorClient(env);
     const recipient = env.X402_RECIPIENT as `0x${string}`;
 
-    // Build payment requirements
+    if (!recipient) {
+      console.error('[x402] X402_RECIPIENT is not configured');
+      return Errors.upstream('Payment configuration error');
+    }
+
+    // Currently hardcoded to USDC on Base (6 decimals).
+    // This is a deliberate simplification for the current phase.
+    const USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+    const USDC_DECIMALS = 6;
+
+    // Safer amount conversion (avoid floating point precision issues)
+    const amountInAtomicUnits = (
+      BigInt(Math.floor(priceUSD * 1_000_000)) * BigInt(10 ** (USDC_DECIMALS - 6))
+    ).toString();
+
     const requirements: PaymentRequirements[] = [
       {
         scheme: 'exact',
-        network: 'eip155:8453', // Base mainnet
+        network: 'eip155:8453',
         payTo: recipient,
-        amount: (BigInt(Math.floor(priceUSD * 1_000_000)) * 1_000_000_000_000n).toString(), // USDC 6 decimals
-        asset: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // USDC on Base
+        amount: amountInAtomicUnits,
+        asset: USDC_ADDRESS,
         description,
         maxTimeoutSeconds: 300,
       },
@@ -81,18 +110,18 @@ export function withX402Payment(
     const paymentHeader = request.headers.get('X-Payment') || request.headers.get('x-payment');
 
     if (!paymentHeader) {
-      // Return raw x402 402 response
-      const paymentRequired = {
+      // Raw x402 Payment Required response (as close to spec as practical)
+      const paymentRequiredBody = {
         x402Version: 1,
         accepts: requirements,
-        error: 'Payment required',
+        error: 'Payment required to access this resource',
       };
 
-      const res = new Response(JSON.stringify(paymentRequired), {
+      const res = new Response(JSON.stringify(paymentRequiredBody), {
         status: 402,
         headers: {
           'Content-Type': 'application/json',
-          'X-Payment-Required': encodePaymentRequiredHeader(paymentRequired as any),
+          'X-Payment-Required': encodePaymentRequiredHeader(paymentRequiredBody as any),
         },
       });
       return res;
@@ -110,6 +139,7 @@ export function withX402Payment(
       const verifyResult = await facilitator.verifyPayment(paymentPayload, requirements[0]);
 
       if (!verifyResult.isValid) {
+        // Return a 402 that follows the raw protocol shape
         return new Response(
           JSON.stringify({
             x402Version: 1,
@@ -121,7 +151,10 @@ export function withX402Payment(
     } catch (err) {
       console.error('[x402] verifyPayment failed', err);
       return new Response(
-        JSON.stringify({ x402Version: 1, error: 'Payment verification error' }),
+        JSON.stringify({
+          x402Version: 1,
+          error: 'Payment verification error',
+        }),
         { status: 402 }
       );
     }
