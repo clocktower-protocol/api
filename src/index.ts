@@ -45,6 +45,31 @@ async function handleRequest(
 		return ClocktowerMCP.serve('/mcp', { binding: 'CLOCKTOWER_MCP' }).fetch(request, env, ctx);
 	}
 
+	// === Stage 0: Basic REST API scaffolding ===
+	// All /api routes are protected by the same security layers as /mcp
+	// (geo block is already applied above for all requests).
+	if (url.pathname.startsWith('/api')) {
+		const unauthorized = enforceBasicAuth(request, env);
+		if (unauthorized) {
+			return unauthorized;
+		}
+
+		const rateLimited = await enforceRateLimit(request, env);
+		if (rateLimited) {
+			return rateLimited;
+		}
+
+		// Placeholder response for Stage 0.
+		// Real endpoints will be added in later stages.
+		return Response.json(
+			{
+				status: 'not_implemented',
+				message: 'The REST API is under development. Use the MCP endpoint at /mcp.',
+			},
+			{ status: 501 },
+		);
+	}
+
 	return Response.json({
 		status: 'ok',
 		name: 'clocktower-mcp',
