@@ -6,6 +6,7 @@ import { RateLimiter } from './RateLimiter.js';
 import { enforceRateLimit } from './rateLimit.js';
 import { withSecurityHeaders } from './securityHeaders.js';
 import { validateMcpRequest } from './validation.js';
+import { api } from './api/app.js';
 
 async function handleRequest(
 	request: Request,
@@ -45,9 +46,9 @@ async function handleRequest(
 		return ClocktowerMCP.serve('/mcp', { binding: 'CLOCKTOWER_MCP' }).fetch(request, env, ctx);
 	}
 
-	// === Stage 0: Basic REST API scaffolding ===
-	// All /api routes are protected by the same security layers as /mcp
-	// (geo block is already applied above for all requests).
+	// === API Routes (powered by Hono) ===
+	// Security layers (Basic Auth + Rate Limit) are applied before handing off to Hono.
+	// Geo blocking and security headers are applied at the top level.
 	if (url.pathname.startsWith('/api')) {
 		const unauthorized = enforceBasicAuth(request, env);
 		if (unauthorized) {
@@ -59,15 +60,8 @@ async function handleRequest(
 			return rateLimited;
 		}
 
-		// Placeholder response for Stage 0.
-		// Real endpoints will be added in later stages.
-		return Response.json(
-			{
-				status: 'not_implemented',
-				message: 'The REST API is under development. Use the MCP endpoint at /mcp.',
-			},
-			{ status: 501 },
-		);
+		// Hand off to the Hono router for /api routes
+		return api.fetch(request, env, ctx);
 	}
 
 	return Response.json({
