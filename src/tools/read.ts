@@ -1,4 +1,5 @@
 import type { X402McpServer } from './types.js';
+import { safeHandler } from './safeHandler.js';
 import { CLOCKTOWER_READ_ABI } from '../abi/clocktower.js';
 import { resolveChain } from '../chain.js';
 import { createClocktowerClient } from '../client.js';
@@ -301,7 +302,8 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 		TOOL_PRICE,
 		{},
 		{},
-		async () => textResult(await getProtocolState(env)),
+		async () =>
+			safeHandler('get_protocol_state', async () => textResult(await getProtocolState(env))),
 	);
 
 	server.paidTool(
@@ -312,7 +314,10 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 			id: bytes32Schema.describe('Subscription id (bytes32 hex)'),
 		},
 		{},
-		async ({ id }) => textResult(await getSubscription(env, id as `0x${string}`)),
+		async ({ id }) =>
+			safeHandler('get_subscription', async () =>
+				textResult(await getSubscription(env, id as `0x${string}`)),
+			),
 	);
 
 	server.paidTool(
@@ -325,8 +330,10 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 		},
 		{},
 		async ({ bySubscriber, account }) =>
-			textResult(
-				await getAccountSubscriptions(env, bySubscriber as boolean, account as `0x${string}`),
+			safeHandler('get_account_subscriptions', async () =>
+				textResult(
+					await getAccountSubscriptions(env, bySubscriber as boolean, account as `0x${string}`),
+				),
 			),
 	);
 
@@ -338,7 +345,10 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 			id: bytes32Schema,
 		},
 		{},
-		async ({ id }) => textResult(await getSubscribers(env, id as `0x${string}`)),
+		async ({ id }) =>
+			safeHandler('get_subscribers', async () =>
+				textResult(await getSubscribers(env, id as `0x${string}`)),
+			),
 	);
 
 	server.paidTool(
@@ -349,7 +359,10 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 			token: addressSchema,
 		},
 		{},
-		async ({ token }) => textResult(await getApprovedToken(env, token as `0x${string}`)),
+		async ({ token }) =>
+			safeHandler('get_approved_token', async () =>
+				textResult(await getApprovedToken(env, token as `0x${string}`)),
+			),
 	);
 
 	server.paidTool(
@@ -362,11 +375,13 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 		},
 		{},
 		async ({ dayNumber, frequency }) =>
-			textResult(
-				await getSubscriptionsDue(env, {
-					dayNumber: dayNumber as number | undefined,
-					frequency: frequency as number | undefined,
-				}),
+			safeHandler('get_subscriptions_due', async () =>
+				textResult(
+					await getSubscriptionsDue(env, {
+						dayNumber: dayNumber as number | undefined,
+						frequency: frequency as number | undefined,
+					}),
+				),
 			),
 	);
 }

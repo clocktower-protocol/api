@@ -8,6 +8,9 @@ export type X402McpServer = McpServer & {
 		price: number,
 		inputSchema: Record<string, ZodTypeAny>,
 		annotations: Record<string, unknown>,
-		handler: (args: Record<string, unknown>) => Promise<{ content: Array<{ type: 'text'; text: string }> }>,
+		handler: (args: Record<string, unknown>) => Promise<{
+			content: Array<{ type: 'text'; text: string }>;
+			isError?: boolean;
+		}>,
 	) => void;
 };

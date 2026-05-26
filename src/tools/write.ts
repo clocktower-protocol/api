@@ -30,6 +30,7 @@ import {
 } from '../validation-write.js';
 import { addressSchema, bytes32Schema } from '../validation.js';
 import { textResult } from '../utils.js';
+import { safeHandler } from './safeHandler.js';
 import type { X402McpServer } from './types.js';
 
 const writeAnnotations = { readOnlyHint: false };
@@ -45,19 +46,20 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 			subscription: subscribeInputSchema.shape.subscription,
 		},
 		{ readOnlyHint: true },
-		async ({ from, subscription }) => {
-			const { resolveChain } = await import('../chain.js');
-			const sub = toWriteSubscription(
-				subscription as Parameters<typeof toWriteSubscription>[0],
-			);
-			const result = await checkSubscribeReadiness(
-				env,
-				resolveChain(env),
-				from as `0x${string}`,
-				sub,
-			);
-			return textResult(result);
-		},
+		async ({ from, subscription }) =>
+			safeHandler('check_subscribe_readiness', async () => {
+				const { resolveChain } = await import('../chain.js');
+				const sub = toWriteSubscription(
+					subscription as Parameters<typeof toWriteSubscription>[0],
+				);
+				const result = await checkSubscribeReadiness(
+					env,
+					resolveChain(env),
+					from as `0x${string}`,
+					sub,
+				);
+				return textResult(result);
+			}),
 	);
 
 	server.paidTool(
@@ -73,20 +75,21 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 			dueDay: z.number().int(),
 		},
 		writeAnnotations,
-		async (args) => {
-			const parsed = createSubscriptionInputSchema.parse(args);
-			return textResult(
-				await prepareCreateSubscription(
-					env,
-					parsed.from,
-					parsed.amount,
-					parsed.token,
-					toWriteDetails(parsed.details),
-					parsed.frequency,
-					parsed.dueDay,
-				),
-			);
-		},
+		async (args) =>
+			safeHandler('prepare_create_subscription', async () => {
+				const parsed = createSubscriptionInputSchema.parse(args);
+				return textResult(
+					await prepareCreateSubscription(
+						env,
+						parsed.from,
+						parsed.amount,
+						parsed.token,
+						toWriteDetails(parsed.details),
+						parsed.frequency,
+						parsed.dueDay,
+					),
+				);
+			}),
 	);
 
 	server.paidTool(
@@ -98,12 +101,13 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 			subscription: subscribeInputSchema.shape.subscription,
 		},
 		writeAnnotations,
-		async ({ from, subscription }) => {
-			const parsed = subscribeInputSchema.parse({ from, subscription });
-			return textResult(
-				await prepareSubscribe(env, parsed.from, toWriteSubscription(parsed.subscription)),
-			);
-		},
+		async ({ from, subscription }) =>
+			safeHandler('prepare_subscribe', async () => {
+				const parsed = subscribeInputSchema.parse({ from, subscription });
+				return textResult(
+					await prepareSubscribe(env, parsed.from, toWriteSubscription(parsed.subscription)),
+				);
+			}),
 	);
 
 	server.paidTool(
@@ -115,16 +119,17 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 			subscription: subscriptionActionInputSchema.shape.subscription,
 		},
 		destructiveAnnotations,
-		async ({ from, subscription }) => {
-			const parsed = subscriptionActionInputSchema.parse({ from, subscription });
-			return textResult(
-				await prepareCancelSubscription(
-					env,
-					parsed.from,
-					toWriteSubscription(parsed.subscription),
-				),
-			);
-		},
+		async ({ from, subscription }) =>
+			safeHandler('prepare_cancel_subscription', async () => {
+				const parsed = subscriptionActionInputSchema.parse({ from, subscription });
+				return textResult(
+					await prepareCancelSubscription(
+						env,
+						parsed.from,
+						toWriteSubscription(parsed.subscription),
+					),
+				);
+			}),
 	);
 
 	server.paidTool(
@@ -136,12 +141,13 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 			subscription: subscriptionActionInputSchema.shape.subscription,
 		},
 		destructiveAnnotations,
-		async ({ from, subscription }) => {
-			const parsed = subscriptionActionInputSchema.parse({ from, subscription });
-			return textResult(
-				await prepareUnsubscribe(env, parsed.from, toWriteSubscription(parsed.subscription)),
-			);
-		},
+		async ({ from, subscription }) =>
+			safeHandler('prepare_unsubscribe', async () => {
+				const parsed = subscriptionActionInputSchema.parse({ from, subscription });
+				return textResult(
+					await prepareUnsubscribe(env, parsed.from, toWriteSubscription(parsed.subscription)),
+				);
+			}),
 	);
 
 	server.paidTool(
@@ -154,17 +160,18 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 			subscriber: addressSchema,
 		},
 		destructiveAnnotations,
-		async (args) => {
-			const parsed = unsubscribeByProviderInputSchema.parse(args);
-			return textResult(
-				await prepareUnsubscribeByProvider(
-					env,
-					parsed.from,
-					toWriteSubscription(parsed.subscription),
-					parsed.subscriber,
-				),
-			);
-		},
+		async (args) =>
+			safeHandler('prepare_unsubscribe_by_provider', async () => {
+				const parsed = unsubscribeByProviderInputSchema.parse(args);
+				return textResult(
+					await prepareUnsubscribeByProvider(
+						env,
+						parsed.from,
+						toWriteSubscription(parsed.subscription),
+						parsed.subscriber,
+					),
+				);
+			}),
 	);
 
 	server.paidTool(
@@ -177,17 +184,18 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 			details: editDetailsInputSchema.shape.details,
 		},
 		writeAnnotations,
-		async (args) => {
-			const parsed = editDetailsInputSchema.parse(args);
-			return textResult(
-				await prepareEditDetails(
-					env,
-					parsed.from,
-					parsed.id,
-					toWriteDetails(parsed.details),
-				),
-			);
-		},
+		async (args) =>
+			safeHandler('prepare_edit_details', async () => {
+				const parsed = editDetailsInputSchema.parse(args);
+				return textResult(
+					await prepareEditDetails(
+						env,
+						parsed.from,
+						parsed.id,
+						toWriteDetails(parsed.details),
+					),
+				);
+			}),
 	);
 
 	server.paidTool(
@@ -202,16 +210,17 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 				.max(5),
 		},
 		writeAnnotations,
-		async (args) => {
-			const { prepareId, signedTransactions } = args as {
-				prepareId: string;
-				signedTransactions: `0x${string}`[];
-			};
+		async (args) =>
+			safeHandler('submit_signed_transactions', async () => {
+				const { prepareId, signedTransactions } = args as {
+					prepareId: string;
+					signedTransactions: `0x${string}`[];
+				};
 
-			return textResult(
-				await submitSignedTransactions(env, prepareId, signedTransactions),
-			);
-		},
+				return textResult(
+					await submitSignedTransactions(env, prepareId, signedTransactions),
+				);
+			}),
 	);
 
 	server.paidTool(
@@ -223,6 +232,8 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 		},
 		{ readOnlyHint: true },
 		async ({ txHash }) =>
-			textResult(await getTransactionStatus(env, txHash as `0x${string}`)),
+			safeHandler('get_transaction_status', async () =>
+				textResult(await getTransactionStatus(env, txHash as `0x${string}`)),
+			),
 	);
 }
