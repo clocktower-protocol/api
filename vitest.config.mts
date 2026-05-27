@@ -40,6 +40,7 @@ export default defineConfig({
 					CDP_API_KEY_ID: 'test-cdp-key-id',
 					CDP_API_KEY_SECRET: 'test-cdp-key-secret',
 					X402_RECIPIENT: '0x0000000000000000000000000000000000000001',
+					API_REQUIRE_BASIC_AUTH: 'true',   // Explicit for clarity during the x402 transition
 				},
 			},
 		}),

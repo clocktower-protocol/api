@@ -16,11 +16,14 @@ describe('clocktower-mcp worker', () => {
 		expect(res.status).toBe(200);
 
 		const body = await res.json();
-		expect(body).toEqual({
+		expect(body).toMatchObject({
 			status: 'ok',
 			name: 'clocktower-mcp',
 			mcp: '/mcp',
+			rest: '/api',
 		});
+		// The note can change over time during the x402 transition
+		expect(typeof body.note).toBe('string');
 	});
 
 	it('returns health JSON for non-mcp routes', async () => {

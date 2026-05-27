@@ -225,16 +225,21 @@ export async function handleGetTransactionStatus(c: Context) {
    Shared Error Handler for Write Endpoints
    ===================================================== */
 function handleWriteError(err: any, operation: string) {
-  // Zod validation errors → return structured validation error
+  // Zod validation errors → return rich validation error with issues array
   if (err instanceof z.ZodError) {
-    return Errors.validation(
-      err.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')
-    );
+    return jsonResponse({
+      error: 'Validation failed',
+      code: 'VALIDATION_ERROR',
+      issues: err.issues.map((issue) => ({
+        path: issue.path.join('.'),
+        message: issue.message,
+      })),
+    }, 400);
   }
 
   const message = err?.message || String(err);
 
-  // Common domain errors from the tx layer
+  // Common domain errors from the tx layer (map to appropriate error codes)
   if (message.includes('Subscription not found')) {
     return Errors.notFound('Subscription not found on chain');
   }
@@ -249,6 +254,9 @@ function handleWriteError(err: any, operation: string) {
   }
   if (message.includes('Signed transaction signer does not match')) {
     return Errors.validation('Signed transaction signer does not match prepare intent');
+  }
+  if (message.includes('Invalid nonce')) {
+    return Errors.validation('Invalid nonce for signed transaction');
   }
 
   // Let the x402 wrapper know this failed so it does NOT settle the payment

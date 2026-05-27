@@ -15,17 +15,25 @@ import { API_PRICES } from './pricing.js';
 import * as writeHandlers from './write.js';
 
 /**
- * Clocktower REST API — Current Status (as of this commit)
+ * Clocktower REST API — Current Status
  *
  * This module defines the REST API surface mounted under `/api`.
  *
- * Authentication model (transition in progress):
- *   - x402 micropayments are the primary and non-bypassable layer on all routes.
- *   - Basic Auth (when ENABLE_AUTH=true) is still applied by default for the API surface.
- *     It can be made optional via API_REQUIRE_BASIC_AUTH=false.
+ * === Authentication Model (Transition in Progress) ===
+ * Goal: Move toward Design B where x402 becomes the primary (and eventually the only) auth/payment layer.
+ *
+ * Current state:
+ *   - x402 micropayments are the **primary and non-bypassable** authorization mechanism on all routes.
+ *   - Basic Auth is still applied by default (controlled by `API_REQUIRE_BASIC_AUTH`).
+ *     - Default (`true` or unset) → Basic Auth is required for /api routes.
+ *     - `false` → Basic Auth is optional for /api (x402 remains mandatory).
  *   - IP rate limiting still applies.
  *
- * Endpoints:
+ * This design allows us to keep Basic Auth on for development/testing while gradually shifting
+ * trust and enforcement to x402.
+ *
+ * === Current Endpoints ===
+ * Read endpoints (all protected with x402):
  *   - GET /api/protocol/state
  *   - GET /api/subscriptions/due
  *   - GET /api/subscriptions/:id
@@ -33,16 +41,28 @@ import * as writeHandlers from './write.js';
  *   - GET /api/accounts/:address/subscriptions
  *   - GET /api/tokens/:token
  *
- * Notes:
- *   - x402 is now the primary payment/auth mechanism for the REST API.
- *   - Basic Auth is still supported (and enabled by default) for development/testing convenience.
- *     It can be made optional by setting API_REQUIRE_BASIC_AUTH=false.
- *   - Write endpoints are partially implemented.
+ * Write endpoints (all protected with x402):
+ *   - POST /api/check_subscribe_readiness
+ *   - POST /api/prepare/create_subscription
+ *   - POST /api/prepare/subscribe
+ *   - POST /api/prepare/cancel_subscription
+ *   - POST /api/prepare/unsubscribe
+ *   - POST /api/prepare/unsubscribe_by_provider
+ *   - POST /api/prepare/edit_details
+ *   - POST /api/submit_signed_transactions
+ *   - POST /api/transactions/status
+ *
+ * === Notes ===
+ * - x402 is the intended long-term primary auth layer for the REST API.
+ * - Basic Auth is currently enabled by default as a temporary measure during the transition.
+ *   It can be disabled for /api routes via `API_REQUIRE_BASIC_AUTH=false`.
+ * - Write endpoints are implemented but may still receive further validation and response polish.
  *
  * See also:
- *   - src/api/x402.ts     → x402 payment wrapper
- *   - src/api/pricing.ts  → pricing configuration
- *   - src/api/responses.ts → consistent error/success helpers
+ *   - src/api/x402.ts      → Core x402 payment wrapper (`withX402Payment`)
+ *   - src/api/pricing.ts   → Pricing configuration for reads and writes
+ *   - src/api/responses.ts → Consistent success/error response helpers
+ *   - src/index.ts         → Top-level routing and auth layering
  */
 
 export const api = new Hono<{ Bindings: Env }>();
@@ -55,10 +75,10 @@ api.get('/', (c) => {
     message: 'Clocktower REST API',
     version: 'x402-primary',
     auth: {
-      x402: 'required (primary)',
-      basicAuth: requireBasic ? 'required' : 'optional',
+      x402: 'required (primary & non-bypassable)',
+      basicAuth: requireBasic ? 'required (default)' : 'optional',
     },
-    note: 'x402 is the primary payment/auth layer. Basic Auth can be made optional via API_REQUIRE_BASIC_AUTH=false.',
+    note: 'x402 is the intended primary layer. Basic Auth is currently kept on by default for safety.',
   });
 });
 

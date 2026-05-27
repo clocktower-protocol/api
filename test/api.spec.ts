@@ -10,6 +10,22 @@ async function fetchWorker(pathname: string, init: RequestInit = {}) {
 	return res;
 }
 
+// Helper for testing x402-only mode (Basic Auth disabled for /api routes)
+async function fetchWorkerX402Only(pathname: string, init: RequestInit = {}) {
+	const ctx = createExecutionContext();
+	const req = new Request(`http://example.com${pathname}`, init);
+
+	// Override to simulate API_REQUIRE_BASIC_AUTH=false
+	const testEnv = {
+		...env,
+		API_REQUIRE_BASIC_AUTH: 'false',
+	};
+
+	const res = await worker.fetch(req, testEnv, ctx);
+	await waitOnExecutionContext(ctx);
+	return res;
+}
+
 describe('clocktower-mcp worker - /api (reads + writes with x402)', () => {
 	it('returns consistent error shape for unknown API routes', async () => {
 		const res = await fetchWorker('/api/unknown/path');
@@ -119,5 +135,34 @@ describe('clocktower-mcp worker - /api (reads + writes with x402)', () => {
 			const body = await res.json();
 			expect(body.code).toBe('NOT_FOUND');
 		}
+	});
+
+	// === x402-only mode tests (Basic Auth disabled for /api) ===
+
+	it('allows requests to /api when Basic Auth is disabled (x402-only mode)', async () => {
+		// With API_REQUIRE_BASIC_AUTH=false, requests without Basic Auth should still be gated by x402
+		const res = await fetchWorkerX402Only('/api/protocol/state');
+
+		// Should get 402 (x402 payment required) instead of 401 (Basic Auth)
+		// Note: may also get 429 due to rate limits in test env
+		expect([402, 429]).toContain(res.status);
+	});
+
+	it('still enforces x402 on write endpoints even without Basic Auth', async () => {
+		const res = await fetchWorkerX402Only('/api/prepare/subscribe', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ from: '0x123', subscription: {} }),
+		});
+
+		// Should be blocked by x402 (402) or rate limit, not by Basic Auth (401)
+		expect([402, 429, 400]).toContain(res.status);
+	});
+
+	it('returns consistent error shapes in x402-only mode', async () => {
+		const res = await fetchWorkerX402Only('/api/unknown/path');
+
+		// Should get 404 or rate limit, never 401 from Basic Auth
+		expect([404, 429]).toContain(res.status);
 	});
 });
