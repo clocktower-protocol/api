@@ -1,15 +1,39 @@
 import { cloudflareTest } from '@cloudflare/vitest-pool-workers';
 import { defineConfig } from 'vitest/config';
+import { createLogger } from 'vite';
+
+// Create a filtered logger that suppresses the extremely common (and harmless)
+// "Sourcemap for ... points to missing source files" warnings coming from
+// packages like @modelcontextprotocol/sdk and Miniflare.
+const logger = createLogger();
+const originalWarn = logger.warn.bind(logger);
+
+logger.warn = (msg: any, options?: any) => {
+	const message = typeof msg === 'string' ? msg : String(msg);
+	if (
+		message.includes('Sourcemap') &&
+		(message.includes('points to missing source files') ||
+			message.includes('Failed to parse source map'))
+	) {
+		return; // suppress these noisy warnings
+	}
+	originalWarn(msg, options);
+};
 
 export default defineConfig({
+	esbuild: {
+		sourcemap: false,
+	},
+
+	optimizeDeps: {
+		esbuildOptions: {
+			sourcemap: false,
+		},
+	},
+
 	plugins: [
 		cloudflareTest({
 			wrangler: { configPath: './wrangler.jsonc', environment: 'test' },
-			// Test-only stand-ins for credential-shaped env vars. Kept out of
-			// `wrangler.jsonc` so that source-controlled config never carries
-			// *_KEY_* / *_SECRET shaped values, even placeholder ones. These
-			// bindings are visible only to vitest-pool-workers' miniflare
-			// runtime and are never consulted by `wrangler deploy`.
 			miniflare: {
 				bindings: {
 					ALCHEMY_API_KEY: 'test-alchemy-key',
@@ -21,14 +45,9 @@ export default defineConfig({
 		}),
 	],
 
-	// Suppress the very noisy "Sourcemap ... points to missing source files"
-	// warnings that come from @modelcontextprotocol/sdk (and a few other deps).
-	// These are harmless but flood the test output.
 	test: {
-		onConsoleLog(log) {
-			if (log.includes('Sourcemap for') && log.includes('points to missing source files')) {
-				return false; // suppress the line
-			}
-		},
+		// Use the filtered custom logger defined above
+		// (this is the currently recommended way to handle sourcemap spam from dependencies)
 	},
+	customLogger: logger,
 });

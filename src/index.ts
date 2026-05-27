@@ -47,12 +47,20 @@ async function handleRequest(
 	}
 
 	// === API Routes (powered by Hono) ===
-	// Security layers (Basic Auth + Rate Limit) are applied before handing off to Hono.
-	// Geo blocking and security headers are applied at the top level.
+	// x402 is now the primary payment/auth mechanism for the REST API.
+	// Basic Auth is still supported for convenience during development/testing.
+	//
+	// Control:
+	//   - API_REQUIRE_BASIC_AUTH=true  → Basic Auth is required for /api (current default)
+	//   - API_REQUIRE_BASIC_AUTH=false → Basic Auth is optional for /api (x402 is still mandatory)
 	if (url.pathname.startsWith('/api')) {
-		const unauthorized = enforceBasicAuth(request, env);
-		if (unauthorized) {
-			return unauthorized;
+		const requireBasicAuth = env.API_REQUIRE_BASIC_AUTH !== 'false';
+
+		if (requireBasicAuth) {
+			const unauthorized = enforceBasicAuth(request, env);
+			if (unauthorized) {
+				return unauthorized;
+			}
 		}
 
 		const rateLimited = await enforceRateLimit(request, env);
@@ -60,7 +68,8 @@ async function handleRequest(
 			return rateLimited;
 		}
 
-		// Hand off to the Hono router for /api routes
+		// Hand off to the Hono router for /api routes.
+		// Individual routes use withX402Payment(...) so x402 is non-bypassable.
 		return api.fetch(request, env, ctx);
 	}
 

@@ -19,9 +19,11 @@ import * as writeHandlers from './write.js';
  *
  * This module defines the REST API surface mounted under `/api`.
  *
- * Authentication (as of now):
- *   - All routes are protected by Basic Auth (if ENABLE_AUTH=true) + IP rate limiting.
- *   - All read endpoints are also wrapped with x402 micropayments.
+ * Authentication model (transition in progress):
+ *   - x402 micropayments are the primary and non-bypassable layer on all routes.
+ *   - Basic Auth (when ENABLE_AUTH=true) is still applied by default for the API surface.
+ *     It can be made optional via API_REQUIRE_BASIC_AUTH=false.
+ *   - IP rate limiting still applies.
  *
  * Endpoints:
  *   - GET /api/protocol/state
@@ -32,10 +34,10 @@ import * as writeHandlers from './write.js';
  *   - GET /api/tokens/:token
  *
  * Notes:
- *   - This is still early / non-production. Basic Auth remains the primary gate
- *     for internal testing.
- *   - x402 is wired on all reads but is not yet the sole payment mechanism.
- *   - Write endpoints (prepare/submit) have not been implemented yet.
+ *   - x402 is now the primary payment/auth mechanism for the REST API.
+ *   - Basic Auth is still supported (and enabled by default) for development/testing convenience.
+ *     It can be made optional by setting API_REQUIRE_BASIC_AUTH=false.
+ *   - Write endpoints are partially implemented.
  *
  * See also:
  *   - src/api/x402.ts     → x402 payment wrapper
@@ -47,11 +49,16 @@ export const api = new Hono<{ Bindings: Env }>();
 
 // Health / info for the API surface
 api.get('/', (c) => {
+  const requireBasic = c.env.API_REQUIRE_BASIC_AUTH !== 'false';
   return jsonResponse({
     status: 'ok',
     message: 'Clocktower REST API',
-    version: 'x402-reads-wired',
-    note: 'All read endpoints are behind Basic Auth + x402 (non-live). Writes not yet implemented.',
+    version: 'x402-primary',
+    auth: {
+      x402: 'required (primary)',
+      basicAuth: requireBasic ? 'required' : 'optional',
+    },
+    note: 'x402 is the primary payment/auth layer. Basic Auth can be made optional via API_REQUIRE_BASIC_AUTH=false.',
   });
 });
 

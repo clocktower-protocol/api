@@ -25,6 +25,7 @@ declare namespace Cloudflare {
 		WRITE_RATE_LIMIT_REQUESTS_PER_MINUTE?: string;
 		PREPARE_INTENT_TTL_SECONDS?: string;
 		ENABLE_AUTH?: string;
+		API_REQUIRE_BASIC_AUTH?: string;   // Controls whether Basic Auth is required for /api routes (x402 is always required)
 		CFP_USERNAME?: string;
 		CFP_PASSWORD?: string;
 		CFP_ALLOWED_ORIGINS?: string;
