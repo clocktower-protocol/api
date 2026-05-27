@@ -7,6 +7,7 @@ import {
   handleGetSubscribers,
   handleGetApprovedToken,
   handleGetSubscriptionsDue,
+  handleListApprovedTokens,
 } from './read.js';
 import { withX402Payment } from './x402.js';
 import { API_PRICES } from './pricing.js';
@@ -143,6 +144,13 @@ export function createApiApp(options: ApiAppOptions = {}) {
       const token = c.req.param('token');
       return await handleGetApprovedToken(c.env, token);
     }
+  ));
+
+  // List of approved tokens (lightly managed static list)
+  app.get('/api/tokens', withPayment(
+    API_PRICES.getApprovedToken, // reuse same pricing for now
+    'List approved tokens',
+    async () => handleListApprovedTokens()
   ));
 
   // Catch-all for unknown routes under /api

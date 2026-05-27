@@ -25,6 +25,7 @@ import {
 	parseSubscriptionRecord,
 	type SubscriptionRecord,
 } from '../validation.js';
+import { APPROVED_TOKENS } from '../config/approvedTokens.js';
 
 type ClocktowerClient = ReturnType<typeof createClocktowerClient>;
 
@@ -362,6 +363,23 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 		async ({ token }) =>
 			safeHandler('get_approved_token', async () =>
 				textResult(await getApprovedToken(env, token as `0x${string}`)),
+			),
+	);
+
+	// Lightly managed list of approved tokens (static config because the
+	// on-chain approvedERC20 mapping is not enumerable).
+	server.paidTool(
+		'list_approved_tokens',
+		'List ERC-20 tokens currently approved for use with Clocktower subscriptions',
+		TOOL_PRICE,
+		{},
+		{},
+		async () =>
+			safeHandler('list_approved_tokens', async () =>
+				textResult({
+					chainId: 8453,
+					tokens: APPROVED_TOKENS,
+				}),
 			),
 	);
 

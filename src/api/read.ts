@@ -9,6 +9,7 @@ import {
   addressSchema,
   bytes32Schema,
 } from '../tools/read.js';
+import { APPROVED_TOKENS } from '../config/approvedTokens.js';
 import { z } from 'zod';
 
 // Re-export useful schemas for routes
@@ -142,4 +143,16 @@ export async function handleGetSubscriptionsDue(
     console.error('get_subscriptions_due failed', err);
     return Errors.upstream('Failed to fetch due subscriptions');
   }
+}
+
+/**
+ * Returns the lightly-managed list of approved tokens.
+ * This is static configuration because the contract does not expose
+ * an enumerable list of approvedERC20 entries.
+ */
+export function handleListApprovedTokens() {
+  return jsonResponse({
+    chainId: 8453,
+    tokens: APPROVED_TOKENS,
+  });
 }
