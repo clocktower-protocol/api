@@ -1,8 +1,8 @@
 /**
- * Stage 1: Consistent response helpers for the REST API.
+ * Consistent response helpers for the REST API.
  *
- * Success responses return data directly (as requested).
- * Error responses use a consistent shape.
+ * Success responses return data directly.
+ * Error responses use a consistent { error, code } shape (with optional `issues` for validation).
  */
 
 export type ApiErrorCode =
@@ -14,6 +14,7 @@ export type ApiErrorCode =
 export type ApiError = {
   error: string;
   code: ApiErrorCode;
+  issues?: Array<{ path: string; message: string }>;
 };
 
 export function jsonResponse(data: unknown, status = 200): Response {

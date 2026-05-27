@@ -6,9 +6,13 @@ import type { HTTPFacilitatorClient } from '@x402/core/server';
 type MockFacilitator = Partial<HTTPFacilitatorClient>;
 
 /**
- * Improved runtime tests for the custom x402 middleware (Stage 2).
+ * Runtime tests for the custom x402 middleware (withX402Payment).
  *
- * Focus: Better mocking of the facilitator to test the critical invariant.
+ * These tests focus on the critical "verify first, only settle on success" invariant
+ * using injected mock facilitators. They are the primary protection for the financial
+ * behavior of the REST API.
+ *
+ * Note: Tests default to x402-primary mode (API_REQUIRE_BASIC_AUTH=false).
  */
 
 function createMockContext(paymentHeader?: string) {
@@ -342,6 +346,30 @@ describe('withX402Payment - runtime tests with mocking', () => {
     await protectedFn(mockContext);
 
     expect(mockFacilitator.verifyPayment).toHaveBeenCalled();
+    expect(mockFacilitator.settlePayment).not.toHaveBeenCalled();
+  });
+
+  // Paranoid addition (Phase 4)
+  it('never leaks X-Payment-Response header even if settle mock lies on a failure path', async () => {
+    const mockFacilitator = createMockFacilitator({
+      settle: { success: true, transaction: '0xshould-not-appear' },
+    });
+
+    const validPayment = btoa(JSON.stringify({ mock: 'payment' }));
+    const mockContext = createMockContext(validPayment);
+
+    const handler = vi.fn().mockResolvedValue(new Response('validation failed hard', { status: 400 }));
+
+    const protectedFn = withX402Payment(
+      API_PRICES.submitSignedTransactions,
+      'Submit',
+      handler,
+      { facilitatorClient: mockFacilitator as any }
+    );
+
+    const res = await protectedFn(mockContext);
+
+    expect(res.headers.has('X-Payment-Response')).toBe(false);
     expect(mockFacilitator.settlePayment).not.toHaveBeenCalled();
   });
 

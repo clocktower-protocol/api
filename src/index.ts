@@ -47,15 +47,13 @@ async function handleRequest(
 	}
 
 	// === API Routes (powered by Hono) ===
-	// Design direction: x402 is the primary and authoritative payment/auth layer.
-	// Basic Auth is kept as a secondary / dev-convenience layer for now.
+	// x402 micropayments are the primary and authoritative payment/auth layer.
+	// All routes inside the Hono app are wrapped with withX402Payment(),
+	// making x402 non-bypassable.
 	//
-	// Behavior controlled by:
-	//   API_REQUIRE_BASIC_AUTH=true   → Basic Auth required (current default, safe mode)
-	//   API_REQUIRE_BASIC_AUTH=false  → Basic Auth skipped (x402 is the only required gate)
-	//
-	// All meaningful routes inside the Hono app are wrapped with withX402Payment(),
-	// making x402 non-bypassable regardless of Basic Auth settings.
+	// Basic Auth (`API_REQUIRE_BASIC_AUTH`) is an optional extra gate that can
+	// be enabled for manual developer testing. It is disabled by default in the
+	// test environment. x402 is always required.
 	if (url.pathname.startsWith('/api')) {
 		const requireBasicAuth = env.API_REQUIRE_BASIC_AUTH !== 'false';
 
@@ -79,7 +77,7 @@ async function handleRequest(
 		name: 'clocktower-mcp',
 		mcp: '/mcp',
 		rest: '/api',
-		note: 'REST API uses x402 as the primary layer (Basic Auth still enabled by default during transition).',
+		note: 'REST API uses x402 as the primary and required layer.',
 	});
 }
 

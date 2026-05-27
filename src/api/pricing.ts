@@ -1,8 +1,7 @@
 /**
- * Stage 2: Pricing configuration for the REST API (x402).
+ * Pricing configuration for the REST API (x402).
  *
- * These prices are defined here so they can be referenced consistently
- * when we later protect routes with the x402 middleware.
+ * Centralized here for consistency across read ($0.01) and write ($0.02) endpoints.
  */
 
 export const API_PRICES = {

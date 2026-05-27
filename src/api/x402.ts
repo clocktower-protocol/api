@@ -6,19 +6,19 @@ import { buildX402Config } from '../x402.js';
 import { Errors } from './responses.js';
 
 /**
- * Stage 2/3 x402 Payment Middleware (Path 1 - Low-level)
+ * x402 Payment Wrapper (Path 1 - Low-level using @x402/core primitives)
  *
- * Current limitations and assumptions (as of this stage):
+ * Current limitations and assumptions:
  * - Hardcoded to USDC on Base mainnet (eip155:8453)
  * - Uses the "exact" scheme only
- * - Returns raw x402 402 responses where possible
+ * - Returns raw x402 402 responses where practical
  * - Does NOT yet support multiple assets or networks
- * - Settlement metadata is attached via a custom header on success
+ * - Settlement metadata attached via X-Payment-Response header on success
  *
  * This implementation prioritizes:
  * - The critical "verify first, only settle on success" invariant
- * - Testability (facilitator can be injected)
- * - Staying close to the raw x402 protocol for 402 responses
+ * - Testability (facilitator can be injected for deterministic tests)
+ * - Staying close to the raw x402 protocol
  */
 
 type Env = any;

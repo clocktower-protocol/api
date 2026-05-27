@@ -227,8 +227,10 @@ export async function handleGetTransactionStatus(c: Context) {
    ===================================================== */
 function handleWriteError(err: any, operation: string) {
   // If the error is already one of our structured error responses, return it directly
+  // (preserve appropriate status based on the error code for consistency with read handlers)
   if (err && typeof err === 'object' && 'error' in err && 'code' in err) {
-    return jsonResponse(err, 400);
+    const status = err.code === 'NOT_FOUND' ? 404 : 400;
+    return jsonResponse(err, status);
   }
 
   // Zod validation errors → return rich validation error with issues array
