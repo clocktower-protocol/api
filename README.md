@@ -35,6 +35,8 @@ Tools are organized into two categories:
 - `get_protocol_state` — View current fee configuration
 - `get_subscription` — Fetch a single subscription by ID
 - `get_account_subscriptions` — List subscriptions for an account (as provider or subscriber)
+- `get_account` — Full enriched account view with two arrays: `subscribedTo` (subscriptions you pay into, including your fee balances) and `created` (subscriptions you created as provider)
+- `get_fee_balance` — Get your current fee balance on a specific subscription
 - `get_subscribers` — List subscribers and fee balances for a subscription
 - `get_approved_token` — Check configuration for an approved ERC-20 token (on-chain)
 - `list_approved_tokens` — List all ERC-20 tokens approved for use with subscriptions (static config)
@@ -72,7 +74,8 @@ The REST API provides the same capabilities as the MCP tools over standard HTTP,
 | `GET /api/subscriptions/due` | Subscriptions due on a given day/frequency |
 | `GET /api/subscriptions/:id` | Single subscription by ID |
 | `GET /api/subscriptions/:id/subscribers` | Subscribers for a subscription |
-| `GET /api/accounts/:address/subscriptions` | Subscriptions for an account |
+| `GET /api/accounts/:address/subscriptions` | Subscriptions for an account (rich) |
+| `GET /api/accounts/:address` | Full enriched account overview. Returns `subscribedTo` (what you pay into) and `created` (what you created as provider) |
 | `GET /api/approved-tokens` | List of approved tokens |
 | `GET /api/approved-tokens/:token` | Approved token configuration |
 

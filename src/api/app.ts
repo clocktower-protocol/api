@@ -44,6 +44,7 @@ export type ApiAppOptions = {
  *   - GET /api/subscriptions/:id
  *   - GET /api/subscriptions/:id/subscribers
  *   - GET /api/accounts/:address/subscriptions
+ *   - GET /api/accounts/:address          (full enriched view: subscribedTo + created)
  *   - GET /api/approved-tokens
  *   - GET /api/approved-tokens/:token
  *
@@ -167,10 +168,10 @@ export function createApiApp(options: ApiAppOptions = {}) {
     }
   ));
 
-  // Full account view (subscriptions + created subs with status)
+  // Full account view — rich enriched data with subscribedTo + created arrays
   app.get('/api/accounts/:address', withPayment(
     API_PRICES.getAccountSubscriptions,
-    'Get full account overview',
+    'Get full enriched account overview (subscribedTo + created)',
     async (c: any) => {
       const address = c.req.param('address');
       return await handleGetAccount(c.env, address);

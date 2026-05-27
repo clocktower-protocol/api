@@ -332,27 +332,41 @@ export async function getFeeBalance(env: Env, subscriptionId: `0x${string}`, sub
 }
 
 export async function getAccount(env: Env, account: `0x${string}`) {
-	const { chain, client } = getContractContext(env);
+	const { chain } = getContractContext(env);
 
-	const accountData = await client.readContract({
-		address: chain.contractAddress,
-		abi: CLOCKTOWER_READ_ABI,
-		functionName: 'getAccount',
-		args: [account],
-	});
+	// Fetch both views using the already-rich formatting logic
+	const [asSubscriberRaw, asProviderRaw] = await Promise.all([
+		getAccountSubscriptions(env, true, account),
+		getAccountSubscriptions(env, false, account),
+	]);
 
-	// Add human-readable labels for frequency and status (matching MCP style)
-	const formatSubIndex = (sub: any) => ({
-		...sub,
-		frequencyLabel: getFrequencyLabel(sub.frequency),
-		statusLabel: getStatusLabel(sub.status),
-	});
+	// For the subscriber view, enrich each entry with the caller's personal fee balance.
+	// This is the main value-add of the combined "full account" view.
+	const enrichedSubscribedTo = await Promise.all(
+		asSubscriberRaw.subscriptions.map(async (entry: any) => {
+			try {
+				const fee = await getFeeBalance(env, entry.subscription.id, account);
+				return {
+					...entry,
+					feeBalance: fee.feeBalance,
+					feeBalanceRaw: fee.feeBalanceRaw,
+				};
+			} catch {
+				// If fee balance lookup fails (very rare), still return the subscription data
+				return {
+					...entry,
+					feeBalance: '0',
+					feeBalanceRaw: '0',
+				};
+			}
+		})
+	);
 
 	return {
 		chainId: chain.chainId,
-		accountAddress: accountData.accountAddress,
-		subscriptions: (accountData.subscriptions || []).map(formatSubIndex),
-		provSubs: (accountData.provSubs || []).map(formatSubIndex),
+		accountAddress: account,
+		subscribedTo: enrichedSubscribedTo,
+		created: asProviderRaw.subscriptions,
 	};
 }
 
@@ -512,7 +526,7 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 
 	server.paidTool(
 		'get_account',
-		'Get full account overview including subscriptions and created subscriptions with status',
+		'Get a complete enriched view of an account: subscriptions the address pays into (as subscribedTo, with personal fee balances) and subscriptions it created as provider (as created). Includes full token metadata, human-readable amounts, labels, and subscriber counts.',
 		TOOL_PRICE,
 		{
 			address: addressSchema,
