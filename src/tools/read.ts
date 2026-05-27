@@ -242,6 +242,40 @@ export async function getApprovedToken(env: Env, token: `0x${string}`) {
 	};
 }
 
+export async function getFeeBalance(env: Env, subscriptionId: `0x${string}`, subscriber: `0x${string}`) {
+	const { chain, client } = getContractContext(env);
+
+	const balance = await client.readContract({
+		address: chain.contractAddress,
+		abi: CLOCKTOWER_READ_ABI,
+		functionName: 'feeBalance',
+		args: [subscriptionId, subscriber],
+	});
+
+	return {
+		chainId: chain.chainId,
+		subscriptionId,
+		subscriber,
+		feeBalance: balance.toString(),
+	};
+}
+
+export async function getAccount(env: Env, account: `0x${string}`) {
+	const { chain, client } = getContractContext(env);
+
+	const accountData = await client.readContract({
+		address: chain.contractAddress,
+		abi: CLOCKTOWER_READ_ABI,
+		functionName: 'getAccount',
+		args: [account],
+	});
+
+	return {
+		chainId: chain.chainId,
+		...accountData,
+	};
+}
+
 export async function getSubscriptionsDue(
 	env: Env,
 	options: { dayNumber?: number; frequency?: number } = {},
@@ -380,6 +414,35 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 					chainId: 8453,
 					tokens: APPROVED_TOKENS,
 				}),
+			),
+	);
+
+	server.paidTool(
+		'get_fee_balance',
+		'Get current fee balance for a subscriber on a specific subscription',
+		TOOL_PRICE,
+		{
+			id: bytes32Schema,
+			address: addressSchema,
+		},
+		{},
+		async ({ id, address }) =>
+			safeHandler('get_fee_balance', async () =>
+				textResult(await getFeeBalance(env, id as `0x${string}`, address as `0x${string}`)),
+			),
+	);
+
+	server.paidTool(
+		'get_account',
+		'Get full account overview including subscriptions and created subscriptions with status',
+		TOOL_PRICE,
+		{
+			address: addressSchema,
+		},
+		{},
+		async ({ address }) =>
+			safeHandler('get_account', async () =>
+				textResult(await getAccount(env, address as `0x${string}`)),
 			),
 	);
 

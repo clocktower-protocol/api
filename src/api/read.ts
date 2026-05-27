@@ -6,6 +6,8 @@ import {
   getAccountSubscriptions,
   getSubscribers,
   getSubscriptionsDue,
+  getFeeBalance,
+  getAccount,
   addressSchema,
   bytes32Schema,
 } from '../tools/read.js';
@@ -155,4 +157,39 @@ export function handleListApprovedTokens() {
     chainId: 8453,
     tokens: APPROVED_TOKENS,
   });
+}
+
+export async function handleGetFeeBalance(env: Env, idParam: string, addressParam: string) {
+  const idParse = bytes32Schema.safeParse(idParam);
+  if (!idParse.success) {
+    return Errors.validation('Invalid subscription id');
+  }
+
+  const addressParse = addressSchema.safeParse(addressParam);
+  if (!addressParse.success) {
+    return Errors.validation('Invalid address');
+  }
+
+  try {
+    const data = await getFeeBalance(env, idParse.data as `0x${string}`, addressParse.data as `0x${string}`);
+    return jsonResponse(data);
+  } catch (err: any) {
+    console.error('get_fee_balance failed', err);
+    return Errors.upstream('Failed to fetch fee balance');
+  }
+}
+
+export async function handleGetAccount(env: Env, addressParam: string) {
+  const parseResult = addressSchema.safeParse(addressParam);
+  if (!parseResult.success) {
+    return Errors.validation('Invalid address');
+  }
+
+  try {
+    const data = await getAccount(env, parseResult.data as `0x${string}`);
+    return jsonResponse(data);
+  } catch (err: any) {
+    console.error('get_account failed', err);
+    return Errors.upstream('Failed to fetch account');
+  }
 }

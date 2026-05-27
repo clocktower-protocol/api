@@ -8,6 +8,8 @@ import {
   handleGetApprovedToken,
   handleGetSubscriptionsDue,
   handleListApprovedTokens,
+  handleGetFeeBalance,
+  handleGetAccount,
 } from './read.js';
 import { withX402Payment } from './x402.js';
 import { API_PRICES } from './pricing.js';
@@ -151,6 +153,27 @@ export function createApiApp(options: ApiAppOptions = {}) {
     API_PRICES.getApprovedToken, // reuse same pricing for now
     'List approved tokens',
     async () => handleListApprovedTokens()
+  ));
+
+  // Fee balance for a specific subscription + subscriber
+  app.get('/api/subscriptions/:id/fee-balance', withPayment(
+    API_PRICES.getApprovedToken,
+    'Get fee balance for subscription',
+    async (c: any) => {
+      const id = c.req.param('id');
+      const address = c.req.query('address');
+      return await handleGetFeeBalance(c.env, id, address ?? '');
+    }
+  ));
+
+  // Full account view (subscriptions + created subs with status)
+  app.get('/api/accounts/:address', withPayment(
+    API_PRICES.getAccountSubscriptions,
+    'Get full account overview',
+    async (c: any) => {
+      const address = c.req.param('address');
+      return await handleGetAccount(c.env, address);
+    }
   ));
 
   // Catch-all for unknown routes under /api

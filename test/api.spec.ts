@@ -173,4 +173,18 @@ describe('clocktower-mcp worker - /api (full surface with x402)', () => {
 		// Should get 404 or rate limit, never 401 from Basic Auth
 		expect([404, 429]).toContain(res.status);
 	});
+
+	// === New read endpoints (fee balance + full account) ===
+
+	it('protects fee balance endpoint with x402', async () => {
+		const res = await fetchWorkerX402Only('/api/subscriptions/0x1234567890123456789012345678901234567890123456789012345678901234/fee-balance?address=0x1234567890123456789012345678901234567890');
+
+		expect([402, 429]).toContain(res.status);
+	});
+
+	it('protects account endpoint with x402', async () => {
+		const res = await fetchWorkerX402Only('/api/accounts/0x1234567890123456789012345678901234567890');
+
+		expect([402, 429]).toContain(res.status);
+	});
 });

@@ -96,4 +96,48 @@ export const CLOCKTOWER_READ_ABI = [
 		],
 		stateMutability: 'view',
 	},
+	{
+		name: 'feeBalance',
+		type: 'function',
+		inputs: [
+			{ name: 'id', type: 'bytes32' },
+			{ name: 'subscriber', type: 'address' },
+		],
+		outputs: [{ type: 'uint256' }],
+		stateMutability: 'view',
+	},
+	{
+		name: 'getAccount',
+		type: 'function',
+		inputs: [{ name: 'account', type: 'address' }],
+		outputs: [
+			{
+				components: [
+					{ name: 'accountAddress', type: 'address' },
+					{
+						components: [
+							{ name: 'id', type: 'bytes32' },
+							{ name: 'dueDay', type: 'uint16' },
+							{ name: 'frequency', type: 'uint8' },
+							{ name: 'status', type: 'uint8' },
+						],
+						name: 'subscriptions',
+						type: 'tuple[]',
+					},
+					{
+						components: [
+							{ name: 'id', type: 'bytes32' },
+							{ name: 'dueDay', type: 'uint16' },
+							{ name: 'frequency', type: 'uint8' },
+							{ name: 'status', type: 'uint8' },
+						],
+						name: 'provSubs',
+						type: 'tuple[]',
+					},
+				],
+				type: 'tuple',
+			},
+		],
+		stateMutability: 'view',
+	},
 ] as const;
