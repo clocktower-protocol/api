@@ -36,7 +36,8 @@ Tools are organized into two categories:
 - `get_subscription` — Fetch a single subscription by ID
 - `get_account_subscriptions` — List subscriptions for an account (as provider or subscriber)
 - `get_subscribers` — List subscribers and fee balances for a subscription
-- `get_approved_token` — Check configuration for an approved ERC-20 token
+- `get_approved_token` — Check configuration for an approved ERC-20 token (on-chain)
+- `list_approved_tokens` — List all ERC-20 tokens approved for use with subscriptions (static config)
 - `get_subscriptions_due` — Query subscriptions due on a given day/frequency
 
 **Write Tools** (priced at $0.01–$0.02):
@@ -72,7 +73,8 @@ The REST API provides the same capabilities as the MCP tools over standard HTTP,
 | `GET /api/subscriptions/:id` | Single subscription by ID |
 | `GET /api/subscriptions/:id/subscribers` | Subscribers for a subscription |
 | `GET /api/accounts/:address/subscriptions` | Subscriptions for an account |
-| `GET /api/tokens/:token` | Approved token configuration |
+| `GET /api/approved-tokens` | List of approved tokens |
+| `GET /api/approved-tokens/:token` | Approved token configuration |
 
 #### Write Endpoints (POST)
 

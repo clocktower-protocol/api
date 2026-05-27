@@ -44,7 +44,8 @@ export type ApiAppOptions = {
  *   - GET /api/subscriptions/:id
  *   - GET /api/subscriptions/:id/subscribers
  *   - GET /api/accounts/:address/subscriptions
- *   - GET /api/tokens/:token
+ *   - GET /api/approved-tokens
+ *   - GET /api/approved-tokens/:token
  *
  * Write endpoints (all protected with x402):
  *   - POST /api/check_subscribe_readiness
@@ -139,7 +140,7 @@ export function createApiApp(options: ApiAppOptions = {}) {
     }
   ));
 
-  app.get('/api/tokens/:token', withPayment(
+  app.get('/api/approved-tokens/:token', withPayment(
     API_PRICES.getApprovedToken,
     'Get approved token configuration',
     async (c: any) => {
@@ -149,7 +150,7 @@ export function createApiApp(options: ApiAppOptions = {}) {
   ));
 
   // List of approved tokens (lightly managed static list)
-  app.get('/api/tokens', withPayment(
+  app.get('/api/approved-tokens', withPayment(
     API_PRICES.getApprovedToken, // reuse same pricing for now
     'List approved tokens',
     async () => handleListApprovedTokens()
