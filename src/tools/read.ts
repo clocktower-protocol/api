@@ -1,6 +1,7 @@
 import type { X402McpServer } from './types.js';
 import { safeHandler } from './safeHandler.js';
 import { CLOCKTOWER_READ_ABI } from '../abi/clocktower.js';
+import { ERC20_ABI } from '../abi/erc20.js';
 import { resolveChain } from '../chain.js';
 import { createClocktowerClient } from '../client.js';
 import {
@@ -53,13 +54,38 @@ async function fetchTokenDecimals(
 	return decimals;
 }
 
-function formatSubscription(subscription: SubscriptionRecord, tokenDecimals: number) {
+async function getTokenMetadata(client: any, tokenAddress: `0x${string}`) {
+	try {
+		const [name, symbol] = await Promise.all([
+			client.readContract({
+				address: tokenAddress,
+				abi: ERC20_ABI,
+				functionName: 'name',
+			}),
+			client.readContract({
+				address: tokenAddress,
+				abi: ERC20_ABI,
+				functionName: 'symbol',
+			}),
+		]);
+		return { name, symbol };
+	} catch {
+		return { name: null, symbol: null };
+	}
+}
+
+async function formatSubscription(subscription: SubscriptionRecord, tokenDecimals: number, client: any) {
 	const { amount, amountRaw } = formatProtocolStoredAmount(subscription.amount, tokenDecimals);
+	const metadata = await getTokenMetadata(client, subscription.token);
 
 	return {
 		id: subscription.id,
 		provider: subscription.provider,
-		token: subscription.token,
+		token: {
+			address: subscription.token,
+			symbol: metadata.symbol,
+			name: metadata.name,
+		},
 		cancelled: subscription.cancelled,
 		dueDay: subscription.dueDay,
 		frequency: subscription.frequency,
@@ -70,12 +96,13 @@ function formatSubscription(subscription: SubscriptionRecord, tokenDecimals: num
 	};
 }
 
-function formatAccountSubscription(
+async function formatAccountSubscription(
 	entry: ReturnType<typeof parseAccountSubscriptionRecord>,
 	tokenDecimals: number,
+	client: any,
 ) {
 	return {
-		subscription: formatSubscription(entry.subscription, tokenDecimals),
+		subscription: await formatSubscription(entry.subscription, tokenDecimals, client),
 		status: entry.status,
 		statusLabel: getStatusLabel(entry.status),
 		totalSubscribers: entry.totalSubscribers,
@@ -134,11 +161,27 @@ export async function getProtocolState(env: Env) {
 		}),
 	]);
 
+	// Fees are stored in basis points where 10000 = 0%
+	// Examples:
+	//   callerFee = 10000 → 0%
+	//   callerFee = 10100 → 1%
+	//   callerFee = 10833 → 8.33%
+	//
+	// systemFee is the % of the caller fee that goes to the system.
+	//   systemFee = 10000 → 0%
+	//   systemFee = 10100 → 1% of caller fee
+
+	const callerFeeBps = Number(callerFee);
+	const systemFeeBps = Number(systemFee);
+
+	const callerFeePercent = (callerFeeBps - 10000) / 100;
+	const systemFeePercent = (systemFeeBps - 10000) / 100;
+
 	return {
 		chainId: chain.chainId,
 		contractAddress: chain.contractAddress,
-		callerFee,
-		systemFee,
+		callerFeePercent: callerFeePercent,
+		systemFeePercent: systemFeePercent,
 	};
 }
 
@@ -157,7 +200,7 @@ export async function getSubscription(env: Env, id: `0x${string}`) {
 
 	return {
 		chainId: chain.chainId,
-		subscription: formatSubscription(normalized, tokenDecimals),
+		subscription: await formatSubscription(normalized, tokenDecimals, client),
 	};
 }
 
@@ -185,13 +228,18 @@ export async function getAccountSubscriptions(
 		),
 	);
 
+	const formattedSubscriptions = [];
+	for (const entry of normalized) {
+		const decimals = decimalsCache.get(entry.subscription.token.toLowerCase()) ?? 18;
+		const formatted = await formatAccountSubscription(entry, decimals, client);
+		formattedSubscriptions.push(formatted);
+	}
+
 	return {
 		chainId: chain.chainId,
 		bySubscriber,
 		account,
-		subscriptions: normalized.map((entry) =>
-			formatAccountSubscription(entry, decimalsCache.get(entry.subscription.token.toLowerCase()) ?? 18),
-		),
+		subscriptions: formattedSubscriptions,
 	};
 }
 
@@ -245,18 +293,41 @@ export async function getApprovedToken(env: Env, token: `0x${string}`) {
 export async function getFeeBalance(env: Env, subscriptionId: `0x${string}`, subscriber: `0x${string}`) {
 	const { chain, client } = getContractContext(env);
 
-	const balance = await client.readContract({
+	const [balance, subscription] = await Promise.all([
+		client.readContract({
+			address: chain.contractAddress,
+			abi: CLOCKTOWER_READ_ABI,
+			functionName: 'feeBalance',
+			args: [subscriptionId, subscriber],
+		}),
+		client.readContract({
+			address: chain.contractAddress,
+			abi: CLOCKTOWER_READ_ABI,
+			functionName: 'idSubMap',
+			args: [subscriptionId],
+		}),
+	]);
+
+	const token = subscription[3] as `0x${string}`; // token is 4th field in Subscription tuple
+
+	const approvedToken = await client.readContract({
 		address: chain.contractAddress,
 		abi: CLOCKTOWER_READ_ABI,
-		functionName: 'feeBalance',
-		args: [subscriptionId, subscriber],
+		functionName: 'approvedERC20',
+		args: [token],
 	});
+
+	const { decimals } = parseApprovedTokenRecord(approvedToken);
+
+	const formatted = formatProtocolStoredAmount(balance, decimals);
 
 	return {
 		chainId: chain.chainId,
 		subscriptionId,
 		subscriber,
-		feeBalance: balance.toString(),
+		feeBalance: formatted.amount,
+		feeBalanceRaw: formatted.amountRaw.toString(),
+		tokenDecimals: decimals,
 	};
 }
 
@@ -270,9 +341,18 @@ export async function getAccount(env: Env, account: `0x${string}`) {
 		args: [account],
 	});
 
+	// Add human-readable labels for frequency and status (matching MCP style)
+	const formatSubIndex = (sub: any) => ({
+		...sub,
+		frequencyLabel: getFrequencyLabel(sub.frequency),
+		statusLabel: getStatusLabel(sub.status),
+	});
+
 	return {
 		chainId: chain.chainId,
-		...accountData,
+		accountAddress: accountData.accountAddress,
+		subscriptions: (accountData.subscriptions || []).map(formatSubIndex),
+		provSubs: (accountData.provSubs || []).map(formatSubIndex),
 	};
 }
 
@@ -302,7 +382,6 @@ export async function getSubscriptionsDue(
 			results.push({
 				frequency,
 				frequencyLabel: getFrequencyLabel(frequency),
-				dayNumber,
 				skipped: true,
 				skipReason: dueDayInfo.skipReason,
 				subscriptionIds: [],
@@ -320,14 +399,13 @@ export async function getSubscriptionsDue(
 		results.push({
 			frequency,
 			frequencyLabel: getFrequencyLabel(frequency),
-			dayNumber,
 			dueDay: dueDayInfo.dueDay,
 			skipped: false,
 			subscriptionIds,
 		});
 	}
 
-	return { chainId: chain.chainId, dayNumber, results };
+	return { chainId: chain.chainId, results };
 }
 
 export function registerPaidTools(server: X402McpServer, env: Env) {
