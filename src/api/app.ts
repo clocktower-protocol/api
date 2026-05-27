@@ -144,6 +144,15 @@ api.all('*', (c) => {
   return Errors.notFound('Not Found');
 });
 
+// Lightweight status endpoint for the API surface
+api.get('/api/status', (c) => {
+  return jsonResponse({
+    status: 'ok',
+    service: 'clocktower-rest-api',
+    x402: 'enabled',
+  });
+});
+
 // === Write Endpoints (POST) ===
 // All write endpoints will be wrapped with x402 at higher prices.
 // They will delegate to src/tx/prepare.ts and src/tx/submit.ts.

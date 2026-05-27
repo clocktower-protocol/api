@@ -198,6 +198,7 @@ export async function handleSubmitSignedTransactions(c: Context) {
       parsed.signedTransactions as `0x${string}`[]
     );
 
+    // Consistent success shape for submit
     return jsonResponse(result);
   } catch (err: any) {
     return handleWriteError(err, 'submit_signed_transactions');
@@ -225,6 +226,11 @@ export async function handleGetTransactionStatus(c: Context) {
    Shared Error Handler for Write Endpoints
    ===================================================== */
 function handleWriteError(err: any, operation: string) {
+  // If the error is already one of our structured error responses, return it directly
+  if (err && typeof err === 'object' && 'error' in err && 'code' in err) {
+    return jsonResponse(err, 400);
+  }
+
   // Zod validation errors → return rich validation error with issues array
   if (err instanceof z.ZodError) {
     return jsonResponse({

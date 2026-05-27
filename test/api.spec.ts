@@ -10,12 +10,20 @@ async function fetchWorker(pathname: string, init: RequestInit = {}) {
 	return res;
 }
 
-// Helper for testing x402-only mode (Basic Auth disabled for /api routes)
+/**
+ * Helper for testing in x402-primary mode (Basic Auth disabled for /api routes).
+ *
+ * Use this when you want to test the API as it will eventually run in production
+ * (where x402 is the only required auth layer).
+ *
+ * Example:
+ *   const res = await fetchWorkerX402Only('/api/prepare/subscribe', { method: 'POST', ... });
+ */
 async function fetchWorkerX402Only(pathname: string, init: RequestInit = {}) {
 	const ctx = createExecutionContext();
 	const req = new Request(`http://example.com${pathname}`, init);
 
-	// Override to simulate API_REQUIRE_BASIC_AUTH=false
+	// Force x402-only mode for the API surface
 	const testEnv = {
 		...env,
 		API_REQUIRE_BASIC_AUTH: 'false',
@@ -26,7 +34,7 @@ async function fetchWorkerX402Only(pathname: string, init: RequestInit = {}) {
 	return res;
 }
 
-describe('clocktower-mcp worker - /api (reads + writes with x402)', () => {
+describe('clocktower-mcp worker - /api (full surface with x402)', () => {
 	it('returns consistent error shape for unknown API routes', async () => {
 		const res = await fetchWorker('/api/unknown/path');
 		expect(res.status).toBe(404);

@@ -319,4 +319,92 @@ describe('withX402Payment - runtime tests with mocking', () => {
     expect(mockFacilitator.verifyPayment).toHaveBeenCalled();
     expect(mockFacilitator.settlePayment).not.toHaveBeenCalled();
   });
+
+  // === Strengthened write path coverage through x402 ===
+
+  it('calls settle for successful write handler (prepare_subscribe flow)', async () => {
+    const mockFacilitator = createMockFacilitator();
+
+    const validPayment = btoa(JSON.stringify({ mock: 'payment' }));
+    const mockContext = createMockContext(validPayment);
+
+    // Simulate a successful write handler response
+    const handler = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ prepareId: '123e4567-e89b-12d3-a456-426614174000' }), { status: 200 })
+    );
+
+    const protectedFn = withX402Payment(
+      API_PRICES.prepareSubscribe,
+      'Prepare subscribe',
+      handler,
+      { facilitatorClient: mockFacilitator as any }
+    );
+
+    const res = await protectedFn(mockContext);
+
+    expect(res.status).toBe(200);
+    expect(mockFacilitator.verifyPayment).toHaveBeenCalled();
+    expect(mockFacilitator.settlePayment).toHaveBeenCalled();
+  });
+
+  it('does NOT call settle when a write handler fails (critical for prepare flows)', async () => {
+    const mockFacilitator = createMockFacilitator();
+
+    const validPayment = btoa(JSON.stringify({ mock: 'payment' }));
+    const mockContext = createMockContext(validPayment);
+
+    // Simulate a write handler that fails (e.g. invalid subscription data)
+    const handler = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: 'Invalid subscription', code: 'VALIDATION_ERROR' }), { status: 400 })
+    );
+
+    const protectedFn = withX402Payment(
+      API_PRICES.prepareSubscribe,
+      'Prepare subscribe',
+      handler,
+      { facilitatorClient: mockFacilitator as any }
+    );
+
+    await protectedFn(mockContext);
+
+    expect(mockFacilitator.verifyPayment).toHaveBeenCalled();
+    expect(mockFacilitator.settlePayment).not.toHaveBeenCalled();
+  });
+
+  it('calls settle for successful prepare_create_subscription', async () => {
+    const mockFacilitator = createMockFacilitator();
+    const validPayment = btoa(JSON.stringify({ mock: 'payment' }));
+    const mockContext = createMockContext(validPayment);
+
+    const handler = vi.fn().mockResolvedValue(new Response(JSON.stringify({ prepareId: 'test-id' }), { status: 200 }));
+
+    const protectedFn = withX402Payment(
+      API_PRICES.prepareCreateSubscription,
+      'Prepare create subscription',
+      handler,
+      { facilitatorClient: mockFacilitator as any }
+    );
+
+    const res = await protectedFn(mockContext);
+    expect(res.status).toBe(200);
+    expect(mockFacilitator.settlePayment).toHaveBeenCalled();
+  });
+
+  it('does not call settle when submit_signed_transactions handler fails', async () => {
+    const mockFacilitator = createMockFacilitator();
+    const validPayment = btoa(JSON.stringify({ mock: 'payment' }));
+    const mockContext = createMockContext(validPayment);
+
+    const handler = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: 'Invalid nonce' }), { status: 400 }));
+
+    const protectedFn = withX402Payment(
+      API_PRICES.submitSignedTransactions,
+      'Submit signed transactions',
+      handler,
+      { facilitatorClient: mockFacilitator as any }
+    );
+
+    await protectedFn(mockContext);
+    expect(mockFacilitator.settlePayment).not.toHaveBeenCalled();
+  });
 });
