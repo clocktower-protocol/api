@@ -32,6 +32,7 @@ import { addressSchema, bytes32Schema } from '../validation.js';
 import { textResult } from '../utils.js';
 import { safeHandler } from './safeHandler.js';
 import type { X402McpServer } from './types.js';
+import { normalizeSubscriptionAmount } from '../tx/amount.js';
 
 const writeAnnotations = { readOnlyHint: false };
 const destructiveAnnotations = { readOnlyHint: false, destructiveHint: true };
@@ -68,7 +69,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 		WRITE_PREPARE_PRICE,
 		{
 			from: addressSchema,
-			amount: z.string().describe('Protocol amount as decimal string (18 decimals)'),
+			amount: z.string().describe('Human amount in the token\'s native decimals (e.g. "100.5" for USDC)'),
 			token: addressSchema,
 			details: createSubscriptionInputSchema.shape.details,
 			frequency: z.number().int().min(0).max(3),
@@ -78,11 +79,17 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 		async (args) =>
 			safeHandler('prepare_create_subscription', async () => {
 				const parsed = createSubscriptionInputSchema.parse(args);
+
+				const normalized = await normalizeSubscriptionAmount(env, {
+					amount: parsed.amount,
+					token: parsed.token,
+				});
+
 				return textResult(
 					await prepareCreateSubscription(
 						env,
 						parsed.from,
-						parsed.amount,
+						normalized.amount,
 						parsed.token,
 						toWriteDetails(parsed.details),
 						parsed.frequency,
@@ -103,9 +110,12 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 		writeAnnotations,
 		async ({ from, subscription }) =>
 			safeHandler('prepare_subscribe', async () => {
-				const parsed = subscribeInputSchema.parse({ from, subscription });
+				let parsed = subscribeInputSchema.parse({ from, subscription });
+
+				const normalizedSubscription = await normalizeSubscriptionAmount(env, parsed.subscription);
+
 				return textResult(
-					await prepareSubscribe(env, parsed.from, toWriteSubscription(parsed.subscription)),
+					await prepareSubscribe(env, parsed.from, toWriteSubscription(normalizedSubscription)),
 				);
 			}),
 	);
@@ -122,11 +132,13 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 		async ({ from, subscription }) =>
 			safeHandler('prepare_cancel_subscription', async () => {
 				const parsed = subscriptionActionInputSchema.parse({ from, subscription });
+				const normalizedSubscription = await normalizeSubscriptionAmount(env, parsed.subscription);
+
 				return textResult(
 					await prepareCancelSubscription(
 						env,
 						parsed.from,
-						toWriteSubscription(parsed.subscription),
+						toWriteSubscription(normalizedSubscription),
 					),
 				);
 			}),
@@ -144,8 +156,10 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 		async ({ from, subscription }) =>
 			safeHandler('prepare_unsubscribe', async () => {
 				const parsed = subscriptionActionInputSchema.parse({ from, subscription });
+				const normalizedSubscription = await normalizeSubscriptionAmount(env, parsed.subscription);
+
 				return textResult(
-					await prepareUnsubscribe(env, parsed.from, toWriteSubscription(parsed.subscription)),
+					await prepareUnsubscribe(env, parsed.from, toWriteSubscription(normalizedSubscription)),
 				);
 			}),
 	);
@@ -163,11 +177,13 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 		async (args) =>
 			safeHandler('prepare_unsubscribe_by_provider', async () => {
 				const parsed = unsubscribeByProviderInputSchema.parse(args);
+				const normalizedSubscription = await normalizeSubscriptionAmount(env, parsed.subscription);
+
 				return textResult(
 					await prepareUnsubscribeByProvider(
 						env,
 						parsed.from,
-						toWriteSubscription(parsed.subscription),
+						toWriteSubscription(normalizedSubscription),
 						parsed.subscriber,
 					),
 				);

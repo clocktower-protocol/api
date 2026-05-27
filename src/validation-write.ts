@@ -83,14 +83,13 @@ export function validateDueDayForFrequency(frequency: number, dueDay: number): s
 	return null;
 }
 
-export const protocolAmountSchema = z
+export const humanAmountSchema = z
 	.string()
-	.regex(/^\d+(\.\d+)?$/, 'Amount must be a decimal string')
-	.transform((value) => parseUnits(value, PROTOCOL_DECIMALS));
+	.regex(/^\d+(\.\d+)?$/, 'Amount must be a decimal string');
 
 export const subscriptionInputSchema = z.object({
 	id: bytes32Schema,
-	amount: bigintStringSchema,
+	amount: z.union([humanAmountSchema, bigintStringSchema]),
 	provider: addressSchema,
 	token: addressSchema,
 	cancelled: z.boolean(),
@@ -113,7 +112,7 @@ export function toWriteSubscription(input: z.infer<typeof subscriptionInputSchem
 export const createSubscriptionInputSchema = z
 	.object({
 		from: fromAddressSchema,
-		amount: protocolAmountSchema,
+		amount: humanAmountSchema,
 		token: addressSchema,
 		details: detailsSchema,
 		frequency: z.number().int().min(0).max(3),

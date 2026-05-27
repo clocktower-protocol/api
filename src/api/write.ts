@@ -35,9 +35,6 @@ import {
   toWriteDetails,
 } from '../validation-write.js';
 
-// For check readiness we need the chain resolver
-import { resolveChain } from '../chain.js';
-
 /* =====================================================
    Write Handlers
    All handlers assume the caller has already passed x402
@@ -74,10 +71,28 @@ export async function handlePrepareCreateSubscription(c: Context) {
     const body = await c.req.json();
     const parsed = createSubscriptionInputSchema.parse(body);
 
+    // Fetch token decimals from the protocol
+    const chain = resolveChain(c.env);
+    const client = createClocktowerClient(chain);
+
+    const approvedToken = parseApprovedTokenRecord(
+      await client.readContract({
+        address: chain.contractAddress,
+        abi: CLOCKTOWER_READ_ABI,
+        functionName: 'approvedERC20',
+        args: [parsed.token],
+      }),
+    );
+
+    // Convert user human amount string (e.g. "100.5") using the token's actual decimals
+    // into protocol internal units (always 18 decimals).
+    const nativeAmount = parseUnits(parsed.amount, approvedToken.decimals);
+    const protocolAmount = convertTokenNativeToProtocolAmount(nativeAmount, approvedToken.decimals);
+
     const result = await prepareCreateSubscription(
       c.env,
       parsed.from,
-      parsed.amount,
+      protocolAmount,
       parsed.token,
       toWriteDetails(parsed.details),
       parsed.frequency,
@@ -96,10 +111,14 @@ export async function handlePrepareSubscribe(c: Context) {
     const body = await c.req.json();
     const parsed = subscribeInputSchema.parse(body);
 
+    let subscription = parsed.subscription;
+
+    const normalizedSubscription = await normalizeSubscriptionAmount(c.env, parsed.subscription);
+
     const result = await prepareSubscribe(
       c.env,
       parsed.from,
-      toWriteSubscription(parsed.subscription)
+      toWriteSubscription(normalizedSubscription)
     );
 
     return jsonResponse(result);
@@ -114,10 +133,12 @@ export async function handlePrepareCancelSubscription(c: Context) {
     const body = await c.req.json();
     const parsed = subscriptionActionInputSchema.parse(body);
 
+    const normalizedSubscription = await normalizeSubscriptionAmount(c.env, parsed.subscription);
+
     const result = await prepareCancelSubscription(
       c.env,
       parsed.from,
-      toWriteSubscription(parsed.subscription)
+      toWriteSubscription(normalizedSubscription)
     );
 
     return jsonResponse(result);
@@ -132,10 +153,12 @@ export async function handlePrepareUnsubscribe(c: Context) {
     const body = await c.req.json();
     const parsed = subscriptionActionInputSchema.parse(body);
 
+    const normalizedSubscription = await normalizeSubscriptionAmount(c.env, parsed.subscription);
+
     const result = await prepareUnsubscribe(
       c.env,
       parsed.from,
-      toWriteSubscription(parsed.subscription)
+      toWriteSubscription(normalizedSubscription)
     );
 
     return jsonResponse(result);
@@ -150,10 +173,12 @@ export async function handlePrepareUnsubscribeByProvider(c: Context) {
     const body = await c.req.json();
     const parsed = unsubscribeByProviderInputSchema.parse(body);
 
+    const normalizedSubscription = await normalizeSubscriptionAmount(c.env, parsed.subscription);
+
     const result = await prepareUnsubscribeByProvider(
       c.env,
       parsed.from,
-      toWriteSubscription(parsed.subscription),
+      toWriteSubscription(normalizedSubscription),
       parsed.subscriber
     );
 

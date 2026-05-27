@@ -82,6 +82,22 @@ export function convertProtocolAmountToTokenNative(amount: bigint, tokenDecimals
 	return amount;
 }
 
+/**
+ * Converts a user-supplied amount (in the token's native decimals)
+ * into the protocol's internal representation (always 18 decimals).
+ */
+export function convertTokenNativeToProtocolAmount(amount: bigint, tokenDecimals: number): bigint {
+	if (tokenDecimals > PROTOCOL_DECIMALS) {
+		return amount / 10n ** BigInt(tokenDecimals - PROTOCOL_DECIMALS);
+	}
+
+	if (tokenDecimals < PROTOCOL_DECIMALS) {
+		return amount * 10n ** BigInt(PROTOCOL_DECIMALS - tokenDecimals);
+	}
+
+	return amount;
+}
+
 export function formatProtocolStoredAmount(protocolAmount: bigint, tokenDecimals: number) {
 	const amountRaw = convertProtocolAmountToTokenNative(protocolAmount, tokenDecimals);
 

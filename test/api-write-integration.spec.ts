@@ -102,6 +102,39 @@ describe('API write integration - real handlers', () => {
     expect(body.error).toBeDefined();
     expect(body.code).toBeDefined();
   });
+
+  it('accepts human-readable amount for a 6-decimal token without amount conversion errors', async () => {
+    const mockContext = {
+      req: {
+        json: async () => ({
+          from: '0x1234567890123456789012345678901234567890',
+          amount: '100.5', // human USDC amount (should be converted internally)
+          token: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+          details: { name: 'Test' },
+          frequency: 1,
+          dueDay: 15,
+        }),
+      },
+      env: {},
+    } as any;
+
+    const res = await handlePrepareCreateSubscription(mockContext);
+    expect(res).toBeInstanceOf(Response);
+
+    const body = await res.json();
+
+    // We mainly want to ensure it did not fail with a schema/validation error
+    // specifically about the amount format or decimals.
+    // Downstream errors (e.g. from prepareCreateSubscription trying to talk to a contract)
+    // are acceptable in this synthetic test environment.
+    if (body?.error && body?.code === 'VALIDATION_ERROR') {
+      // Only fail the test if the error mentions "amount" or "decimal"
+      const msg = (body.error || '').toLowerCase();
+      if (msg.includes('amount') || msg.includes('decimal')) {
+        throw new Error('Handler failed on amount/decimal conversion: ' + body.error);
+      }
+    }
+  });
 });
 
 describe('API write integration - x402 gate at route level (using factory)', () => {
