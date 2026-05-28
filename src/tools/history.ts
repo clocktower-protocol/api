@@ -15,10 +15,11 @@
  * - No leakage of GRAPH_* secrets in errors
  */
 
-import type { Env } from '../../env.d.ts';
 import dayjs from 'dayjs';
 import { APPROVED_TOKENS } from '../config/approvedTokens.js';
 import { formatEther } from 'viem'; // Already a dependency via other modules
+
+// Note: Env interface is globally available via env.d.ts augmentation
 
 // ============================================
 // Types (modeled after frontend/src/types/subscription.d.ts for parity)
@@ -159,7 +160,7 @@ async function querySubgraph(
   if (cache) {
     const cachedResponse = await cache.match(cacheKey);
     if (cachedResponse) {
-      return cachedResponse.json();
+      return (await cachedResponse.json()) as any;
     }
   }
 
@@ -205,12 +206,10 @@ async function querySubgraph(
       const responseToCache = new Response(JSON.stringify(json.data), {
         headers: { 'Content-Type': 'application/json' },
       });
-      // Note: We can't easily set custom TTL on caches.default in all contexts,
-      // but we can use a reasonable expiration via the response.
       await cache.put(cacheKey, responseToCache);
     }
 
-    return json.data;
+    return json.data as any;
   } catch (err: any) {
     if (err.name === 'AbortError') {
       throw new Error('Subgraph request timed out');
@@ -262,6 +261,73 @@ const GET_LATEST_PROV_DETAILS = `
       domain
       email
       misc
+    }
+  }
+`;
+
+const GET_SUB_LOGS_AS_SUBSCRIBER = `
+  query GetSubLogsAsSubscriber($subscriber: Bytes!, $first: Int, $skip: Int) {
+    subLogs(
+      where: { subscriber: $subscriber }
+      first: $first
+      skip: $skip
+      orderBy: timestamp
+      orderDirection: desc
+    ) {
+      internal_id
+      provider
+      subscriber
+      timestamp
+      amount
+      token
+      subScriptEvent
+      blockNumber
+      blockTimestamp
+      transactionHash
+    }
+  }
+`;
+
+const GET_SUB_LOGS_AS_PROVIDER = `
+  query GetSubLogsAsProvider($provider: Bytes!, $first: Int, $skip: Int) {
+    subLogs(
+      where: { provider: $provider }
+      first: $first
+      skip: $skip
+      orderBy: timestamp
+      orderDirection: desc
+    ) {
+      internal_id
+      provider
+      subscriber
+      timestamp
+      amount
+      token
+      subScriptEvent
+      blockNumber
+      blockTimestamp
+      transactionHash
+    }
+  }
+`;
+
+const GET_DETAILS_LOG = `
+  query GetDetailsLog($subscriptionId: Bytes!, $first: Int, $skip: Int) {
+    detailsLogs(
+      where: { internal_id: $subscriptionId }
+      first: $first
+      skip: $skip
+      orderBy: timestamp
+      orderDirection: desc
+    ) {
+      internal_id
+      provider
+      timestamp
+      url
+      description
+      blockNumber
+      blockTimestamp
+      transactionHash
     }
   }
 `;
@@ -350,6 +416,102 @@ export async function getProviderProfile(
   };
 }
 
+/**
+ * Get combined activity for an account across all their subscriptions
+ * (both as a subscriber and as a provider/creator).
+ */
+export async function getAccountActivity(
+  env: Env,
+  account: `0x${string}`,
+  chainId: number = 8453,
+  options: HistoryOptions = {}
+) {
+  const first = Math.min(options.first ?? DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT);
+  const skip = options.skip ?? 0;
+
+  const [asSubscriberData, asProviderData] = await Promise.all([
+    querySubgraph(env, chainId, GET_SUB_LOGS_AS_SUBSCRIBER, {
+      subscriber: account.toLowerCase(),
+      first,
+      skip,
+    }),
+    querySubgraph(env, chainId, GET_SUB_LOGS_AS_PROVIDER, {
+      provider: account.toLowerCase(),
+      first,
+      skip,
+    }),
+  ]);
+
+  const subscriberEvents: SubLog[] = asSubscriberData?.subLogs ?? [];
+  const providerEvents: SubLog[] = asProviderData?.subLogs ?? [];
+
+  // Merge and deduplicate by transactionHash + internal_id (simple approach)
+  const allEvents = [...subscriberEvents, ...providerEvents];
+  const seen = new Set<string>();
+  const uniqueEvents = allEvents.filter((e) => {
+    const key = `${e.transactionHash}:${e.internal_id}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  // Sort by timestamp desc
+  uniqueEvents.sort((a, b) => Number(b.timestamp) - Number(a.timestamp));
+
+  // Apply limit after merge
+  const limitedEvents = uniqueEvents.slice(0, first);
+
+  const formatted = limitedEvents.map((event) =>
+    formatSubLogEvent(event)
+  );
+
+  return {
+    chainId,
+    account,
+    events: formatted,
+    hasMore: uniqueEvents.length > first,
+    count: formatted.length,
+    breakdown: {
+      asSubscriber: subscriberEvents.length,
+      asProvider: providerEvents.length,
+    },
+  };
+}
+
+/**
+ * Get history of description / URL changes for a subscription (DetailsLog).
+ */
+export async function getSubscriptionDetailsHistory(
+  env: Env,
+  subscriptionId: `0x${string}`,
+  chainId: number = 8453,
+  options: HistoryOptions = {}
+) {
+  const first = Math.min(options.first ?? DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT);
+  const skip = options.skip ?? 0;
+
+  const data = await querySubgraph(env, chainId, GET_DETAILS_LOG, {
+    subscriptionId: subscriptionId.toLowerCase(),
+    first,
+    skip,
+  });
+
+  const events: DetailsLog[] = data?.detailsLogs ?? [];
+
+  const formattedEvents = events.map((event) => ({
+    ...event,
+    formattedTimestamp: formatTimestamp(event.timestamp),
+  }));
+
+  return {
+    chainId,
+    subscriptionId,
+    events: formattedEvents,
+    hasMore: events.length === first,
+    count: formattedEvents.length,
+  };
+}
+
 // TODO (rest of Phase 2 + later):
 // - getAccountActivity (combined view across subs)
 // - getSubscriptionDetailsHistory (DetailsLog)
@@ -359,3 +521,35 @@ export async function getProviderProfile(
 
 export const HISTORY_DEFAULT_LIMIT = DEFAULT_HISTORY_LIMIT;
 export const HISTORY_MAX_LIMIT = MAX_HISTORY_LIMIT;
+
+// ============================================
+// Cost / Batch Pricing Helpers (for reference in pricing.ts)
+// ============================================
+
+/**
+ * Suggested pricing model for history queries.
+ *
+ * This is a helper to keep pricing logic near the history code.
+ * The actual prices are defined in src/api/pricing.ts.
+ *
+ * Cost model rationale:
+ * - Base fee covers the GraphQL round-trip + x402 overhead + small result set.
+ * - Per-batch adder covers larger result sets (The Graph charges based on
+ *   query complexity + data transfer on paid plans).
+ * - We hard-limit server-side to prevent abuse and runaway costs.
+ */
+export function calculateSuggestedHistoryPrice(recordCount: number): number {
+  const BASE_PRICE = 0.03;           // USD for first ~50 records
+  const PER_50_RECORDS = 0.01;       // USD for every additional 50 records
+
+  if (recordCount <= 50) return BASE_PRICE;
+
+  const extraBatches = Math.ceil((recordCount - 50) / 50);
+  return BASE_PRICE + (extraBatches * PER_50_RECORDS);
+}
+
+/**
+ * Recommended maximum number of records to return in a single history call
+ * before forcing the client to paginate.
+ */
+export const RECOMMENDED_HISTORY_BATCH_SIZE = 100;

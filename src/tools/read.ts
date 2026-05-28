@@ -27,6 +27,15 @@ import {
 	type SubscriptionRecord,
 } from '../validation.js';
 import { APPROVED_TOKENS } from '../config/approvedTokens.js';
+import {
+  getSubscriptionHistory,
+  getAccountActivity,
+  getProviderProfile,
+  getSubscriptionDetailsHistory,
+  HISTORY_DEFAULT_LIMIT,
+} from './history.js';
+import { API_PRICES } from '../api/pricing.js';
+import { z } from 'zod';
 
 type ClocktowerClient = ReturnType<typeof createClocktowerClient>;
 
@@ -553,6 +562,86 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 					await getSubscriptionsDue(env, {
 						dayNumber: dayNumber as number | undefined,
 						frequency: frequency as number | undefined,
+					}),
+				),
+			),
+	);
+
+	// === History & Profile tools (subgraph-backed) ===
+	// These use x402 payments with higher pricing to cover subgraph costs.
+
+	server.paidTool(
+		'get_subscription_history',
+		'Get activity history (SubLog) for a specific subscription with formatting and pagination',
+		API_PRICES.subscriptionHistory,
+		{
+			id: bytes32Schema,
+			first: z.coerce.number().int().min(1).max(200).optional(),
+			skip: z.coerce.number().int().min(0).optional(),
+		},
+		{},
+		async ({ id, first, skip }) =>
+			safeHandler('get_subscription_history', async () =>
+				textResult(
+					await getSubscriptionHistory(env, id as `0x${string}`, 8453, {
+						first: first as number | undefined,
+						skip: skip as number | undefined,
+					}),
+				),
+			),
+	);
+
+	server.paidTool(
+		'get_account_activity',
+		'Get combined activity history across all subscriptions an account participates in (as subscriber or provider)',
+		API_PRICES.accountActivity,
+		{
+			address: addressSchema,
+			first: z.coerce.number().int().min(1).max(200).optional(),
+			skip: z.coerce.number().int().min(0).optional(),
+		},
+		{},
+		async ({ address, first, skip }) =>
+			safeHandler('get_account_activity', async () =>
+				textResult(
+					await getAccountActivity(env, address as `0x${string}`, 8453, {
+						first: first as number | undefined,
+						skip: skip as number | undefined,
+					}),
+				),
+			),
+	);
+
+	server.paidTool(
+		'get_provider_profile',
+		'Get the latest provider profile details (ProvDetailsLog)',
+		API_PRICES.providerProfile,
+		{
+			address: addressSchema,
+		},
+		{},
+		async ({ address }) =>
+			safeHandler('get_provider_profile', async () =>
+				textResult(await getProviderProfile(env, address as `0x${string}`, 8453)),
+			),
+	);
+
+	server.paidTool(
+		'get_subscription_details_history',
+		'Get history of description/URL changes for a subscription (DetailsLog)',
+		API_PRICES.subscriptionDetailsHistory,
+		{
+			id: bytes32Schema,
+			first: z.coerce.number().int().min(1).max(200).optional(),
+			skip: z.coerce.number().int().min(0).optional(),
+		},
+		{},
+		async ({ id, first, skip }) =>
+			safeHandler('get_subscription_details_history', async () =>
+				textResult(
+					await getSubscriptionDetailsHistory(env, id as `0x${string}`, 8453, {
+						first: first as number | undefined,
+						skip: skip as number | undefined,
 					}),
 				),
 			),

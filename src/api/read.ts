@@ -11,6 +11,13 @@ import {
   addressSchema,
   bytes32Schema,
 } from '../tools/read.js';
+
+import {
+  getSubscriptionHistory,
+  getAccountActivity,
+  getProviderProfile,
+  getSubscriptionDetailsHistory,
+} from '../tools/history.js';
 import { APPROVED_TOKENS } from '../config/approvedTokens.js';
 import { z } from 'zod';
 
@@ -191,5 +198,91 @@ export async function handleGetAccount(env: Env, addressParam: string) {
   } catch (err: any) {
     console.error('get_account failed', err);
     return Errors.upstream('Failed to fetch account');
+  }
+}
+
+// === History & Profile handlers (subgraph-backed) ===
+
+export async function handleGetSubscriptionHistory(env: Env, idParam: string, query: any) {
+  const parseResult = bytes32Schema.safeParse(idParam);
+  if (!parseResult.success) {
+    return Errors.validation('Invalid subscription id');
+  }
+
+  try {
+    const data = await getSubscriptionHistory(
+      env,
+      parseResult.data as `0x${string}`,
+      8453,
+      {
+        first: query.first ? Number(query.first) : undefined,
+        skip: query.skip ? Number(query.skip) : undefined,
+      }
+    );
+    return jsonResponse(data);
+  } catch (err: any) {
+    console.error('get_subscription_history failed', err);
+    return Errors.upstream('Failed to fetch subscription history');
+  }
+}
+
+export async function handleGetAccountActivity(env: Env, addressParam: string, query: any) {
+  const parseResult = addressSchema.safeParse(addressParam);
+  if (!parseResult.success) {
+    return Errors.validation('Invalid address');
+  }
+
+  try {
+    const data = await getAccountActivity(
+      env,
+      parseResult.data as `0x${string}`,
+      8453,
+      {
+        first: query.first ? Number(query.first) : undefined,
+        skip: query.skip ? Number(query.skip) : undefined,
+      }
+    );
+    return jsonResponse(data);
+  } catch (err: any) {
+    console.error('get_account_activity failed', err);
+    return Errors.upstream('Failed to fetch account activity');
+  }
+}
+
+export async function handleGetProviderProfile(env: Env, addressParam: string) {
+  const parseResult = addressSchema.safeParse(addressParam);
+  if (!parseResult.success) {
+    return Errors.validation('Invalid address');
+  }
+
+  try {
+    const data = await getProviderProfile(env, parseResult.data as `0x${string}`, 8453);
+    return jsonResponse(data);
+  } catch (err: any) {
+    console.error('get_provider_profile failed', err);
+    return Errors.upstream('Failed to fetch provider profile');
+  }
+}
+
+export async function handleGetSubscriptionDetailsHistory(env: Env, idParam: string, query: any) {
+  const parseResult = bytes32Schema.safeParse(idParam);
+  if (!parseResult.success) {
+    return Errors.validation('Invalid subscription id');
+  }
+
+  try {
+    const data = await getSubscriptionDetailsHistory(
+      env,
+      parseResult.data as `0x${string}`,
+      8453,
+      {
+        first: query.first ? Number(query.first) : undefined,
+        skip: query.skip ? Number(query.skip) : undefined,
+      }
+    );
+    return jsonResponse(data);
+  } catch (err: any) {
+    console.error('get_subscription_details_history failed', err);
+    return Errors.upstream('Failed to fetch details history');
   }
 }

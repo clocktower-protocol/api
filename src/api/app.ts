@@ -10,6 +10,10 @@ import {
   handleListApprovedTokens,
   handleGetFeeBalance,
   handleGetAccount,
+  handleGetSubscriptionHistory,
+  handleGetAccountActivity,
+  handleGetProviderProfile,
+  handleGetSubscriptionDetailsHistory,
 } from './read.js';
 import { withX402Payment } from './x402.js';
 import { API_PRICES } from './pricing.js';
@@ -175,6 +179,43 @@ export function createApiApp(options: ApiAppOptions = {}) {
     async (c: any) => {
       const address = c.req.param('address');
       return await handleGetAccount(c.env, address);
+    }
+  ));
+
+  // === History & Profile endpoints (subgraph-backed) ===
+  app.get('/api/subscriptions/:id/history', withPayment(
+    API_PRICES.subscriptionHistory,
+    'Get activity history for a subscription',
+    async (c: any) => {
+      const id = c.req.param('id');
+      return await handleGetSubscriptionHistory(c.env, id, c.req.query());
+    }
+  ));
+
+  app.get('/api/accounts/:address/activity', withPayment(
+    API_PRICES.accountActivity,
+    'Get combined activity history for an account',
+    async (c: any) => {
+      const address = c.req.param('address');
+      return await handleGetAccountActivity(c.env, address, c.req.query());
+    }
+  ));
+
+  app.get('/api/providers/:address', withPayment(
+    API_PRICES.providerProfile,
+    'Get latest provider profile details',
+    async (c: any) => {
+      const address = c.req.param('address');
+      return await handleGetProviderProfile(c.env, address);
+    }
+  ));
+
+  app.get('/api/subscriptions/:id/details-history', withPayment(
+    API_PRICES.subscriptionDetailsHistory,
+    'Get history of description/URL changes for a subscription',
+    async (c: any) => {
+      const id = c.req.param('id');
+      return await handleGetSubscriptionDetailsHistory(c.env, id, c.req.query());
     }
   ));
 
