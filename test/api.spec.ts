@@ -187,4 +187,30 @@ describe('clocktower-mcp worker - /api (full surface with x402)', () => {
 
 		expect([402, 429]).toContain(res.status);
 	});
+
+	// === History & Profile endpoints (subgraph-backed) x402 protection ===
+
+	it('protects subscription history endpoint with x402', async () => {
+		const res = await fetchWorkerX402Only('/api/subscriptions/0x1234567890123456789012345678901234567890123456789012345678901234/history');
+
+		expect([402, 429]).toContain(res.status);
+	});
+
+	it('protects account activity endpoint with x402', async () => {
+		const res = await fetchWorkerX402Only('/api/accounts/0x1234567890123456789012345678901234567890/activity');
+
+		expect([402, 429]).toContain(res.status);
+	});
+
+	it('protects provider profile endpoint with x402', async () => {
+		const res = await fetchWorkerX402Only('/api/providers/0x1234567890123456789012345678901234567890');
+
+		expect([402, 429]).toContain(res.status);
+	});
+
+	it('protects subscription details-history endpoint with x402', async () => {
+		const res = await fetchWorkerX402Only('/api/subscriptions/0x1234567890123456789012345678901234567890123456789012345678901234/details-history');
+
+		expect([402, 429]).toContain(res.status);
+	});
 });

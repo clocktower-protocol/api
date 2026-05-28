@@ -213,4 +213,17 @@ describe('safeHandler', () => {
 			expect(result.isError).toBe(true);
 		}
 	});
+
+	it('wraps history tools (get_provider_profile example) without leaking internals', async () => {
+		// History tools use the same safeHandler path as all other MCP tools
+		const result = await safeHandler('get_provider_profile', async () => {
+			// Simulate an internal error (e.g. bad env)
+			throw new Error('GRAPH_API_KEY=sk_live_abc123');
+		});
+
+		expect(result.isError).toBe(true);
+		const text = result.content[0].text;
+		expect(text).not.toContain('sk_live');
+		expect(text).toContain('Upstream error'); // or similar safe message
+	});
 });
