@@ -222,7 +222,8 @@ export async function handleGetSubscriptionHistory(env: Env, idParam: string, qu
     return jsonResponse(data);
   } catch (err: any) {
     console.error('get_subscription_history failed', err);
-    return Errors.upstream('Failed to fetch subscription history');
+    const msg = err?.message?.includes('Subgraph') ? 'Subgraph backend unavailable or misconfigured' : 'Failed to fetch subscription history';
+    return Errors.upstream(msg);
   }
 }
 
@@ -245,7 +246,8 @@ export async function handleGetAccountActivity(env: Env, addressParam: string, q
     return jsonResponse(data);
   } catch (err: any) {
     console.error('get_account_activity failed', err);
-    return Errors.upstream('Failed to fetch account activity');
+    const msg = err?.message?.includes('Subgraph') ? 'Subgraph backend unavailable or misconfigured' : 'Failed to fetch account activity';
+    return Errors.upstream(msg);
   }
 }
 
@@ -260,7 +262,8 @@ export async function handleGetProviderProfile(env: Env, addressParam: string) {
     return jsonResponse(data);
   } catch (err: any) {
     console.error('get_provider_profile failed', err);
-    return Errors.upstream('Failed to fetch provider profile');
+    const msg = err?.message?.includes('Subgraph') ? 'Subgraph backend unavailable or misconfigured' : 'Failed to fetch provider profile';
+    return Errors.upstream(msg);
   }
 }
 
@@ -283,6 +286,7 @@ export async function handleGetSubscriptionDetailsHistory(env: Env, idParam: str
     return jsonResponse(data);
   } catch (err: any) {
     console.error('get_subscription_details_history failed', err);
-    return Errors.upstream('Failed to fetch details history');
+    const msg = err?.message?.includes('Subgraph') ? 'Subgraph backend unavailable or misconfigured' : 'Failed to fetch details history';
+    return Errors.upstream(msg);
   }
 }

@@ -42,6 +42,14 @@ Tools are organized into two categories:
 - `list_approved_tokens` — List all ERC-20 tokens approved for use with subscriptions (static config)
 - `get_subscriptions_due` — Query subscriptions due on a given day/frequency
 
+**History & Profile Tools** (subgraph-backed via The Graph, priced $0.02–$0.05 to cover query + bandwidth costs):
+- `get_subscription_history` — Activity history (SubLog events: payments, refunds, cancellations etc.) for one subscription. Supports `first`/`skip` pagination. Returns frontend-style formatted events (eventName, formattedAmount with ticker, formattedTimestamp).
+- `get_account_activity` — Merged activity across all subscriptions an account participates in (as subscriber or provider/creator). Includes breakdown stats. Partial results returned on upstream issues.
+- `get_provider_profile` — Latest provider profile details (company, url, email, domain, description) from ProvDetailsLog.
+- `get_subscription_details_history` — History of metadata changes (URL + description edits) for a subscription.
+
+All history results are server-side limited (max 200, recommended ~100 per call) and include `hasMore` for pagination.
+
 **Write Tools** (priced at $0.01–$0.02):
 - Prepare tools for creating, subscribing, editing, cancelling, and unsubscribing
 - `submit_signed_transactions` — Submit previously prepared and signed transactions
@@ -79,6 +87,16 @@ The REST API provides the same capabilities as the MCP tools over standard HTTP,
 | `GET /api/approved-tokens` | List of approved tokens |
 | `GET /api/approved-tokens/:token` | Approved token configuration |
 
+#### History & Profile Endpoints (GET, subgraph-backed)
+These query The Graph for rich event history. Priced higher to cover external query costs. All support optional `?first=N&skip=M` pagination.
+
+| Endpoint | Price | Description |
+|----------|-------|-------------|
+| `GET /api/subscriptions/:id/history` | $0.05 | Activity history for a subscription (formatted SubLog events) |
+| `GET /api/accounts/:address/activity` | $0.05 | Combined activity for an account (subscriber + provider views) with breakdown |
+| `GET /api/providers/:address` | $0.02 | Latest provider profile (ProvDetailsLog) |
+| `GET /api/subscriptions/:id/details-history` | $0.03 | URL/description change history for a subscription (DetailsLog) |
+
 #### Write Endpoints (POST)
 
 | Endpoint | Price | Description |
@@ -95,9 +113,10 @@ The REST API provides the same capabilities as the MCP tools over standard HTTP,
 
 ### Pricing
 
-- Read operations: **$0.01**
+- Standard read operations: **$0.01**
 - Write preparation and submission operations: **$0.02**
 - `check_subscribe_readiness` and transaction status: **$0.01**
+- History & profile (subgraph) queries: **$0.02–$0.05** (higher to cover The Graph query + transfer costs; see table above)
 
 All prices are paid in USDC on Base via x402.
 
@@ -137,6 +156,7 @@ Required for both MCP and REST:
 Optional:
 
 - `API_REQUIRE_BASIC_AUTH` — Set to `true` to enable Basic Auth on the REST API (for development only)
+- `GRAPH_BASE_URL` / `GRAPH_BASE_SEPOLIA_URL` / `GRAPH_API_KEY` — The Graph subgraph endpoints + auth (required only for history/profile endpoints: get_*_history, *_activity, provider profile)
 
 ### Deployment
 

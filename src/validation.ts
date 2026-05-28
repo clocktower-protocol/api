@@ -224,6 +224,28 @@ export function validateEnv(env: Env): void {
 	assertAddress(env.X402_RECIPIENT, 'X402_RECIPIENT');
 }
 
+/**
+ * Optional validator for The Graph subgraph configuration used by history endpoints.
+ * GRAPH_* vars are not required for core API/MCP operation.
+ * If any GRAPH var is present it must be a valid https URL (with trailing slash for base URLs).
+ * Call this from history query paths only when a history feature is actually invoked.
+ */
+export function validateGraphConfig(env: Env): void {
+	const base = env.GRAPH_BASE_URL;
+	const baseSepolia = env.GRAPH_BASE_SEPOLIA_URL;
+	const key = env.GRAPH_API_KEY;
+
+	if (base) {
+		assertHttpsUrlWithTrailingSlash(base, 'GRAPH_BASE_URL');
+	}
+	if (baseSepolia) {
+		assertHttpsUrlWithTrailingSlash(baseSepolia, 'GRAPH_BASE_SEPOLIA_URL');
+	}
+	if (key && typeof key !== 'string') {
+		throw new Error('GRAPH_API_KEY must be a string when provided');
+	}
+}
+
 function assertBytes32(value: unknown, field: string): `0x${string}` {
 	if (typeof value !== 'string' || !isBytes32(value)) {
 		throw new Error(`Invalid ${field}: expected bytes32 hex string`);

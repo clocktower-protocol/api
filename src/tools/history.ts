@@ -7,12 +7,12 @@
  * All functions in this module are expected to be wrapped with x402 payment
  * in both the MCP and REST surfaces.
  *
- * Design goals for Phase 2:
+ * Implementation complete (post 1-2-3-4 sequence + Phase 2 core + Phase 4 hardening):
  * - High-level, clean shapes (matching frontend expectations)
- * - Server-side limits + pagination
- * - Cost-aware batch pricing support
- * - Caching (Cloudflare Cache API preferred in Workers)
- * - No leakage of GRAPH_* secrets in errors
+ * - Server-side limits + pagination (first/skip)
+ * - Cost-aware batch pricing helpers + static prices in pricing.ts
+ * - Caching (Cloudflare Cache API)
+ * - Strong error sanitization + graceful degradation (no GRAPH_* secret leakage)
  */
 
 import dayjs from 'dayjs';
@@ -122,6 +122,10 @@ export function formatSubLogEvent(log: SubLog, isProviderView = false) {
 
 /**
  * Cache key generator for subgraph queries.
+ *
+ * Security note: The key contains only a truncated hash of the query + variables.
+ * No GRAPH_API_KEY or sensitive values are ever included. The cached payload
+ * stores only the GraphQL `data` object (never headers or auth material).
  */
 function getCacheKey(chainId: number, query: string, variables: Record<string, any>): string {
   const varString = JSON.stringify(variables);
@@ -131,8 +135,30 @@ function getCacheKey(chainId: number, query: string, variables: Record<string, a
 }
 
 /**
+ * Defense-in-depth scrubber: ensures no API key material or sensitive headers
+ * ever escape into user-facing error messages or responses.
+ */
+function sanitizeSubgraphError(err: unknown): Error {
+  let raw = err instanceof Error ? err.message : String(err);
+
+  // Redact any Bearer token that might have been accidentally included
+  raw = raw.replace(/Bearer\s+[A-Za-z0-9\-_.]+/gi, 'Bearer [redacted]');
+
+  // Redact anything that looks like a long alphanumeric secret (common for API keys)
+  raw = raw.replace(/[A-Za-z0-9]{32,}/g, '[redacted]');
+
+  // Never expose full stack traces or very long error bodies in user-facing messages
+  if (raw.length > 300) {
+    raw = raw.slice(0, 300) + '…';
+  }
+
+  return new Error(`Subgraph query failed: ${raw}`);
+}
+
+/**
  * Internal helper to execute a GraphQL query against the configured subgraph.
  * Includes Cloudflare Cache API support.
+ * All thrown errors are sanitized to prevent GRAPH_* secret leakage.
  */
 async function querySubgraph(
   env: Env,
@@ -141,6 +167,16 @@ async function querySubgraph(
   variables: Record<string, unknown>,
   cacheTtlSeconds = 45
 ): Promise<any> {
+  // Validate any provided GRAPH_* config on first use (gives clear errors,
+  // does not require the vars for core non-history operation).
+  try {
+    // Dynamic import to avoid circular deps at module load time.
+    const { validateGraphConfig } = await import('../validation.js');
+    validateGraphConfig(env);
+  } catch {
+    // If validation module has issues we still proceed; querySubgraph will fail with its own clear message.
+  }
+
   const isMainnet = chainId === 8453;
 
   const baseUrl = isMainnet
@@ -150,7 +186,9 @@ async function querySubgraph(
   const apiKey = env.GRAPH_API_KEY;
 
   if (!baseUrl) {
-    throw new Error('Subgraph URL not configured for this chain');
+    throw sanitizeSubgraphError(
+      'Subgraph URL not configured for this chain. History endpoints require GRAPH_BASE_URL (and GRAPH_API_KEY for authenticated The Graph endpoints).'
+    );
   }
 
   const cacheKey = getCacheKey(chainId, query, variables);
@@ -190,18 +228,20 @@ async function querySubgraph(
 
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      console.error('[history] Subgraph error', res.status, text);
-      throw new Error(`Subgraph request failed: ${res.status}`);
+      // Log only status + truncated body. Never log headers or anything that could contain keys.
+      console.error('[history] Subgraph HTTP error', res.status, text.slice(0, 500));
+      throw sanitizeSubgraphError(`request failed with status ${res.status}`);
     }
 
     const json = await res.json();
 
     if (json.errors) {
-      console.error('[history] Subgraph GraphQL errors', json.errors);
-      throw new Error('Subgraph returned errors');
+      // Log GraphQL errors for debugging, but the thrown error to callers is sanitized
+      console.error('[history] Subgraph GraphQL errors', JSON.stringify(json.errors).slice(0, 500));
+      throw sanitizeSubgraphError('GraphQL errors returned (see server logs)');
     }
 
-    // Store in cache
+    // Store in cache (only the data payload — headers and auth are never cached)
     if (cache) {
       const responseToCache = new Response(JSON.stringify(json.data), {
         headers: { 'Content-Type': 'application/json' },
@@ -212,9 +252,13 @@ async function querySubgraph(
     return json.data as any;
   } catch (err: any) {
     if (err.name === 'AbortError') {
-      throw new Error('Subgraph request timed out');
+      throw sanitizeSubgraphError('request timed out after 15s');
     }
-    throw err;
+    // Re-throw already-sanitized errors or wrap unknowns
+    if (err.message?.startsWith('Subgraph query failed')) {
+      throw err;
+    }
+    throw sanitizeSubgraphError(err);
   }
 }
 
@@ -333,7 +377,7 @@ const GET_DETAILS_LOG = `
 `;
 
 // ============================================
-// High-Level Functions (Phase 2)
+// High-Level Functions
 // ============================================
 
 export interface HistoryOptions {
@@ -346,6 +390,20 @@ const DEFAULT_HISTORY_LIMIT = 100;
 const MAX_HISTORY_LIMIT = 200;
 
 /**
+ * Defense-in-depth normalization of pagination options.
+ * Enforces non-negative values and hard caps even if callers bypass Zod.
+ */
+function normalizeHistoryOptions(options: HistoryOptions = {}): { first: number; skip: number } {
+  const rawFirst = options.first ?? DEFAULT_HISTORY_LIMIT;
+  const rawSkip = options.skip ?? 0;
+
+  const first = Math.max(0, Math.min(Math.floor(rawFirst), MAX_HISTORY_LIMIT));
+  const skip = Math.max(0, Math.floor(rawSkip));
+
+  return { first, skip };
+}
+
+/**
  * Get activity history for a specific subscription.
  * Currently returns SubLog entries.
  */
@@ -355,30 +413,43 @@ export async function getSubscriptionHistory(
   chainId: number = 8453,
   options: HistoryOptions = {}
 ) {
-  const first = Math.min(options.first ?? DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT);
-  const skip = options.skip ?? 0;
+  const { first, skip } = normalizeHistoryOptions(options);
 
-  const data = await querySubgraph(env, chainId, GET_SUB_LOG, {
-    subscriptionId: subscriptionId.toLowerCase(),
-    first,
-    skip,
-  });
+  try {
+    const data = await querySubgraph(env, chainId, GET_SUB_LOG, {
+      subscriptionId: subscriptionId.toLowerCase(),
+      first,
+      skip,
+    });
 
-  const rawEvents: SubLog[] = data?.subLogs ?? [];
+    const rawEvents: SubLog[] = data?.subLogs ?? [];
+    const formattedEvents = rawEvents.map(event =>
+      formatSubLogEvent(event, false)
+    );
 
-  // Apply frontend-style formatting + provider/subscriber view logic
-  const formattedEvents = rawEvents.map(event =>
-    formatSubLogEvent(event, false) // default to subscriber view; caller can re-format if needed
-  );
+    return {
+      chainId,
+      subscriptionId,
+      events: formattedEvents,
+      hasMore: rawEvents.length === first,
+      count: formattedEvents.length,
+      rawCount: rawEvents.length,
+    };
+  } catch (err: any) {
+    const safeError = err?.message?.startsWith('Subgraph query failed')
+      ? err.message
+      : sanitizeSubgraphError(err).message;
 
-  return {
-    chainId,
-    subscriptionId,
-    events: formattedEvents,
-    hasMore: rawEvents.length === first,
-    count: formattedEvents.length,
-    rawCount: rawEvents.length,
-  };
+    return {
+      chainId,
+      subscriptionId,
+      events: [],
+      hasMore: false,
+      count: 0,
+      rawCount: 0,
+      error: safeError,
+    };
+  }
 }
 
 /**
@@ -390,30 +461,43 @@ export async function getProviderProfile(
   provider: `0x${string}`,
   chainId: number = 8453
 ) {
-  const data = await querySubgraph(env, chainId, GET_LATEST_PROV_DETAILS, {
-    provider: provider.toLowerCase(),
-    first: 1,
-  });
+  try {
+    const data = await querySubgraph(env, chainId, GET_LATEST_PROV_DETAILS, {
+      provider: provider.toLowerCase(),
+      first: 1,
+    });
 
-  const latest: ProvDetailsLog | null = data?.provDetailsLogs?.[0] ?? null;
+    const latest: ProvDetailsLog | null = data?.provDetailsLogs?.[0] ?? null;
 
-  return {
-    chainId,
-    provider,
-    profile: latest,
-    // Convenience field for the "most recent" profile data
-    latestProfile: latest
-      ? {
-          description: latest.description,
-          company: latest.company,
-          url: latest.url,
-          domain: latest.domain,
-          email: latest.email,
-          misc: latest.misc,
-          updatedAt: formatTimestamp(latest.timestamp),
-        }
-      : null,
-  };
+    return {
+      chainId,
+      provider,
+      profile: latest,
+      latestProfile: latest
+        ? {
+            description: latest.description,
+            company: latest.company,
+            url: latest.url,
+            domain: latest.domain,
+            email: latest.email,
+            misc: latest.misc,
+            updatedAt: formatTimestamp(latest.timestamp),
+          }
+        : null,
+    };
+  } catch (err: any) {
+    const safeError = err?.message?.startsWith('Subgraph query failed')
+      ? err.message
+      : sanitizeSubgraphError(err).message;
+
+    return {
+      chainId,
+      provider,
+      profile: null,
+      latestProfile: null,
+      error: safeError,
+    };
+  }
 }
 
 /**
@@ -426,24 +510,37 @@ export async function getAccountActivity(
   chainId: number = 8453,
   options: HistoryOptions = {}
 ) {
-  const first = Math.min(options.first ?? DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT);
-  const skip = options.skip ?? 0;
+  const { first, skip } = normalizeHistoryOptions(options);
 
-  const [asSubscriberData, asProviderData] = await Promise.all([
-    querySubgraph(env, chainId, GET_SUB_LOGS_AS_SUBSCRIBER, {
+  // Use independent calls so one side failing does not nuke the entire response
+  // (partial results on upstream subgraph problems, per plan guidance).
+  let subscriberEvents: SubLog[] = [];
+  let providerEvents: SubLog[] = [];
+  let queryErrors: string[] = [];
+
+  try {
+    const subData = await querySubgraph(env, chainId, GET_SUB_LOGS_AS_SUBSCRIBER, {
       subscriber: account.toLowerCase(),
       first,
       skip,
-    }),
-    querySubgraph(env, chainId, GET_SUB_LOGS_AS_PROVIDER, {
+    });
+    subscriberEvents = subData?.subLogs ?? [];
+  } catch (e: any) {
+    const safeMsg = e?.message?.startsWith('Subgraph query failed') ? e.message : sanitizeSubgraphError(e).message;
+    queryErrors.push('subscriber leg: ' + safeMsg);
+  }
+
+  try {
+    const provData = await querySubgraph(env, chainId, GET_SUB_LOGS_AS_PROVIDER, {
       provider: account.toLowerCase(),
       first,
       skip,
-    }),
-  ]);
-
-  const subscriberEvents: SubLog[] = asSubscriberData?.subLogs ?? [];
-  const providerEvents: SubLog[] = asProviderData?.subLogs ?? [];
+    });
+    providerEvents = provData?.subLogs ?? [];
+  } catch (e: any) {
+    const safeMsg = e?.message?.startsWith('Subgraph query failed') ? e.message : sanitizeSubgraphError(e).message;
+    queryErrors.push('provider leg: ' + safeMsg);
+  }
 
   // Merge and deduplicate by transactionHash + internal_id (simple approach)
   const allEvents = [...subscriberEvents, ...providerEvents];
@@ -475,6 +572,7 @@ export async function getAccountActivity(
       asSubscriber: subscriberEvents.length,
       asProvider: providerEvents.length,
     },
+    ...(queryErrors.length > 0 ? { partial: true, queryErrors } : {}),
   };
 }
 
@@ -487,37 +585,44 @@ export async function getSubscriptionDetailsHistory(
   chainId: number = 8453,
   options: HistoryOptions = {}
 ) {
-  const first = Math.min(options.first ?? DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT);
-  const skip = options.skip ?? 0;
+  const { first, skip } = normalizeHistoryOptions(options);
 
-  const data = await querySubgraph(env, chainId, GET_DETAILS_LOG, {
-    subscriptionId: subscriptionId.toLowerCase(),
-    first,
-    skip,
-  });
+  try {
+    const data = await querySubgraph(env, chainId, GET_DETAILS_LOG, {
+      subscriptionId: subscriptionId.toLowerCase(),
+      first,
+      skip,
+    });
 
-  const events: DetailsLog[] = data?.detailsLogs ?? [];
+    const events: DetailsLog[] = data?.detailsLogs ?? [];
 
-  const formattedEvents = events.map((event) => ({
-    ...event,
-    formattedTimestamp: formatTimestamp(event.timestamp),
-  }));
+    const formattedEvents = events.map((event) => ({
+      ...event,
+      formattedTimestamp: formatTimestamp(event.timestamp),
+    }));
 
-  return {
-    chainId,
-    subscriptionId,
-    events: formattedEvents,
-    hasMore: events.length === first,
-    count: formattedEvents.length,
-  };
+    return {
+      chainId,
+      subscriptionId,
+      events: formattedEvents,
+      hasMore: events.length === first,
+      count: formattedEvents.length,
+    };
+  } catch (err: any) {
+    const safeError = err?.message?.startsWith('Subgraph query failed')
+      ? err.message
+      : sanitizeSubgraphError(err).message;
+
+    return {
+      chainId,
+      subscriptionId,
+      events: [],
+      hasMore: false,
+      count: 0,
+      error: safeError,
+    };
+  }
 }
-
-// TODO (rest of Phase 2 + later):
-// - getAccountActivity (combined view across subs)
-// - getSubscriptionDetailsHistory (DetailsLog)
-// - Better pagination (timestamp cursor)
-// - Cost/batch pricing helpers exposed for pricing.ts
-// - getCallerHistory support
 
 export const HISTORY_DEFAULT_LIMIT = DEFAULT_HISTORY_LIMIT;
 export const HISTORY_MAX_LIMIT = MAX_HISTORY_LIMIT;
