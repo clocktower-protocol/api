@@ -16,8 +16,8 @@
  */
 
 import dayjs from 'dayjs';
-import { APPROVED_TOKENS } from '../config/approvedTokens.js';
-import { formatEther } from 'viem'; // Already a dependency via other modules
+import { getApprovedTokenByAddress } from '../config/approvedTokens.js';
+import { formatProtocolStoredAmount } from '../utils.js';
 
 // Note: Env interface is globally available via env.d.ts augmentation
 
@@ -80,18 +80,33 @@ const SUBSCRIPT_EVENT_LOOKUP = [
 ];
 
 function getTokenTicker(tokenAddress: string): string {
-  const normalized = tokenAddress.toLowerCase();
-  const match = APPROVED_TOKENS.find(t => t.address.toLowerCase() === normalized);
-  return match ? match.symbol : 'TOKEN';
+  const info = getApprovedTokenByAddress(tokenAddress);
+  return info ? info.symbol : 'TOKEN';
 }
 
-function formatAmount(amount: string, tokenAddress: string): string {
+/**
+ * Returns normalized amount information for a SubLog event using the same
+ * protocol-to-native conversion logic as the rest of the API.
+ */
+function getNormalizedAmount(protocolAmount: string, tokenAddress: string) {
+  const info = getApprovedTokenByAddress(tokenAddress);
+  const decimals = info ? info.decimals : 18;
+
   try {
-    const formatted = formatEther(BigInt(amount));
-    const ticker = getTokenTicker(tokenAddress);
-    return `${parseFloat(formatted).toFixed(2)} ${ticker}`;
+    const formatted = formatProtocolStoredAmount(BigInt(protocolAmount), decimals);
+    return {
+      amount: formatted.amount,
+      amountRaw: formatted.amountRaw.toString(),
+      tokenDecimals: formatted.tokenDecimals,
+      ticker: info ? info.symbol : 'TOKEN',
+    };
   } catch {
-    return amount;
+    return {
+      amount: protocolAmount,
+      amountRaw: protocolAmount,
+      tokenDecimals: decimals,
+      ticker: info ? info.symbol : 'TOKEN',
+    };
   }
 }
 
@@ -107,12 +122,25 @@ export function formatSubLogEvent(log: SubLog, isProviderView = false) {
   if (isProviderView && eventIndex === 5) eventName = 'SubPaid (internal)';
   if (!isProviderView && eventIndex === 2) eventName = 'ProvPaid (internal)';
 
+  const normalized = getNormalizedAmount(log.amount, log.token);
+
+  // Exclude the raw protocol 18-decimal amount from the public response.
+  // Users should only see properly normalized amounts (in the token's native decimals).
+  const { amount: _rawProtocolAmount, ...restOfLog } = log;
+
   return {
-    ...log,
+    ...restOfLog,
     eventName,
-    formattedAmount: formatAmount(log.amount, log.token),
+
+    // Normalized values using the same logic as other read endpoints
+    amount: normalized.amount,
+    amountRaw: normalized.amountRaw,
+    tokenDecimals: normalized.tokenDecimals,
+
+    // Human-friendly display string (for convenience / frontend parity)
+    formattedAmount: `${parseFloat(normalized.amount).toFixed(2)} ${normalized.ticker}`,
     formattedTimestamp: formatTimestamp(log.timestamp),
-    tokenTicker: getTokenTicker(log.token),
+    tokenTicker: normalized.ticker,
   };
 }
 

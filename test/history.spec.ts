@@ -79,6 +79,11 @@ describe('history helpers (pure)', () => {
     expect(formatted.formattedTimestamp).toMatch(/\d{2}\/\d{2}\/\d{4}/);
     expect(formatted.tokenTicker).toBe('USDC');
 
+    // New normalized amount fields (consistent with other read endpoints)
+    expect(formatted.amount).toBe('1');           // 1e18 protocol / 1e12 = 1e6 units for 6-dec USDC
+    expect(formatted.amountRaw).toBe('1000000');
+    expect(formatted.tokenDecimals).toBe(6);
+
     const asProvider = formatSubLogEvent(sampleSubLog as any, true);
     expect(asProvider.eventName).toBe('SubPaid (internal)');
   });
@@ -129,6 +134,11 @@ describe('history functions (mocked subgraph)', () => {
     expect(res.events.length).toBe(1);
     expect(res.events[0].eventName).toBe('SubPaid');
     expect(res.events[0].formattedAmount).toBe('1.00 USDC');
+
+    // Amount normalization is applied (protocol 18-dec → USDC 6-dec)
+    expect(res.events[0].amount).toBe('1');
+    expect(res.events[0].tokenDecimals).toBe(6);
+
     expect(res.hasMore).toBe(false); // returned 1 < requested 10
     expect(res.count).toBe(1);
   });
