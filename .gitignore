@@ -93,3 +93,8 @@ SECURITY_FOLLOWUPS.md
 
 # Local planning / recommendations documents (not committed)
 API_ENDPOINT_RECOMMENDATIONS.md
+
+# Grok-generated session plans (not committed)
+**/*plan.md
+.grok/sessions/**/plan.md
+/home/hugo/.grok/sessions/%2Fhome%2Fhugo%2FDocuments%2FCrypto%2Fdev%2Fclocktower%2Fclocktower-mcp/019e6659-10dd-70d1-99b9-4e3612301762/plan.md
