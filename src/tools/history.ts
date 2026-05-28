@@ -222,11 +222,17 @@ async function querySubgraph(
   const cacheKey = getCacheKey(chainId, query, variables);
 
   // Try Cache API first (Workers runtime)
+  // Note: We wrap in try/catch because wrangler dev often rejects non-URL cache keys
+  // with "Invalid URL. Cache API keys must be fully-qualified, valid URLs."
   const cache = (caches as any).default;
   if (cache) {
-    const cachedResponse = await cache.match(cacheKey);
-    if (cachedResponse) {
-      return (await cachedResponse.json()) as any;
+    try {
+      const cachedResponse = await cache.match(cacheKey);
+      if (cachedResponse) {
+        return (await cachedResponse.json()) as any;
+      }
+    } catch {
+      // Cache API not available or invalid key (common in local dev) — fall through to fetch
     }
   }
 
@@ -271,10 +277,14 @@ async function querySubgraph(
 
     // Store in cache (only the data payload — headers and auth are never cached)
     if (cache) {
-      const responseToCache = new Response(JSON.stringify(json.data), {
-        headers: { 'Content-Type': 'application/json' },
-      });
-      await cache.put(cacheKey, responseToCache);
+      try {
+        const responseToCache = new Response(JSON.stringify(json.data), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+        await cache.put(cacheKey, responseToCache);
+      } catch {
+        // Ignore cache put failures (common in local dev with non-URL keys)
+      }
     }
 
     return json.data as any;

@@ -23,9 +23,13 @@ X402_RECIPIENT=0xYourWalletAddress
 #   - get_subscription_details_history
 #   - get_provider_profile
 # =============================================================================
-# GRAPH_BASE_URL=https://api.thegraph.com/subgraphs/name/your-subgraph/base
-# GRAPH_BASE_SEPOLIA_URL=https://api.thegraph.com/subgraphs/name/your-subgraph/base-sepolia
-# GRAPH_API_KEY=your-graph-api-key
+# Mainnet (Base) - Decentralized Gateway
+# GRAPH_BASE_URL=https://gateway.thegraph.com/api/${GRAPH_API_KEY}/subgraphs/id/H26nGNfhfFZdT9BSEajo7kyK3vdiQr1EAutPMGCUMC9x
+
+# Sepolia - Studio
+# GRAPH_BASE_SEPOLIA_URL=https://api.studio.thegraph.com/query/111673/clocktower-base-sepolia/version/latest
+
+# GRAPH_API_KEY=your-graph-api-key-here
 
 # =============================================================================
 # OPTIONAL - Rate limiting
