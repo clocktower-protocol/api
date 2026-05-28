@@ -35,7 +35,7 @@ function isSafeHttpsUrl(value: string): boolean {
 }
 
 const bigintStringSchema = z
-	.union([z.string(), z.number(), z.bigint()])
+	.union([z.string(), z.number()])
 	.transform((value, ctx) => {
 		try {
 			return BigInt(value);
