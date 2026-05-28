@@ -1,0 +1,15 @@
+# --- Secrets (hard block; do not rely on .gitignore alone) ---
+.env
+.env.*
+!.env.example
+.dev.vars
+!.dev.vars.example
+
+# --- VCS (hooks visible for agent sandbox) ---
+.git/
+!.git/hooks/
+
+# --- IDE / OS noise ---
+.vscode/
+.idea/
+.DS_Store
