@@ -43,7 +43,9 @@ async function handleRequest(
 			return rateLimited;
 		}
 
-		return ClocktowerMCP.serve('/mcp', { binding: 'CLOCKTOWER_MCP' }).fetch(request, env, ctx);
+		// Mount the MCP server (stateful via Durable Objects)
+		const mcpHandler = ClocktowerMCP.serve("/mcp");
+		return mcpHandler(request, env, ctx);
 	}
 
 	// === API Routes (powered by Hono) ===
