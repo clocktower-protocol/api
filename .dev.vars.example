@@ -1,22 +1,51 @@
-# Copy to .dev.vars and fill in values for local development.
+# Copy this file to .dev.vars for local development with `wrangler dev`.
+# .dev.vars is automatically loaded by Wrangler and is git-ignored.
+# Never commit real secrets.
+
+# =============================================================================
+# REQUIRED (core functionality)
+# =============================================================================
 ALCHEMY_API_KEY=your-alchemy-api-key
+ALCHEMY_URL=https://base-mainnet.g.alchemy.com/v2/
+
+CLOCKTOWER_ADDRESS=0xFaF5fc2f77b21BC188f492b827D366B03a07c61f
+
 CDP_API_KEY_ID=your-cdp-api-key-id
 CDP_API_KEY_SECRET=your-cdp-api-key-secret
+
 X402_RECIPIENT=0xYourWalletAddress
 
-# Optional write-tool limits
+# =============================================================================
+# OPTIONAL - The Graph (history & provider detail endpoints)
+# These are only needed if you want to use the subgraph-backed history tools:
+#   - get_subscription_history / /api/subscriptions/:id/history
+#   - get_account_activity / /api/accounts/:address/activity
+#   - get_subscription_details_history
+#   - get_provider_profile
+# =============================================================================
+# GRAPH_BASE_URL=https://api.thegraph.com/subgraphs/name/your-subgraph/base
+# GRAPH_BASE_SEPOLIA_URL=https://api.thegraph.com/subgraphs/name/your-subgraph/base-sepolia
+# GRAPH_API_KEY=your-graph-api-key
+
+# =============================================================================
+# OPTIONAL - Rate limiting
+# =============================================================================
+# RATE_LIMIT_REQUESTS_PER_MINUTE=60
 # WRITE_RATE_LIMIT_REQUESTS_PER_MINUTE=10
 # PREPARE_INTENT_TTL_SECONDS=900
 
-# Optional HTTP Basic auth for /mcp (set ENABLE_AUTH=true to enforce)
+# =============================================================================
+# OPTIONAL - Developer safety net (Basic Auth)
+# Set ENABLE_AUTH=true to require HTTP Basic Auth on /mcp and optionally /api.
+# This is an extra layer on top of x402 micropayments (never a replacement).
+# =============================================================================
 # ENABLE_AUTH=true
 # CFP_USERNAME=your-username
 # CFP_PASSWORD=your-password
 
-# Optional CSRF protection. When ENABLE_AUTH=true, browser cross-origin POSTs
-# carrying cached Basic credentials are rejected unless their Origin header
-# matches one of these comma-separated entries. Server-to-server clients
-# (which omit Origin) are unaffected.
-# Use "*" to allow any Origin (NOT recommended with ENABLE_AUTH=true).
-# Leave unset to deny ALL browser-set Origins (server-to-server only).
+# Optional CSRF protection for browsers when Basic Auth is enabled.
+# Comma-separated list of allowed Origins. Use "*" to allow any (not recommended).
 # CFP_ALLOWED_ORIGINS=https://app.example.com,https://admin.example.com
+
+# Controls whether Basic Auth is enforced on REST API routes (x402 is always required).
+# API_REQUIRE_BASIC_AUTH=true
