@@ -43,12 +43,12 @@ Tools are organized into two categories:
 - `get_subscriptions_due` — Query subscriptions due on a given day/frequency
 
 **History & Profile Tools** (subgraph-backed via The Graph, priced $0.02–$0.05 to cover query + bandwidth costs):
-- `get_subscription_history` — Activity history (SubLog events: payments, refunds, cancellations etc.) for one subscription. Supports `first`/`skip` pagination. Returns frontend-style formatted events (eventName, formattedAmount with ticker, formattedTimestamp).
-- `get_account_activity` — Merged activity across all subscriptions an account participates in (as subscriber or provider/creator). Includes breakdown stats. Partial results returned on upstream issues.
-- `get_provider_profile` — Latest provider profile details (company, url, email, domain, description) from ProvDetailsLog.
-- `get_subscription_details_history` — History of metadata changes (URL + description edits) for a subscription.
+- `get_subscription_history` — Activity history (SubLog events) for one subscription. Supports `first`/`skip` pagination. Returns properly normalized amounts (`amount`, `amountRaw`, `tokenDecimals`), `eventName`, `formattedTimestamp`, and `formattedAmount`.
+- `get_account_activity` — Merged activity across all subscriptions an account participates in (as subscriber or provider/creator). Returns breakdown stats + `hasMore`. Gracefully returns partial results if one side of the query fails.
+- `get_provider_profile` — Latest provider profile (from ProvDetailsLog) with a convenience `latestProfile` object and `updatedAt` timestamp.
+- `get_subscription_details_history` — History of URL/description changes (DetailsLog) for a subscription.
 
-All history results are server-side limited (max 200, recommended ~100 per call) and include `hasMore` for pagination.
+All history results are server-side limited (max 200 records, recommended ~100 per call) and include `hasMore` for pagination. Amounts are normalized to the token’s native decimals (consistent with the rest of the API). Subgraph failures return structured responses with an `error` field instead of failing hard.
 
 **Write Tools** (priced at $0.01–$0.02):
 - Prepare tools for creating, subscribing, editing, cancelling, and unsubscribing
@@ -90,12 +90,29 @@ The REST API provides the same capabilities as the MCP tools over standard HTTP,
 #### History & Profile Endpoints (GET, subgraph-backed)
 These query The Graph for rich event history. Priced higher to cover external query costs. All support optional `?first=N&skip=M` pagination.
 
+Returned SubLog events include:
+- `eventName` (human readable)
+- Normalized amount fields (`amount`, `amountRaw`, `tokenDecimals`)
+- `formattedTimestamp` and `formattedAmount`
+
 | Endpoint | Price | Description |
 |----------|-------|-------------|
 | `GET /api/subscriptions/:id/history` | $0.05 | Activity history for a subscription (formatted SubLog events) |
 | `GET /api/accounts/:address/activity` | $0.05 | Combined activity for an account (subscriber + provider views) with breakdown |
 | `GET /api/providers/:address` | $0.02 | Latest provider profile (ProvDetailsLog) |
 | `GET /api/subscriptions/:id/details-history` | $0.03 | URL/description change history for a subscription (DetailsLog) |
+
+Subgraph errors return a graceful response containing an `error` field rather than failing the entire request.
+
+**Design Notes**
+- **Cost Model**: History endpoints are priced higher ($0.02–$0.05) than standard reads because they perform external The Graph queries + data transfer. Pricing uses a base fee + modest per-batch adder, with hard server-side limits to control costs.
+- **No Raw GraphQL Proxy**: We intentionally did **not** expose a low-level `/graph` passthrough proxy. All access goes through high-level, shaped, paid endpoints with formatting, limits, and normalization. This matches the original design goal of consistency and cost control.
+
+**Security Notes (History Endpoints)**
+- All subgraph errors are sanitized. No `GRAPH_API_KEY` or sensitive material is ever returned to clients.
+- Cloudflare Cache API stores only response data (never Authorization headers).
+- Raw internal 18-decimal protocol amounts are not exposed to users (only normalized values in the token's native decimals).
+- Subgraph failures result in graceful responses with an `error` field rather than hard failures.
 
 #### Write Endpoints (POST)
 

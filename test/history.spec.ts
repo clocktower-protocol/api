@@ -192,4 +192,79 @@ describe('history functions (mocked subgraph)', () => {
     expect(res.error).toMatch(/Subgraph URL not configured/);
     expect(res.error).toMatch(/GRAPH_BASE_URL/);
   });
+
+  // === Phase 5 expanded tests ===
+
+  it('respects server-side max limit (first > 200 is capped)', async () => {
+    const res = await getSubscriptionHistory(baseEnv, sampleSubLog.internal_id as `0x${string}`, 8453, { first: 500 });
+    // The implementation should have capped first at 200 before calling the subgraph
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        body: expect.stringContaining('"first":200'),
+      })
+    );
+  });
+
+  it('supports skip parameter for pagination', async () => {
+    await getSubscriptionHistory(baseEnv, sampleSubLog.internal_id as `0x${string}`, 8453, { first: 5, skip: 10 });
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        body: expect.stringContaining('"skip":10'),
+      })
+    );
+  });
+
+  it('returns hasMore=true when subgraph returns exactly the requested number of records', async () => {
+    // Override fetch for this test to return exactly 5 records when first=5
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async () => {
+      const fiveRecords = Array(5).fill(sampleSubLog);
+      return Response.json({ data: { subLogs: fiveRecords } });
+    }) as any;
+
+    const res = await getSubscriptionHistory(baseEnv, sampleSubLog.internal_id as `0x${string}`, 8453, { first: 5 });
+
+    expect(res.hasMore).toBe(true);
+    expect(res.count).toBe(5);
+
+    globalThis.fetch = origFetch;
+  });
+
+  it('uses cache on repeated identical calls (cache hit skips fetch)', async () => {
+    // First call - should miss cache and call fetch
+    await getSubscriptionHistory(baseEnv, sampleSubLog.internal_id as `0x${string}`);
+
+    const firstCallCount = (globalThis.fetch as any).mock.calls.length;
+    expect(firstCallCount).toBeGreaterThan(0);
+    expect(cachesMock.default.put).toHaveBeenCalled(); // should have written to cache
+
+    // Simulate cache hit on second call
+    const cachedResponse = new Response(JSON.stringify({ data: { subLogs: [sampleSubLog] } }));
+    cachesMock.default.match.mockResolvedValueOnce(cachedResponse);
+
+    await getSubscriptionHistory(baseEnv, sampleSubLog.internal_id as `0x${string}`);
+
+    // Fetch should not have been called again
+    expect((globalThis.fetch as any).mock.calls.length).toBe(firstCallCount);
+  });
+
+  it('falls back gracefully for non-approved tokens (uses 18 decimals)', async () => {
+    const unknownTokenLog = { ...sampleSubLog, token: '0x000000000000000000000000000000000000dead' };
+
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async () => {
+      return Response.json({ data: { subLogs: [unknownTokenLog] } });
+    }) as any;
+
+    const res = await getSubscriptionHistory(baseEnv, sampleSubLog.internal_id as `0x${string}`);
+
+    // Should still return data without crashing, using 18 decimals as fallback
+    expect(res.events[0].tokenDecimals).toBe(18);
+    expect(res.events[0].tokenTicker).toBe('TOKEN'); // fallback ticker
+
+    globalThis.fetch = origFetch;
+  });
 });
