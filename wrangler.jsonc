@@ -40,6 +40,10 @@
 		"CLOCKTOWER_ADDRESS": "0xFaF5fc2f77b21BC188f492b827D366B03a07c61f",
 		"RATE_LIMIT_REQUESTS_PER_MINUTE": "60",
 		"API_REQUIRE_BASIC_AUTH": "true"
+		// GRAPH_* vars are NOT declared here (they contain secrets).
+		// They are supplied via `wrangler secret put` (production) or .dev.vars (local).
+		// See env.d.ts and the implementation plan for the exact names:
+		//   GRAPH_BASE_URL, GRAPH_BASE_SEPOLIA_URL, GRAPH_API_KEY
 	},
 	"env": {
 		"test": {
@@ -90,6 +94,10 @@
 				"CLOCKTOWER_ADDRESS": "0xFaF5fc2f77b21BC188f492b827D366B03a07c61f",
 				"RATE_LIMIT_REQUESTS_PER_MINUTE": "2",
 				"API_REQUIRE_BASIC_AUTH": "false"
+				// Test GRAPH_* values are injected via vitest.config.mts (miniflare.bindings)
+				// so that this file never carries real or placeholder secret-shaped values.
+				// Example structure used in tests (see src/api/history.ts implementation):
+				// GRAPH_BASE_URL, GRAPH_BASE_SEPOLIA_URL, GRAPH_API_KEY
 			}
 		}
 	}

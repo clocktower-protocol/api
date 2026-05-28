@@ -21,6 +21,12 @@ declare namespace Cloudflare {
 		CDP_API_KEY_ID: string;
 		CDP_API_KEY_SECRET: string;
 		X402_RECIPIENT: string;
+		// Subgraph (The Graph) configuration for history + provider detail endpoints.
+		// These are injected via wrangler secret put (or .dev.vars locally).
+		// See clocktower-proxy for similar GRAPH_* handling pattern.
+		GRAPH_BASE_URL?: string;            // Primary (Base mainnet) subgraph endpoint
+		GRAPH_BASE_SEPOLIA_URL?: string;    // Sepolia subgraph endpoint
+		GRAPH_API_KEY?: string;             // Bearer token for Authorization header
 		RATE_LIMIT_REQUESTS_PER_MINUTE?: string;
 		WRITE_RATE_LIMIT_REQUESTS_PER_MINUTE?: string;
 		PREPARE_INTENT_TTL_SECONDS?: string;

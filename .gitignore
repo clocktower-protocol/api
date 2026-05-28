@@ -90,3 +90,6 @@ temp/
 
 # Local-only security review notes (not for distribution)
 SECURITY_FOLLOWUPS.md
+
+# Local planning / recommendations documents (not committed)
+API_ENDPOINT_RECOMMENDATIONS.md
