@@ -72,6 +72,14 @@ The REST API provides the same capabilities as the MCP tools over standard HTTP,
 
 **x402 is the primary and required authentication method.** Every request to the REST API must include a valid x402 payment header (`X-Payment`) using USDC on Base.
 
+Optional HTTP Basic Auth on `/api` is controlled by `API_REQUIRE_BASIC_AUTH` (default **`false`** in `wrangler.jsonc`). Set to `true` only for local manual testing — x402 is still required.
+
+### x402 settlement (failed requests are not charged)
+
+The REST layer uses `@x402/hono`, which verifies payment, runs your route handler, and **only settles USDC when the handler returns a status below 400**. If the handler returns `400`, `404`, or `500` (validation, not-found, upstream errors), settlement is cancelled — the same practical guarantee as MCP’s verify-only-settle behavior with `agents/x402`.
+
+Write handlers return structured JSON errors instead of throwing; that is intentional and compatible with this middleware. See `test/api-x402-hono-settlement.spec.ts` for a source-level regression guard.
+
 ### Endpoints
 
 #### Read Endpoints (GET) — $0.01 each
@@ -173,7 +181,7 @@ Required for both MCP and REST:
 
 Optional:
 
-- `API_REQUIRE_BASIC_AUTH` — Set to `true` to enable Basic Auth on the REST API (for development only)
+- `API_REQUIRE_BASIC_AUTH` — Default `false` (x402-only). Set to `true` to add Basic Auth on `/api` for local development only
 - `GRAPH_BASE_URL` / `GRAPH_BASE_SEPOLIA_URL` / `GRAPH_API_KEY` — The Graph subgraph endpoints + auth (required only for history/profile endpoints: get_*_history, *_activity, provider profile)
 
 ### Deployment

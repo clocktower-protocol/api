@@ -292,7 +292,8 @@ function handleWriteError(err: any, operation: string) {
     return Errors.validation('Invalid nonce for signed transaction');
   }
 
-  // @x402/hono settles only on successful responses; non-2xx JSON responses skip settlement.
+  // @x402/hono skips settlement when the handler returns status >= 400 (see README REST
+  // section and test/api-x402-hono-settlement.spec.ts). Returning JSON here is correct.
   console.error(`[write] ${operation} failed`, err);
 
   return Errors.upstream(message || `Failed to ${operation}`);

@@ -52,4 +52,5 @@ X402_RECIPIENT=0xYourWalletAddress
 # CFP_ALLOWED_ORIGINS=https://app.example.com,https://admin.example.com
 
 # Controls whether Basic Auth is enforced on REST API routes (x402 is always required).
-# API_REQUIRE_BASIC_AUTH=true
+# Production default in wrangler.jsonc is false (x402-only). Set true only for local dev.
+# API_REQUIRE_BASIC_AUTH=false

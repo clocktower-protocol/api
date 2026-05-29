@@ -5,8 +5,28 @@ import { ClocktowerMCP } from './mcp.js';
 import { RateLimiter } from './RateLimiter.js';
 import { enforceRateLimit } from './rateLimit.js';
 import { withSecurityHeaders } from './securityHeaders.js';
-import { validateMcpRequest } from './validation.js';
+import { validateEnv, validateMcpRequest } from './validation.js';
 import { createApiApp, createApiAppForEnv } from './api/app.js';
+
+/** Once per isolate, same idea as validateEnv in the MCP durable object on first init. */
+let apiEnvValidated = false;
+
+function ensureApiEnvValidated(env: Env): Response | null {
+	if (apiEnvValidated) {
+		return null;
+	}
+	try {
+		validateEnv(env);
+		apiEnvValidated = true;
+		return null;
+	} catch (err) {
+		const message = err instanceof Error ? err.message : String(err);
+		return Response.json(
+			{ error: message, code: 'CONFIG_ERROR' },
+			{ status: 500, headers: { 'Content-Type': 'application/json' } },
+		);
+	}
+}
 
 const productionApi = createApiApp();
 let mockApi: ReturnType<typeof createApiApp> | null = null;
@@ -70,6 +90,11 @@ async function handleRequest(
 	// be enabled for manual developer testing. It is disabled by default in the
 	// test environment. x402 is always required.
 	if (url.pathname.startsWith('/api')) {
+		const configError = ensureApiEnvValidated(env);
+		if (configError) {
+			return configError;
+		}
+
 		const requireBasicAuth = env.API_REQUIRE_BASIC_AUTH !== 'false';
 
 		if (requireBasicAuth) {

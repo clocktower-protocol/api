@@ -35,8 +35,8 @@ export type ApiAppOptions = {
  * x402 micropayments (USDC on Base) are the **primary and non-bypassable**
  * authorization + payment layer on every `/api/*` route (including `/api/status`).
  *
- * Basic Auth (`API_REQUIRE_BASIC_AUTH`) is an optional extra safety layer
- * intended only for the developer's manual testing. It is disabled by default in tests.
+ * Basic Auth (`API_REQUIRE_BASIC_AUTH`) is an optional extra safety layer for local
+ * manual testing only. Production default is `false` in wrangler.jsonc (x402-only).
  *
  * IP rate limiting still applies on top (see src/index.ts).
  *
