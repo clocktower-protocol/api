@@ -15,6 +15,7 @@ import {
   handleGetProviderProfile,
   handleGetSubscriptionDetailsHistory,
 } from './read.js';
+import { createMockFacilitatorClient } from './mockFacilitator.js';
 import { createX402PaymentMiddleware } from './x402.js';
 
 // Write handlers
@@ -75,6 +76,13 @@ export type ApiAppOptions = {
  *   - src/api/write.ts     → Write handler implementations
  *   - src/index.ts         → Top-level routing + security layers
  */
+
+export function createApiAppForEnv(env: Env, options: ApiAppOptions = {}) {
+  const facilitatorClient =
+    options.facilitatorClient ??
+    (env.X402_USE_MOCK_FACILITATOR === 'true' ? createMockFacilitatorClient() : undefined);
+  return createApiApp({ ...options, facilitatorClient });
+}
 
 export function createApiApp(options: ApiAppOptions = {}) {
   const app = new Hono<{ Bindings: Env }>();

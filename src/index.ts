@@ -6,7 +6,20 @@ import { RateLimiter } from './RateLimiter.js';
 import { enforceRateLimit } from './rateLimit.js';
 import { withSecurityHeaders } from './securityHeaders.js';
 import { validateMcpRequest } from './validation.js';
-import { api } from './api/app.js';
+import { createApiApp, createApiAppForEnv } from './api/app.js';
+
+const productionApi = createApiApp();
+let mockApi: ReturnType<typeof createApiApp> | null = null;
+
+function getApi(env: Env): ReturnType<typeof createApiApp> {
+	if (env.X402_USE_MOCK_FACILITATOR === 'true') {
+		if (!mockApi) {
+			mockApi = createApiAppForEnv(env);
+		}
+		return mockApi;
+	}
+	return productionApi;
+}
 
 async function handleRequest(
 	request: Request,
@@ -72,7 +85,7 @@ async function handleRequest(
 		}
 
 		try {
-			return await api.fetch(request, env, ctx);
+			return await getApi(env).fetch(request, env, ctx);
 		} catch (err) {
 			// Primary safety net for unauthenticated API requests (see also src/api/x402.ts).
 			// The official @x402/hono middleware can sometimes throw during

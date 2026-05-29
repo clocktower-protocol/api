@@ -2,13 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
 	createSubscriptionInputSchema,
 	detailsSchema,
-	protocolAmountSchema,
+	humanAmountSchema,
 	validateDueDayForFrequency,
 } from '../src/validation-write.js';
 
 describe('validation-write', () => {
-	it('parses protocol decimal amounts', () => {
-		expect(protocolAmountSchema.parse('1.5')).toBe(1500000000000000000n);
+	it('accepts human-readable decimal amount strings', () => {
+		expect(humanAmountSchema.parse('1.5')).toBe('1.5');
+		expect(humanAmountSchema.parse('10')).toBe('10');
 	});
 
 	it('validates due day ranges per frequency', () => {

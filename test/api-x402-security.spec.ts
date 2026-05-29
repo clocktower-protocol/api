@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { createApiApp } from '../src/api/app.js';
-import type { HTTPFacilitatorClient } from '@x402/core/server';
+import { createMockFacilitator } from './helpers/mockFacilitator.js';
 
 /**
  * Security-grade tests for the x402 REST surface.
@@ -9,19 +9,10 @@ import type { HTTPFacilitatorClient } from '@x402/core/server';
  * (the official @x402/hono middleware + the full middleware stack).
  */
 
-type MockFacilitator = Partial<HTTPFacilitatorClient>;
-
 const testEnv = {
   API_REQUIRE_BASIC_AUTH: 'false',
   X402_RECIPIENT: '0x0000000000000000000000000000000000000001',
 } as Env;
-
-function createMockFacilitator(overrides: { verify?: unknown; settle?: unknown } = {}): MockFacilitator {
-  return {
-    verifyPayment: vi.fn().mockResolvedValue(overrides.verify ?? { isValid: true }),
-    settlePayment: vi.fn().mockResolvedValue(overrides.settle ?? { success: true, transaction: '0xsettled' }),
-  };
-}
 
 describe('x402 security - config and environment attacks', () => {
   it('returns 500 (never 402 or success) when X402_RECIPIENT is missing during real route execution', async () => {

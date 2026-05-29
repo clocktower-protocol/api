@@ -21,6 +21,8 @@ declare namespace Cloudflare {
 		CDP_API_KEY_ID: string;
 		CDP_API_KEY_SECRET: string;
 		X402_RECIPIENT: string;
+		/** When 'true', use in-memory mock facilitator (Vitest only). */
+		X402_USE_MOCK_FACILITATOR?: string;
 		// Subgraph (The Graph) configuration for history + provider detail endpoints.
 		// These are injected via wrangler secret put (or .dev.vars locally).
 		// See clocktower-proxy for similar GRAPH_* handling pattern.

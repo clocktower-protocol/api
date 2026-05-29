@@ -3,6 +3,7 @@ import { ExactEvmScheme } from '@x402/evm/exact/server';
 import { HTTPFacilitatorClient } from '@x402/core/server';
 
 import { buildX402Config } from '../x402.js';
+import { createMockFacilitatorClient } from './mockFacilitator.js';
 import { API_PRICES, type ApiEndpoint } from './pricing.js';
 
 /** USDC on Base mainnet */
@@ -64,6 +65,23 @@ function buildRoutesConfig(
   return config;
 }
 
+function resolveFacilitatorClient(
+  env: Env,
+  options: { facilitatorClient?: unknown },
+): unknown {
+  if (options.facilitatorClient !== undefined) {
+    return options.facilitatorClient;
+  }
+  if (env.X402_USE_MOCK_FACILITATOR === 'true') {
+    return createMockFacilitatorClient();
+  }
+  const x402Config = buildX402Config(env);
+  return new HTTPFacilitatorClient({
+    url: x402Config.facilitator?.url ?? 'https://x402.org/facilitator',
+    createAuthHeaders: x402Config.facilitator?.createAuthHeaders,
+  });
+}
+
 /**
  * Creates the x402 payment middleware for Hono using @x402/hono.
  * Each call returns an independent middleware instance (own lazy cache).
@@ -75,11 +93,7 @@ export function createX402PaymentMiddleware(options: { facilitatorClient?: unkno
     if (!cachedMiddleware) {
       const env = c.env;
 
-      const x402Config = buildX402Config(env);
-      const facilitatorClient = options.facilitatorClient ?? new HTTPFacilitatorClient({
-        url: x402Config.facilitator?.url ?? 'https://x402.org/facilitator',
-        createAuthHeaders: x402Config.facilitator?.createAuthHeaders,
-      });
+      const facilitatorClient = resolveFacilitatorClient(env, options);
 
       const recipient = env.X402_RECIPIENT as `0x${string}`;
       if (!recipient) {

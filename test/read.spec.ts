@@ -20,8 +20,8 @@ describe('getProtocolState', () => {
 		callCount = 0;
 		globalThis.fetch = vi.fn(async () => {
 			const results = [
-				encodeUint(10500), // callerFee
-				encodeUint(200), // systemFee
+				encodeUint(10500), // callerFee bps → 5% above baseline (10000)
+				encodeUint(10100), // systemFee bps → 1% of caller fee
 			];
 
 			const result = results[callCount] ?? encodeUint(0);
@@ -43,8 +43,8 @@ describe('getProtocolState', () => {
 		const state = await getProtocolState(env);
 
 		expect(state.chainId).toBe(BASE_CHAIN_ID);
-		expect(state.callerFee).toBe(10500n);
-		expect(state.systemFee).toBe(200n);
+		expect(state.callerFeePercent).toBe(5);
+		expect(state.systemFeePercent).toBe(1);
 		expect(globalThis.fetch).toHaveBeenCalledTimes(2);
 	});
 });

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { createApiApp } from '../src/api/app.js';
 import {
   handlePrepareCreateSubscription,
@@ -6,7 +6,7 @@ import {
   handleSubmitSignedTransactions,
   handlePrepareSubscribe,
 } from '../src/api/write.js';
-import type { HTTPFacilitatorClient } from '@x402/core/server';
+import { createMockFacilitator } from './helpers/mockFacilitator.js';
 
 /**
  * Phase 3: Integration-level happy path tests for write endpoints.
@@ -17,15 +17,6 @@ import type { HTTPFacilitatorClient } from '@x402/core/server';
  * - A few full Hono + x402 stack tests using createApiApp + injected mock facilitator
  *   to prove end-to-end payment → real handler → settlement behavior.
  */
-
-type MockFacilitator = Partial<HTTPFacilitatorClient>;
-
-function createMockFacilitator(overrides: { verify?: any; settle?: any } = {}): MockFacilitator {
-  return {
-    verifyPayment: vi.fn().mockResolvedValue(overrides.verify ?? { isValid: true }),
-    settlePayment: vi.fn().mockResolvedValue(overrides.settle ?? { success: true, transaction: '0xtx123' }),
-  };
-}
 
 describe('API write integration - real handlers', () => {
   it('handlePrepareCreateSubscription returns structured response or validation error', async () => {
