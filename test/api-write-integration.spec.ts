@@ -148,10 +148,11 @@ describe('API write integration - x402 gate at route level (using factory)', () 
       body: JSON.stringify({ from: '0x123', subscription: {} }),
     });
 
-    const res = await app.fetch(req, { API_REQUIRE_BASIC_AUTH: 'false' } as any);
+    const res = await app.fetch(req, {
+      API_REQUIRE_BASIC_AUTH: 'false',
+      X402_RECIPIENT: '0x0000000000000000000000000000000000000001',
+    } as any);
 
-    // Note: may return 404 in some direct-fetch scenarios due to mounting;
-    // the important guarantee is already heavily tested in api-x402-middleware.spec.ts
-    expect([402, 404]).toContain(res.status);
+    expect(res.status).toBe(402);
   });
 });

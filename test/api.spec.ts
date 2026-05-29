@@ -58,7 +58,7 @@ describe('clocktower-mcp worker - /api (full surface with x402)', () => {
 
 	it('returns consistent error shape on invalid input (bad subscription id)', async () => {
 		const res = await fetchWorker('/api/subscriptions/not-a-valid-id');
-		expect([400, 401, 429]).toContain(res.status);
+		expect([400, 401, 402, 429]).toContain(res.status);
 
 		if (res.status === 400) {
 			const body = await res.json();
@@ -70,12 +70,12 @@ describe('clocktower-mcp worker - /api (full surface with x402)', () => {
 	it('respects Basic Auth and rate limiting on all /api routes', async () => {
 		const res = await fetchWorker('/api/protocol/state');
 		// Acceptable outcomes in the constrained test environment
-		expect([200, 401, 429]).toContain(res.status);
+		expect([200, 401, 402, 429]).toContain(res.status);
 	});
 
 	it('supports query parameters on due subscriptions endpoint', async () => {
 		const res = await fetchWorker('/api/subscriptions/due?dayNumber=100&frequency=0');
-		expect([200, 401, 429]).toContain(res.status);
+		expect([200, 401, 402, 429]).toContain(res.status);
 	});
 
 	// === Write endpoint integration tests ===

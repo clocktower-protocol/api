@@ -82,6 +82,7 @@ The REST API provides the same capabilities as the MCP tools over standard HTTP,
 | `GET /api/subscriptions/due` | Subscriptions due on a given day/frequency |
 | `GET /api/subscriptions/:id` | Single subscription by ID |
 | `GET /api/subscriptions/:id/subscribers` | Subscribers for a subscription |
+| `GET /api/subscriptions/:id/fee-balance?address=0x…` | Fee balance for a subscriber on a subscription |
 | `GET /api/accounts/:address/subscriptions` | Subscriptions for an account (rich) |
 | `GET /api/accounts/:address` | Full enriched account overview. Returns `subscribedTo` (what you pay into) and `created` (what you created as provider) |
 | `GET /api/approved-tokens` | List of approved tokens |

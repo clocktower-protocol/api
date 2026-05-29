@@ -3,38 +3,82 @@ import { ExactEvmScheme } from '@x402/evm/exact/server';
 import { HTTPFacilitatorClient } from '@x402/core/server';
 
 import { buildX402Config } from '../x402.js';
-import { API_PRICES } from './pricing.js';
+import { API_PRICES, type ApiEndpoint } from './pricing.js';
+
+/** USDC on Base mainnet */
+const BASE_USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as const;
+const BASE_NETWORK = 'eip155:8453' as const;
+
+type RouteManifestEntry = {
+  method: 'GET' | 'POST';
+  path: string;
+  priceKey: ApiEndpoint;
+  description: string;
+};
+
+const ROUTE_MANIFEST: RouteManifestEntry[] = [
+  { method: 'GET', path: '/api/protocol/state', priceKey: 'protocolState', description: 'Get Clocktower protocol state' },
+  { method: 'GET', path: '/api/subscriptions/due', priceKey: 'getSubscriptionsDue', description: 'Get subscriptions due' },
+  { method: 'GET', path: '/api/subscriptions/:id', priceKey: 'getSubscription', description: 'Get subscription by ID' },
+  { method: 'GET', path: '/api/subscriptions/:id/subscribers', priceKey: 'getSubscribers', description: 'Get subscribers for subscription' },
+  { method: 'GET', path: '/api/accounts/:address/subscriptions', priceKey: 'getAccountSubscriptions', description: 'Get subscriptions for account' },
+  { method: 'GET', path: '/api/accounts/:address', priceKey: 'getAccountSubscriptions', description: 'Get full account overview' },
+  { method: 'GET', path: '/api/approved-tokens', priceKey: 'getApprovedToken', description: 'List approved tokens' },
+  { method: 'GET', path: '/api/approved-tokens/:token', priceKey: 'getApprovedToken', description: 'Get approved token config' },
+  { method: 'GET', path: '/api/subscriptions/:id/fee-balance', priceKey: 'feeBalance', description: 'Get fee balance' },
+  { method: 'GET', path: '/api/subscriptions/:id/history', priceKey: 'subscriptionHistory', description: 'Get subscription history' },
+  { method: 'GET', path: '/api/accounts/:address/activity', priceKey: 'accountActivity', description: 'Get combined account activity history' },
+  { method: 'GET', path: '/api/providers/:address', priceKey: 'providerProfile', description: 'Get provider profile' },
+  { method: 'GET', path: '/api/subscriptions/:id/details-history', priceKey: 'subscriptionDetailsHistory', description: 'Get subscription details history' },
+  { method: 'POST', path: '/api/check_subscribe_readiness', priceKey: 'checkSubscribeReadiness', description: 'Check subscribe readiness' },
+  { method: 'POST', path: '/api/prepare/create_subscription', priceKey: 'prepareCreateSubscription', description: 'Prepare create subscription' },
+  { method: 'POST', path: '/api/prepare/subscribe', priceKey: 'prepareSubscribe', description: 'Prepare subscribe' },
+  { method: 'POST', path: '/api/prepare/cancel_subscription', priceKey: 'prepareCancelSubscription', description: 'Prepare cancel subscription' },
+  { method: 'POST', path: '/api/prepare/unsubscribe', priceKey: 'prepareUnsubscribe', description: 'Prepare unsubscribe' },
+  { method: 'POST', path: '/api/prepare/unsubscribe_by_provider', priceKey: 'prepareUnsubscribeByProvider', description: 'Prepare unsubscribe by provider' },
+  { method: 'POST', path: '/api/prepare/edit_details', priceKey: 'prepareEditDetails', description: 'Prepare edit details' },
+  { method: 'POST', path: '/api/submit_signed_transactions', priceKey: 'submitSignedTransactions', description: 'Submit signed transactions' },
+  { method: 'POST', path: '/api/transactions/status', priceKey: 'getTransactionStatus', description: 'Get transaction status' },
+];
+
+function buildRoutesConfig(
+  recipient: `0x${string}`,
+): Record<string, { accepts: object[]; description: string; mimeType: string }> {
+  const config: Record<string, { accepts: object[]; description: string; mimeType: string }> = {};
+
+  for (const { method, path, priceKey, description } of ROUTE_MANIFEST) {
+    const key = `${method} ${path}`;
+    config[key] = {
+      accepts: [{
+        scheme: 'exact',
+        price: `$${API_PRICES[priceKey]}`,
+        network: BASE_NETWORK,
+        payTo: recipient,
+        asset: BASE_USDC_ADDRESS,
+      }],
+      description,
+      mimeType: 'application/json',
+    };
+  }
+
+  return config;
+}
 
 /**
- * Official x402 integration for Hono using @x402/hono.
- *
- * This is the recommended way to integrate x402 payments in the server.
- * It provides good compatibility with official clients (@x402/fetch, etc.).
+ * Creates the x402 payment middleware for Hono using @x402/hono.
+ * Each call returns an independent middleware instance (own lazy cache).
  */
+export function createX402PaymentMiddleware(options: { facilitatorClient?: unknown } = {}) {
+  let cachedMiddleware: ReturnType<typeof paymentMiddleware> | null = null;
 
-type Env = any;
+  return async (c: { env: Env; json: (body: unknown, status: number) => Response }, next: () => Promise<void>) => {
+    if (!cachedMiddleware) {
+      const env = c.env;
 
-/**
- * Creates the x402 payment middleware for Hono using the official library.
- *
- * Usage in app.ts:
- *   const x402Mw = createX402PaymentMiddleware(options);
- *   app.use(x402Mw);
- *
- * Then register your routes normally (no more per-route wrapping needed).
- */
-let cachedX402Middleware: any = null;
-
-export function createX402PaymentMiddleware(options: { facilitatorClient?: any } = {}) {
-  return async (c: any, next: any) => {
-    // Proper lazy one-time initialization on the *first real request* using the real env
-    if (!cachedX402Middleware) {
-      const env: Env = c.env;
-
-      const config = buildX402Config(env);
+      const x402Config = buildX402Config(env);
       const facilitatorClient = options.facilitatorClient ?? new HTTPFacilitatorClient({
-        url: config.facilitator?.url ?? 'https://x402.org/facilitator',
-        createAuthHeaders: config.facilitator?.createAuthHeaders,
+        url: x402Config.facilitator?.url ?? 'https://x402.org/facilitator',
+        createAuthHeaders: x402Config.facilitator?.createAuthHeaders,
       });
 
       const recipient = env.X402_RECIPIENT as `0x${string}`;
@@ -42,137 +86,18 @@ export function createX402PaymentMiddleware(options: { facilitatorClient?: any }
         return c.json({ error: 'Payment configuration error' }, 500);
       }
 
-      const USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
-
-      const routesConfig: Record<string, any> = {
-        'GET /api/protocol/state': {
-          accepts: [{ scheme: 'exact', price: `$${API_PRICES.protocolState}`, network: 'eip155:8453', payTo: recipient, asset: USDC_ADDRESS }],
-          description: 'Get Clocktower protocol state',
-          mimeType: 'application/json',
-        },
-        'GET /api/subscriptions/due': {
-          accepts: [{ scheme: 'exact', price: `$${API_PRICES.getSubscriptionsDue}`, network: 'eip155:8453', payTo: recipient, asset: USDC_ADDRESS }],
-          description: 'Get subscriptions due',
-          mimeType: 'application/json',
-        },
-        'GET /api/subscriptions/:id': {
-          accepts: [{ scheme: 'exact', price: `$${API_PRICES.getSubscription}`, network: 'eip155:8453', payTo: recipient, asset: USDC_ADDRESS }],
-          description: 'Get subscription by ID',
-          mimeType: 'application/json',
-        },
-        'GET /api/subscriptions/:id/subscribers': {
-          accepts: [{ scheme: 'exact', price: `$${API_PRICES.getSubscribers}`, network: 'eip155:8453', payTo: recipient, asset: USDC_ADDRESS }],
-          description: 'Get subscribers for subscription',
-          mimeType: 'application/json',
-        },
-        'GET /api/accounts/:address/subscriptions': {
-          accepts: [{ scheme: 'exact', price: `$${API_PRICES.getAccountSubscriptions}`, network: 'eip155:8453', payTo: recipient, asset: USDC_ADDRESS }],
-          description: 'Get subscriptions for account',
-          mimeType: 'application/json',
-        },
-        'GET /api/accounts/:address': {
-          accepts: [{ scheme: 'exact', price: `$${API_PRICES.getAccountSubscriptions}`, network: 'eip155:8453', payTo: recipient, asset: USDC_ADDRESS }],
-          description: 'Get full account overview',
-          mimeType: 'application/json',
-        },
-        'GET /api/approved-tokens': {
-          accepts: [{ scheme: 'exact', price: `$${API_PRICES.getApprovedToken}`, network: 'eip155:8453', payTo: recipient, asset: USDC_ADDRESS }],
-          description: 'List approved tokens',
-          mimeType: 'application/json',
-        },
-        'GET /api/approved-tokens/:token': {
-          accepts: [{ scheme: 'exact', price: `$${API_PRICES.getApprovedToken}`, network: 'eip155:8453', payTo: recipient, asset: USDC_ADDRESS }],
-          description: 'Get approved token config',
-          mimeType: 'application/json',
-        },
-        'GET /api/subscriptions/:id/fee-balance': {
-          accepts: [{ scheme: 'exact', price: `$${API_PRICES.getApprovedToken}`, network: 'eip155:8453', payTo: recipient, asset: USDC_ADDRESS }],
-          description: 'Get fee balance',
-          mimeType: 'application/json',
-        },
-        'GET /api/subscriptions/:id/history': {
-          accepts: [{ scheme: 'exact', price: `$${API_PRICES.subscriptionHistory}`, network: 'eip155:8453', payTo: recipient, asset: USDC_ADDRESS }],
-          description: 'Get subscription history',
-          mimeType: 'application/json',
-        },
-        'GET /api/accounts/:address/activity': {
-          accepts: [{ scheme: 'exact', price: `$${API_PRICES.accountActivity}`, network: 'eip155:8453', payTo: recipient, asset: USDC_ADDRESS }],
-          description: 'Get combined account activity history',
-          mimeType: 'application/json',
-        },
-        'GET /api/providers/:address': {
-          accepts: [{ scheme: 'exact', price: `$${API_PRICES.providerProfile}`, network: 'eip155:8453', payTo: recipient, asset: USDC_ADDRESS }],
-          description: 'Get provider profile',
-          mimeType: 'application/json',
-        },
-        'GET /api/subscriptions/:id/details-history': {
-          accepts: [{ scheme: 'exact', price: `$${API_PRICES.subscriptionDetailsHistory}`, network: 'eip155:8453', payTo: recipient, asset: USDC_ADDRESS }],
-          description: 'Get subscription details history',
-          mimeType: 'application/json',
-        },
-        'POST /api/check_subscribe_readiness': {
-          accepts: [{ scheme: 'exact', price: `$${API_PRICES.checkSubscribeReadiness}`, network: 'eip155:8453', payTo: recipient, asset: USDC_ADDRESS }],
-          description: 'Check subscribe readiness',
-          mimeType: 'application/json',
-        },
-        'POST /api/prepare/create_subscription': {
-          accepts: [{ scheme: 'exact', price: `$${API_PRICES.prepareCreateSubscription}`, network: 'eip155:8453', payTo: recipient, asset: USDC_ADDRESS }],
-          description: 'Prepare create subscription',
-          mimeType: 'application/json',
-        },
-        'POST /api/prepare/subscribe': {
-          accepts: [{ scheme: 'exact', price: `$${API_PRICES.prepareSubscribe}`, network: 'eip155:8453', payTo: recipient, asset: USDC_ADDRESS }],
-          description: 'Prepare subscribe',
-          mimeType: 'application/json',
-        },
-        'POST /api/prepare/cancel_subscription': {
-          accepts: [{ scheme: 'exact', price: `$${API_PRICES.prepareCancelSubscription}`, network: 'eip155:8453', payTo: recipient, asset: USDC_ADDRESS }],
-          description: 'Prepare cancel subscription',
-          mimeType: 'application/json',
-        },
-        'POST /api/prepare/unsubscribe': {
-          accepts: [{ scheme: 'exact', price: `$${API_PRICES.prepareUnsubscribe}`, network: 'eip155:8453', payTo: recipient, asset: USDC_ADDRESS }],
-          description: 'Prepare unsubscribe',
-          mimeType: 'application/json',
-        },
-        'POST /api/prepare/unsubscribe_by_provider': {
-          accepts: [{ scheme: 'exact', price: `$${API_PRICES.prepareUnsubscribeByProvider}`, network: 'eip155:8453', payTo: recipient, asset: USDC_ADDRESS }],
-          description: 'Prepare unsubscribe by provider',
-          mimeType: 'application/json',
-        },
-        'POST /api/prepare/edit_details': {
-          accepts: [{ scheme: 'exact', price: `$${API_PRICES.prepareEditDetails}`, network: 'eip155:8453', payTo: recipient, asset: USDC_ADDRESS }],
-          description: 'Prepare edit details',
-          mimeType: 'application/json',
-        },
-        'POST /api/submit_signed_transactions': {
-          accepts: [{ scheme: 'exact', price: `$${API_PRICES.submitSignedTransactions}`, network: 'eip155:8453', payTo: recipient, asset: USDC_ADDRESS }],
-          description: 'Submit signed transactions',
-          mimeType: 'application/json',
-        },
-        'POST /api/transactions/status': {
-          accepts: [{ scheme: 'exact', price: `$${API_PRICES.getTransactionStatus}`, network: 'eip155:8453', payTo: recipient, asset: USDC_ADDRESS }],
-          description: 'Get transaction status',
-          mimeType: 'application/json',
-        },
-      };
-
       const resourceServer = new x402ResourceServer(facilitatorClient)
-        .register('eip155:8453', new ExactEvmScheme());
+        .register(BASE_NETWORK, new ExactEvmScheme());
 
-      cachedX402Middleware = paymentMiddleware(routesConfig, resourceServer);
+      cachedMiddleware = paymentMiddleware(buildRoutesConfig(recipient), resourceServer);
     }
 
     try {
-      return await cachedX402Middleware(c, next);
+      return await cachedMiddleware(c, next);
     } catch (err) {
-      // Safety net: If the official middleware throws during lazy initialization
-      // on an unauthenticated request, return a clean 402 instead of 500.
-      // This restores the expected behavior the rate limiting + x402 tests rely on.
-      console.error('[x402] Middleware initialization/handling error on unauthenticated path → returning 402:', err);
+      // Secondary safety net; src/index.ts is the primary guard (402 only without payment headers).
+      console.error('[x402] Middleware error → returning 402:', err);
       return c.json({ error: 'Payment required' }, 402);
     }
   };
 }
-
-

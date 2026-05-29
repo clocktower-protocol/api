@@ -74,7 +74,7 @@ async function handleRequest(
 		try {
 			return await api.fetch(request, env, ctx);
 		} catch (err) {
-			// Safety net for unauthenticated API requests.
+			// Primary safety net for unauthenticated API requests (see also src/api/x402.ts).
 			// The official @x402/hono middleware can sometimes throw during
 			// lazy initialization (or on malformed payments) instead of returning
 			// a clean 402. In those cases we fall back to 402 for requests that

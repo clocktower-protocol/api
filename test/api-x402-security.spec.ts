@@ -11,7 +11,12 @@ import type { HTTPFacilitatorClient } from '@x402/core/server';
 
 type MockFacilitator = Partial<HTTPFacilitatorClient>;
 
-function createMockFacilitator(overrides: { verify?: any; settle?: any } = {}): MockFacilitator {
+const testEnv = {
+  API_REQUIRE_BASIC_AUTH: 'false',
+  X402_RECIPIENT: '0x0000000000000000000000000000000000000001',
+} as Env;
+
+function createMockFacilitator(overrides: { verify?: unknown; settle?: unknown } = {}): MockFacilitator {
   return {
     verifyPayment: vi.fn().mockResolvedValue(overrides.verify ?? { isValid: true }),
     settlePayment: vi.fn().mockResolvedValue(overrides.settle ?? { success: true, transaction: '0xsettled' }),
@@ -25,13 +30,13 @@ describe('x402 security - config and environment attacks', () => {
     const req = new Request('http://example.com/api/protocol/state', { method: 'GET' });
     req.headers.set('X-Payment', btoa(JSON.stringify({ anything: 'here' })));
 
-    const res = await app.fetch(req, { API_REQUIRE_BASIC_AUTH: 'false' } as any);
+    const res = await app.fetch(req, { API_REQUIRE_BASIC_AUTH: 'false' } as Env);
 
     expect(res.status).toBe(500);
   });
 
-  it('handles completely missing facilitator client injection gracefully in factory', async () => {
-    const app = createApiApp({ facilitatorClient: undefined });
+  it('returns 402 when payment is missing on a write route', async () => {
+    const app = createApiApp({ facilitatorClient: createMockFacilitator() });
 
     const req = new Request('http://example.com/api/check_subscribe_readiness', {
       method: 'POST',
@@ -39,14 +44,14 @@ describe('x402 security - config and environment attacks', () => {
       body: JSON.stringify({ from: '0x1', subscription: {} }),
     });
 
-    const res = await app.fetch(req, { API_REQUIRE_BASIC_AUTH: 'false' } as any);
+    const res = await app.fetch(req, testEnv);
 
-    expect([402, 404, 500]).toContain(res.status);
+    expect(res.status).toBe(402);
   });
 });
 
 describe('x402 security - combined with rate limiting surface', () => {
-  it('x402 402 responses on write endpoints still allow rate limiting to apply in the outer stack', async () => {
+  it('write endpoints without payment return 402 (not 404 from broken routing)', async () => {
     const app = createApiApp();
 
     for (let i = 0; i < 3; i++) {
@@ -56,9 +61,28 @@ describe('x402 security - combined with rate limiting surface', () => {
         body: JSON.stringify({ from: '0x' + i, subscription: {} }),
       });
 
-      const res = await app.fetch(req, { API_REQUIRE_BASIC_AUTH: 'false' } as any);
+      const res = await app.fetch(req, testEnv);
 
-      expect([402, 404, 429]).toContain(res.status);
+      expect(res.status).toBe(402);
     }
+  });
+
+  it('write handler is reachable when payment verifies (not 404)', async () => {
+    const mockFacilitator = createMockFacilitator();
+    const app = createApiApp({ facilitatorClient: mockFacilitator });
+
+    const req = new Request('http://example.com/api/check_subscribe_readiness', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Payment': btoa(JSON.stringify({ mock: true })),
+      },
+      body: JSON.stringify({ from: '0x1234567890123456789012345678901234567890', subscription: {} }),
+    });
+
+    const res = await app.fetch(req, testEnv);
+
+    expect(res.status).not.toBe(404);
+    expect([400, 402, 500]).toContain(res.status);
   });
 });

@@ -292,7 +292,7 @@ function handleWriteError(err: any, operation: string) {
     return Errors.validation('Invalid nonce for signed transaction');
   }
 
-  // Let the x402 wrapper know this failed so it does NOT settle the payment
+  // @x402/hono settles only on successful responses; non-2xx JSON responses skip settlement.
   console.error(`[write] ${operation} failed`, err);
 
   return Errors.upstream(message || `Failed to ${operation}`);

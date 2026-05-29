@@ -32,26 +32,31 @@ export type ApiAppOptions = {
  *
  * === Authentication Model ===
  * x402 micropayments (USDC on Base) are the **primary and non-bypassable**
- * authorization + payment layer on every route.
+ * authorization + payment layer on every `/api/*` route (including `/api/status`).
  *
  * Basic Auth (`API_REQUIRE_BASIC_AUTH`) is an optional extra safety layer
- * intended only for the developer's manual testing while x402 is still
- * maturing. It is disabled by default in tests (`false`).
+ * intended only for the developer's manual testing. It is disabled by default in tests.
  *
- * IP rate limiting still applies on top.
+ * IP rate limiting still applies on top (see src/index.ts).
  *
- * === Current Endpoints ===
- * Read endpoints (all protected with x402):
+ * === Current Endpoints (all x402-protected unless noted) ===
+ * Read:
  *   - GET /api/protocol/state
  *   - GET /api/subscriptions/due
  *   - GET /api/subscriptions/:id
  *   - GET /api/subscriptions/:id/subscribers
+ *   - GET /api/subscriptions/:id/fee-balance
  *   - GET /api/accounts/:address/subscriptions
- *   - GET /api/accounts/:address          (full enriched view: subscribedTo + created)
+ *   - GET /api/accounts/:address
  *   - GET /api/approved-tokens
  *   - GET /api/approved-tokens/:token
+ *   - GET /api/subscriptions/:id/history
+ *   - GET /api/accounts/:address/activity
+ *   - GET /api/providers/:address
+ *   - GET /api/subscriptions/:id/details-history
+ *   - GET /api/status
  *
- * Write endpoints (all protected with x402):
+ * Write:
  *   - POST /api/check_subscribe_readiness
  *   - POST /api/prepare/create_subscription
  *   - POST /api/prepare/subscribe
@@ -62,14 +67,11 @@ export type ApiAppOptions = {
  *   - POST /api/submit_signed_transactions
  *   - POST /api/transactions/status
  *
- * === Notes ===
- * - All routes require a valid x402 payment.
- * - Basic Auth can be turned on for /api by setting API_REQUIRE_BASIC_AUTH=true
- *   (useful only for early developer testing).
- * - x402 is applied via the official @x402/hono middleware (see src/api/x402.ts).
+ * Not x402-protected: GET / (API discovery only)
  *
  * Related modules:
- *   - src/api/pricing.ts   → Centralized pricing for reads ($0.01) and writes ($0.02)
+ *   - src/api/pricing.ts   → Centralized pricing
+ *   - src/api/x402.ts      → @x402/hono middleware + route prices
  *   - src/api/write.ts     → Write handler implementations
  *   - src/index.ts         → Top-level routing + security layers
  */
@@ -77,17 +79,10 @@ export type ApiAppOptions = {
 export function createApiApp(options: ApiAppOptions = {}) {
   const app = new Hono<{ Bindings: Env }>();
 
-  // VERY EARLY DEBUG
-  app.get('/api/early-debug', (c) => {
-    return jsonResponse({ earlyDebug: true, timestamp: new Date().toISOString() });
-  });
-
-  // === Apply official x402 middleware (recommended approach) ===
-  // This replaces the old per-route withPayment wrapping.
   const x402Middleware = createX402PaymentMiddleware(options);
   app.use('/api/*', x402Middleware);
 
-  // Health / info for the API surface (not protected by x402)
+  // API discovery (not under /api — no x402)
   app.get('/', (c) => {
     const requireBasic = c.env.API_REQUIRE_BASIC_AUTH !== 'false';
     return jsonResponse({
@@ -95,15 +90,13 @@ export function createApiApp(options: ApiAppOptions = {}) {
       message: 'Clocktower REST API',
       version: 'x402-primary',
       auth: {
-        x402: 'required (primary & non-bypassable)',
+        x402: 'required on all /api routes (via @x402/hono)',
         basicAuth: requireBasic ? 'optional (enabled via flag)' : 'disabled',
       },
-      note: 'x402 is the primary and required layer on all /api routes (via @x402/hono).',
     });
   });
 
-  // === Read Endpoints ===
-  // Note: These are no longer individually wrapped. Protection comes from the middleware above.
+  // === Read endpoints ===
 
   app.get('/api/protocol/state', async (c: any) => {
     return await handleGetProtocolState(c.env);
@@ -149,12 +142,6 @@ export function createApiApp(options: ApiAppOptions = {}) {
     return await handleGetAccount(c.env, address);
   });
 
-  // Debug markers (useful during development)
-  app.get('/api/debug-before-history', (c) => {
-    return jsonResponse({ debug: 'before-history-routes', timestamp: new Date().toISOString() });
-  });
-
-  // History & Profile endpoints
   app.get('/api/subscriptions/:id/history', async (c: any) => {
     const id = c.req.param('id');
     return await handleGetSubscriptionHistory(c.env, id, c.req.query());
@@ -175,32 +162,8 @@ export function createApiApp(options: ApiAppOptions = {}) {
     return await handleGetSubscriptionDetailsHistory(c.env, id, c.req.query());
   });
 
-  app.get('/api/debug-after-history', (c) => {
-    return jsonResponse({ debug: 'after-history-routes', timestamp: new Date().toISOString() });
-  });
+  // === Write endpoints ===
 
-  // Catch-all
-  app.all('*', (c) => Errors.notFound('Not Found'));
-
-  // Status (not under x402)
-  app.get('/api/status', (c) => {
-    return jsonResponse({
-      status: 'ok',
-      service: 'clocktower-rest-api',
-      x402: 'required (primary) via @x402/hono',
-      version: 'x402-official-middleware',
-    });
-  });
-
-  app.get('/api/debug-version', (c) => {
-    return jsonResponse({
-      debug: true,
-      timestamp: new Date().toISOString(),
-      message: 'Migrated to official @x402/hono middleware',
-    });
-  });
-
-  // === Write Endpoints ===
   app.post('/api/check_subscribe_readiness', async (c: any) => writeHandlers.handleCheckSubscribeReadiness(c));
   app.post('/api/prepare/create_subscription', async (c: any) => writeHandlers.handlePrepareCreateSubscription(c));
   app.post('/api/prepare/subscribe', async (c: any) => writeHandlers.handlePrepareSubscribe(c));
@@ -210,6 +173,18 @@ export function createApiApp(options: ApiAppOptions = {}) {
   app.post('/api/prepare/edit_details', async (c: any) => writeHandlers.handlePrepareEditDetails(c));
   app.post('/api/submit_signed_transactions', async (c: any) => writeHandlers.handleSubmitSignedTransactions(c));
   app.post('/api/transactions/status', async (c: any) => writeHandlers.handleGetTransactionStatus(c));
+
+  // x402-protected service status
+  app.get('/api/status', (c) => {
+    return jsonResponse({
+      status: 'ok',
+      service: 'clocktower-rest-api',
+      x402: 'required via @x402/hono',
+    });
+  });
+
+  // Catch-all must be registered last (Hono first-match wins)
+  app.all('*', (c) => Errors.notFound('Not Found'));
 
   return app;
 }
