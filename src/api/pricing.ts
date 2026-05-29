@@ -44,4 +44,4 @@ export type ApiEndpoint = keyof typeof API_PRICES;
 
 // Note: New history/profile prices (subscriptionHistory, accountActivity, etc.)
 // are intentionally part of ApiEndpoint so they can be referenced uniformly
-// in withX402Payment calls and tests.
+// when building the routes config for the official @x402/hono middleware.

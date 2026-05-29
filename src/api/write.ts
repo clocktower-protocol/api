@@ -1,7 +1,7 @@
 /**
  * Write Endpoints
  *
- * These handlers are called after x402 payment verification (via withX402Payment wrapper).
+ * These handlers are called after x402 payment verification (via the official @x402/hono middleware).
  * They delegate to the existing transaction preparation/submission logic in src/tx/.
  */
 
@@ -38,7 +38,7 @@ import {
 /* =====================================================
    Write Handlers
    All handlers assume the caller has already passed x402
-   payment verification via the withX402Payment wrapper.
+   payment verification via the official @x402/hono middleware.
    ===================================================== */
 
 // 1. Check subscribe readiness

@@ -50,7 +50,7 @@ async function handleRequest(
 
 	// === API Routes (powered by Hono) ===
 	// x402 micropayments are the primary and authoritative payment/auth layer.
-	// All routes inside the Hono app are wrapped with withX402Payment(),
+	// All routes inside the Hono app are protected by the official @x402/hono middleware.
 	// making x402 non-bypassable.
 	//
 	// Basic Auth (`API_REQUIRE_BASIC_AUTH`) is an optional extra gate that can

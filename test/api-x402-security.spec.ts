@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
+// Note: This file still uses the legacy withX402Payment (now a deprecated stub).
+// It will need a full rewrite to the new createX402PaymentMiddleware + Hono app pattern.
 import { withX402Payment } from '../src/api/x402.js';
 import { createApiApp } from '../src/api/app.js';
 import { API_PRICES } from '../src/api/pricing.js';
