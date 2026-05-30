@@ -5,6 +5,8 @@
  * Error responses use a consistent { error, code } shape (with optional `issues` for validation).
  */
 
+import { serializeJson } from '../utils.js';
+
 export type ApiErrorCode =
   | 'VALIDATION_ERROR'
   | 'NOT_FOUND'
@@ -18,7 +20,10 @@ export type ApiError = {
 };
 
 export function jsonResponse(data: unknown, status = 200): Response {
-  return Response.json(data, { status });
+  return new Response(serializeJson(data), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
 }
 
 export function errorResponse(message: string, code: ApiErrorCode, status = 400): Response {

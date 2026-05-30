@@ -1,6 +1,8 @@
 /**
  * Pricing configuration for the REST API (x402).
  *
+ * Keep in sync with clocktower-agent/src/smoke-pricing.ts SMOKE_PRICES.
+ *
  * Centralized here for consistency across read ($0.01) and write ($0.02) endpoints.
  */
 
