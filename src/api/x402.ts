@@ -38,6 +38,8 @@ const ROUTE_MANIFEST: RouteManifestEntry[] = [
   { method: 'POST', path: '/api/prepare/unsubscribe', priceKey: 'prepareUnsubscribe', description: 'Prepare unsubscribe' },
   { method: 'POST', path: '/api/prepare/unsubscribe_by_provider', priceKey: 'prepareUnsubscribeByProvider', description: 'Prepare unsubscribe by provider' },
   { method: 'POST', path: '/api/prepare/edit_details', priceKey: 'prepareEditDetails', description: 'Prepare edit details' },
+  { method: 'POST', path: '/api/check_remit_readiness', priceKey: 'checkRemitReadiness', description: 'Check remit readiness' },
+  { method: 'POST', path: '/api/prepare/remit', priceKey: 'prepareRemit', description: 'Prepare remit' },
   { method: 'POST', path: '/api/submit_signed_transactions', priceKey: 'submitSignedTransactions', description: 'Submit signed transactions' },
   { method: 'POST', path: '/api/transactions/status', priceKey: 'getTransactionStatus', description: 'Get transaction status' },
 ];

@@ -12,12 +12,14 @@ import { z } from 'zod';
 // Import tx functions
 import {
   checkSubscribeReadiness,
+  checkRemitReadiness,
   prepareCreateSubscription,
   prepareSubscribe,
   prepareCancelSubscription,
   prepareUnsubscribe,
   prepareUnsubscribeByProvider,
   prepareEditDetails,
+  prepareRemit,
 } from '../tx/prepare.js';
 import {
   submitSignedTransactions,
@@ -31,6 +33,7 @@ import {
   unsubscribeByProviderInputSchema,
   editDetailsInputSchema,
   createSubscriptionInputSchema,
+  remitInputSchema,
   toWriteSubscription,
   toWriteDetails,
 } from '../validation-write.js';
@@ -207,7 +210,35 @@ export async function handlePrepareEditDetails(c: Context) {
   }
 }
 
-// 8. Submit signed transactions
+// 8. Check remit readiness
+export async function handleCheckRemitReadiness(c: Context) {
+  try {
+    const body = await c.req.json();
+    const parsed = remitInputSchema.parse(body);
+
+    const result = await checkRemitReadiness(c.env, parsed.from);
+
+    return jsonResponse(result);
+  } catch (err: any) {
+    return handleWriteError(err, 'check_remit_readiness');
+  }
+}
+
+// 9. Prepare remit
+export async function handlePrepareRemit(c: Context) {
+  try {
+    const body = await c.req.json();
+    const parsed = remitInputSchema.parse(body);
+
+    const result = await prepareRemit(c.env, parsed.from);
+
+    return jsonResponse(result);
+  } catch (err: any) {
+    return handleWriteError(err, 'prepare_remit');
+  }
+}
+
+// 10. Submit signed transactions
 export async function handleSubmitSignedTransactions(c: Context) {
   try {
     const body = await c.req.json();
@@ -230,7 +261,7 @@ export async function handleSubmitSignedTransactions(c: Context) {
   }
 }
 
-// 9. Get transaction status
+// 11. Get transaction status
 export async function handleGetTransactionStatus(c: Context) {
   try {
     const body = await c.req.json();
@@ -290,6 +321,12 @@ function handleWriteError(err: any, operation: string) {
   }
   if (message.includes('Invalid nonce')) {
     return Errors.validation('Invalid nonce for signed transaction');
+  }
+  if (message.includes('Remit not due') || message.includes('No due subscriptions')) {
+    return Errors.validation(message);
+  }
+  if (message.includes('Simulation failed')) {
+    return Errors.validation(message);
   }
 
   // @x402/hono skips settlement when the handler returns status >= 400 (see README REST

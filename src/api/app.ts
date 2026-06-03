@@ -65,6 +65,8 @@ export type ApiAppOptions = {
  *   - POST /api/prepare/unsubscribe
  *   - POST /api/prepare/unsubscribe_by_provider
  *   - POST /api/prepare/edit_details
+ *   - POST /api/check_remit_readiness
+ *   - POST /api/prepare/remit
  *   - POST /api/submit_signed_transactions
  *   - POST /api/transactions/status
  *
@@ -179,6 +181,8 @@ export function createApiApp(options: ApiAppOptions = {}) {
   app.post('/api/prepare/unsubscribe', async (c: any) => writeHandlers.handlePrepareUnsubscribe(c));
   app.post('/api/prepare/unsubscribe_by_provider', async (c: any) => writeHandlers.handlePrepareUnsubscribeByProvider(c));
   app.post('/api/prepare/edit_details', async (c: any) => writeHandlers.handlePrepareEditDetails(c));
+  app.post('/api/check_remit_readiness', async (c: any) => writeHandlers.handleCheckRemitReadiness(c));
+  app.post('/api/prepare/remit', async (c: any) => writeHandlers.handlePrepareRemit(c));
   app.post('/api/submit_signed_transactions', async (c: any) => writeHandlers.handleSubmitSignedTransactions(c));
   app.post('/api/transactions/status', async (c: any) => writeHandlers.handleGetTransactionStatus(c));
 

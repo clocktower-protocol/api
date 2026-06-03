@@ -39,6 +39,8 @@ export const API_PRICES = {
   prepareUnsubscribe: 0.02,
   prepareUnsubscribeByProvider: 0.02,
   prepareEditDetails: 0.02,
+  checkRemitReadiness: 0.01,
+  prepareRemit: 0.02,
   submitSignedTransactions: 0.02,
   getTransactionStatus: 0.01,
 } as const;

@@ -12,12 +12,14 @@ import {
 	encodeCancelSubscription,
 	encodeCreateSubscription,
 	encodeEditDetails,
+	encodeRemit,
 	encodeSubscribe,
 	encodeUnsubscribe,
 	encodeUnsubscribeByProvider,
 } from './encode.js';
 import { storePrepareIntent } from './intent.js';
 import { checkSubscribeReadiness, INFINITE_APPROVAL } from './preflight.js';
+import { checkRemitReadiness } from './remit-preflight.js';
 import { simulateUnsignedTransactions } from './simulate.js';
 import type { PrepareResult, UnsignedTransaction } from './types.js';
 
@@ -236,7 +238,7 @@ export async function prepareSubscribe(
 	});
 }
 
-export { checkSubscribeReadiness };
+export { checkSubscribeReadiness, checkRemitReadiness };
 
 export async function prepareCancelSubscription(
 	env: Env,
@@ -326,5 +328,28 @@ export async function prepareEditDetails(
 	return buildPrepareResult(env, from, unsigned, {
 		id: canonical.id,
 		note: 'Caller must be the subscription provider (createdSubs)',
+	});
+}
+
+export async function prepareRemit(
+	env: Env,
+	from: `0x${string}`,
+): Promise<PrepareResult> {
+	const readiness = await checkRemitReadiness(env, from);
+	if (!readiness.ready) {
+		throw new Error(readiness.errors[0] ?? 'Remit not ready');
+	}
+
+	const chain = resolveChain(env);
+	const data = encodeRemit();
+	const unsigned = [buildUnsigned(from, chain.contractAddress, data)];
+
+	return buildPrepareResult(env, from, unsigned, {
+		currentDay: readiness.currentDay,
+		nextUncheckedDay: readiness.nextUncheckedDay,
+		totalSubscriptions: readiness.totalSubscriptions,
+		maxRemits: readiness.maxRemits,
+		expectedTransactions: readiness.expectedTransactions,
+		warnings: readiness.warnings,
 	});
 }

@@ -40,7 +40,7 @@ Tools are organized into two categories:
 - `get_subscribers` — List subscribers and fee balances for a subscription
 - `get_approved_token` — Check configuration for an approved ERC-20 token (on-chain)
 - `list_approved_tokens` — List all ERC-20 tokens approved for use with subscriptions (static config)
-- `get_subscriptions_due` — Query subscriptions due on a given day/frequency
+- `get_subscriptions_due` — Query subscriptions due on a given day/frequency (single-day probe; uses the same Multicall3 scan helper as remit readiness)
 
 **History & Profile Tools** (subgraph-backed via The Graph, priced $0.02–$0.05 to cover query + bandwidth costs):
 - `get_subscription_history` — Activity history (SubLog events) for one subscription. Supports `first`/`skip` pagination. Returns properly normalized amounts (`amount`, `amountRaw`, `tokenDecimals`), `eventName`, `formattedTimestamp`, and `formattedAmount`.
@@ -52,7 +52,11 @@ All history results are server-side limited (max 200 records, recommended ~100 p
 
 **Write Tools** (priced at $0.01–$0.02):
 - Prepare tools for creating, subscribing, editing, cancelling, and unsubscribing
+- `check_remit_readiness` — Multi-day scan of due subscriptions before calling `remit()` ($0.01)
+- `prepare_remit` — Prepare permissionless `remit()` (earns caller fees in subscription ERC-20 tokens; $0.02)
 - `submit_signed_transactions` — Submit previously prepared and signed transactions
+
+**Remit flow:** `check_remit_readiness` → `prepare_remit` → sign → `submit_signed_transactions`. One `remit()` clears at most `maxRemits` subscriber payments per transaction; repeat until readiness reports caught up. Remit can be gas-heavy on large backlogs — the caller pays gas (unlike the operator cron bot). Use `get_subscriptions_due` for a lightweight single-day read; use `check_remit_readiness` before preparing a remit tx.
 
 All write operations follow a prepare → sign → submit flow and include on-chain simulation before any payment is settled.
 
@@ -87,7 +91,7 @@ Write handlers return structured JSON errors instead of throwing; that is intent
 | Endpoint | Description |
 |----------|-------------|
 | `GET /api/protocol/state` | Current protocol fee configuration |
-| `GET /api/subscriptions/due` | Subscriptions due on a given day/frequency |
+| `GET /api/subscriptions/due` | Subscriptions due on a given day/frequency (single-day; same scan helper as remit) |
 | `GET /api/subscriptions/:id` | Single subscription by ID |
 | `GET /api/subscriptions/:id/subscribers` | Subscribers for a subscription |
 | `GET /api/subscriptions/:id/fee-balance?address=0x…` | Fee balance for a subscriber on a subscription |
@@ -134,6 +138,8 @@ Subgraph errors return a graceful response containing an `error` field rather th
 | `POST /api/prepare/unsubscribe` | $0.02 | Prepare unsubscribing from a subscription |
 | `POST /api/prepare/unsubscribe_by_provider` | $0.02 | Prepare provider-initiated unsubscribe |
 | `POST /api/prepare/edit_details` | $0.02 | Prepare editing subscription details |
+| `POST /api/check_remit_readiness` | $0.01 | Check whether `remit()` is callable (multi-day due scan) |
+| `POST /api/prepare/remit` | $0.02 | Prepare permissionless `remit()` transaction |
 | `POST /api/submit_signed_transactions` | $0.02 | Submit previously prepared + signed transactions |
 | `POST /api/transactions/status` | $0.01 | Check status of a submitted transaction |
 

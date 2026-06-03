@@ -80,6 +80,14 @@ export function encodeEditDetails(details: WriteDetails, id: `0x${string}`) {
 	});
 }
 
+export function encodeRemit() {
+	return encodeFunctionData({
+		abi: CLOCKTOWER_WRITE_ABI,
+		functionName: 'remit',
+		args: [],
+	});
+}
+
 export function getFunctionSelector(data: `0x${string}`): `0x${string}` {
 	if (data.length < 10) {
 		throw new Error('Calldata too short for function selector');

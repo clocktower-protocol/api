@@ -6,9 +6,11 @@
 import { z } from 'zod';
 import {
 	checkSubscribeReadiness,
+	checkRemitReadiness,
 	prepareCancelSubscription,
 	prepareCreateSubscription,
 	prepareEditDetails,
+	prepareRemit,
 	prepareSubscribe,
 	prepareUnsubscribe,
 	prepareUnsubscribeByProvider,
@@ -22,6 +24,7 @@ import {
 import {
 	createSubscriptionInputSchema,
 	editDetailsInputSchema,
+	remitInputSchema,
 	subscribeInputSchema,
 	subscriptionActionInputSchema,
 	toWriteDetails,
@@ -211,6 +214,36 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						toWriteDetails(parsed.details),
 					),
 				);
+			}),
+	);
+
+	server.paidTool(
+		'check_remit_readiness',
+		'Check whether remit() is callable on Base mainnet (nextUncheckedDay, due subscription scan, pagination hints)',
+		WRITE_READINESS_PRICE,
+		{
+			from: addressSchema,
+		},
+		{ readOnlyHint: true },
+		async ({ from }) =>
+			safeHandler('check_remit_readiness', async () => {
+				const parsed = remitInputSchema.parse({ from });
+				return textResult(await checkRemitReadiness(env, parsed.from));
+			}),
+	);
+
+	server.paidTool(
+		'prepare_remit',
+		'Prepare unsigned remit() transaction on Base mainnet (permissionless; earns caller fees in subscription tokens)',
+		WRITE_PREPARE_PRICE,
+		{
+			from: addressSchema,
+		},
+		destructiveAnnotations,
+		async ({ from }) =>
+			safeHandler('prepare_remit', async () => {
+				const parsed = remitInputSchema.parse({ from });
+				return textResult(await prepareRemit(env, parsed.from));
 			}),
 	);
 

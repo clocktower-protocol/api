@@ -108,11 +108,14 @@ describe('clocktower-mcp worker - /api (full surface with x402)', () => {
 
 	it('protects all write endpoints with the security stack', async () => {
 		const writeEndpoints = [
+			'/api/check_subscribe_readiness',
 			'/api/prepare/create_subscription',
 			'/api/prepare/cancel_subscription',
 			'/api/prepare/unsubscribe',
 			'/api/prepare/unsubscribe_by_provider',
 			'/api/prepare/edit_details',
+			'/api/check_remit_readiness',
+			'/api/prepare/remit',
 			'/api/submit_signed_transactions',
 			'/api/transactions/status',
 		];

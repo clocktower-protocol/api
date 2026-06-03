@@ -1,13 +1,17 @@
 import { env } from 'cloudflare:test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { encodeAbiParameters, toFunctionSelector } from 'viem';
-import { encodeCreateSubscription, encodeSubscribe, getFunctionSelector } from '../src/tx/encode.js';
+import { encodeCreateSubscription, encodeRemit, encodeSubscribe, getFunctionSelector } from '../src/tx/encode.js';
 import {
 	prepareCancelSubscription,
 	prepareCreateSubscription,
 	prepareEditDetails,
+	prepareRemit,
 	prepareUnsubscribe,
 } from '../src/tx/prepare.js';
+import { checkRemitReadiness } from '../src/tx/remit-preflight.js';
+import * as remitScan from '../src/tx/remit-scan.js';
+import * as utils from '../src/utils.js';
 import { PREPARE_KV_PREFIX } from '../src/tx/constants.js';
 
 const testEnv = {
@@ -395,5 +399,120 @@ describe('prepareUnsubscribe is-subscriber preflight (L13)', () => {
 		);
 		expect(result.unsignedTransactions).toHaveLength(1);
 		expect(result.preflight).toMatchObject({ id: ID });
+	});
+});
+
+describe('remit prepare + readiness', () => {
+	const originalFetch = globalThis.fetch;
+	const FROM = '0x0000000000000000000000000000000000000001' as `0x${string}`;
+
+	function encodeUint(value: bigint | number): string {
+		return `0x${BigInt(value).toString(16).padStart(64, '0')}`;
+	}
+
+	afterEach(() => {
+		globalThis.fetch = originalFetch;
+		vi.restoreAllMocks();
+	});
+
+	it('encodeRemit selector is stable', () => {
+		const data = encodeRemit();
+		expect(getFunctionSelector(data)).toBe(toFunctionSelector('remit()'));
+	});
+
+	it('checkRemitReadiness rejects when current day is before nextUncheckedDay', async () => {
+		vi.spyOn(utils, 'getCurrentDay').mockReturnValue(1000);
+		globalThis.fetch = vi.fn(async () =>
+			Response.json({
+				jsonrpc: '2.0',
+				id: 1,
+				result: encodeUint(1001),
+			}),
+		) as typeof fetch;
+
+		const result = await checkRemitReadiness(testEnv, FROM);
+		expect(result.ready).toBe(false);
+		expect(result.errors[0]).toMatch(/before next unchecked day/);
+	});
+
+	it('checkRemitReadiness rejects when scan finds no due subscriptions', async () => {
+		vi.spyOn(utils, 'getCurrentDay').mockReturnValue(1000);
+		vi.spyOn(remitScan, 'scanDueSubscriptionIds').mockResolvedValue(0);
+
+		let callCount = 0;
+		globalThis.fetch = vi.fn(async () => {
+			callCount += 1;
+			return Response.json({
+				jsonrpc: '2.0',
+				id: 1,
+				result: callCount === 1 ? encodeUint(999) : encodeUint(10),
+			});
+		}) as typeof fetch;
+
+		const result = await checkRemitReadiness(testEnv, FROM);
+		expect(result.ready).toBe(false);
+		expect(result.errors[0]).toMatch(/No due subscriptions/);
+	});
+
+	it('checkRemitReadiness reports pagination when queue exceeds maxRemits', async () => {
+		vi.spyOn(utils, 'getCurrentDay').mockReturnValue(1000);
+		vi.spyOn(remitScan, 'scanDueSubscriptionIds').mockResolvedValue(25);
+
+		let callCount = 0;
+		globalThis.fetch = vi.fn(async () => {
+			callCount += 1;
+			return Response.json({
+				jsonrpc: '2.0',
+				id: 1,
+				result: callCount === 1 ? encodeUint(999) : encodeUint(10),
+			});
+		}) as typeof fetch;
+
+		const result = await checkRemitReadiness(testEnv, FROM);
+		expect(result.ready).toBe(true);
+		expect(result.expectedTransactions).toBe(3);
+		expect(result.warnings.some((w) => w.includes('3 separate remit transactions'))).toBe(true);
+	});
+
+	it('prepareRemit throws when readiness fails', async () => {
+		vi.spyOn(utils, 'getCurrentDay').mockReturnValue(1000);
+		globalThis.fetch = vi.fn(async () =>
+			Response.json({
+				jsonrpc: '2.0',
+				id: 1,
+				result: encodeUint(1001),
+			}),
+		) as typeof fetch;
+
+		await expect(prepareRemit(testEnv, FROM)).rejects.toThrow(/before next unchecked day/);
+	});
+
+	it('prepareRemit succeeds when readiness passes and simulation succeeds', async () => {
+		vi.spyOn(remitScan, 'scanDueSubscriptionIds').mockResolvedValue(2);
+		vi.spyOn(utils, 'getCurrentDay').mockReturnValue(1000);
+
+		let callCount = 0;
+		globalThis.fetch = vi.fn(async () => {
+			callCount += 1;
+			if (callCount <= 2) {
+				return Response.json({
+					jsonrpc: '2.0',
+					id: 1,
+					result: callCount === 1 ? encodeUint(999) : encodeUint(10),
+				});
+			}
+			return Response.json({ jsonrpc: '2.0', id: 1, result: '0x' });
+		}) as typeof fetch;
+
+		const result = await prepareRemit(testEnv, FROM);
+		expect(result.prepareId).toMatch(
+			/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+		);
+		expect(result.unsignedTransactions).toHaveLength(1);
+		expect(result.preflight).toMatchObject({
+			totalSubscriptions: 2,
+			maxRemits: 10,
+			expectedTransactions: 1,
+		});
 	});
 });

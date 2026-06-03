@@ -14,6 +14,20 @@ export const CLOCKTOWER_READ_ABI = [
 		stateMutability: 'view',
 	},
 	{
+		name: 'nextUncheckedDay',
+		type: 'function',
+		inputs: [],
+		outputs: [{ type: 'uint40' }],
+		stateMutability: 'view',
+	},
+	{
+		name: 'maxRemits',
+		type: 'function',
+		inputs: [],
+		outputs: [{ type: 'uint256' }],
+		stateMutability: 'view',
+	},
+	{
 		name: 'getIdByTime',
 		type: 'function',
 		inputs: [

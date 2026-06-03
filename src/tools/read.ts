@@ -5,11 +5,13 @@ import { ERC20_ABI } from '../abi/erc20.js';
 import { resolveChain } from '../chain.js';
 import { createClocktowerClient } from '../client.js';
 import {
-	dayNumberToDayjs,
+	buildDayFrequencyProbes,
+	fetchGetIdByTimeForDay,
+} from '../tx/remit-scan.js';
+import {
 	formatProtocolStoredAmount,
 	FREQUENCY_TYPES,
 	getCurrentDay,
-	getDueDay,
 	getFrequencyLabel,
 	getStatusLabel,
 	textResult,
@@ -385,7 +387,6 @@ export async function getSubscriptionsDue(
 ) {
 	const { chain, client } = getContractContext(env);
 	const dayNumber = options.dayNumber ?? getCurrentDay();
-	const day = dayNumberToDayjs(dayNumber);
 
 	const frequencies =
 		options.frequency !== undefined
@@ -397,38 +398,35 @@ export async function getSubscriptionsDue(
 					FREQUENCY_TYPES.YEARLY,
 				];
 
-	const results = [];
+	const probes = buildDayFrequencyProbes(dayNumber, frequencies);
+	const idsByFrequency = await fetchGetIdByTimeForDay(
+		client,
+		chain.contractAddress,
+		dayNumber,
+		frequencies,
+	);
 
-	for (const frequency of frequencies) {
-		const dueDayInfo = getDueDay(frequency, day);
-		if (dueDayInfo.shouldSkip || dueDayInfo.dueDay === undefined) {
-			results.push({
-				frequency,
-				frequencyLabel: getFrequencyLabel(frequency),
+	const results = probes.map((probe) => {
+		if (probe.skipped) {
+			return {
+				frequency: probe.frequency,
+				frequencyLabel: getFrequencyLabel(probe.frequency),
 				skipped: true,
-				skipReason: dueDayInfo.skipReason,
+				skipReason: probe.skipReason,
 				subscriptionIds: [],
-			});
-			continue;
+			};
 		}
 
-		const subscriptionIds = await client.readContract({
-			address: chain.contractAddress,
-			abi: CLOCKTOWER_READ_ABI,
-			functionName: 'getIdByTime',
-			args: [BigInt(frequency), dueDayInfo.dueDay],
-		});
-
-		results.push({
-			frequency,
-			frequencyLabel: getFrequencyLabel(frequency),
-			dueDay: dueDayInfo.dueDay,
+		return {
+			frequency: probe.frequency,
+			frequencyLabel: getFrequencyLabel(probe.frequency),
+			dueDay: probe.dueDay,
 			skipped: false,
-			subscriptionIds,
-		});
-	}
+			subscriptionIds: idsByFrequency.get(probe.frequency) ?? [],
+		};
+	});
 
-	return { chainId: chain.chainId, results };
+	return { chainId: chain.chainId, dayNumber, results };
 }
 
 export function registerPaidTools(server: X402McpServer, env: Env) {

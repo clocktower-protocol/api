@@ -66,3 +66,15 @@ export type SubscribeReadinessResult = {
 	errors: string[];
 	subscription?: WriteSubscription;
 };
+
+export type RemitReadinessResult = {
+	ready: boolean;
+	from: `0x${string}`;
+	currentDay: number;
+	nextUncheckedDay: number;
+	totalSubscriptions: number;
+	maxRemits: number;
+	expectedTransactions: number;
+	warnings: string[];
+	errors: string[];
+};

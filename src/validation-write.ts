@@ -147,6 +147,10 @@ export const editDetailsInputSchema = z.object({
 	details: detailsSchema,
 });
 
+export const remitInputSchema = z.object({
+	from: fromAddressSchema,
+});
+
 export function toWriteDetails(input: z.infer<typeof detailsSchema>): WriteDetails {
 	return {
 		url: input.url,

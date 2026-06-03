@@ -98,6 +98,13 @@ export const CLOCKTOWER_WRITE_ABI = [
 		outputs: [],
 		stateMutability: 'nonpayable',
 	},
+	{
+		name: 'remit',
+		type: 'function',
+		inputs: [],
+		outputs: [],
+		stateMutability: 'nonpayable',
+	},
 ] as const;
 
 export type WriteSubscription = {
