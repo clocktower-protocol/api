@@ -414,6 +414,29 @@ const GET_DETAILS_LOG = `
   }
 `;
 
+const GET_SUBSCRIPTION_CREATES = `
+  query SearchSubscriptionCreates($where: SubLog_filter!, $first: Int!, $skip: Int!) {
+    subLogs(
+      where: $where
+      first: $first
+      skip: $skip
+      orderBy: timestamp
+      orderDirection: desc
+    ) {
+      internal_id
+      provider
+      subscriber
+      timestamp
+      amount
+      token
+      subScriptEvent
+      blockNumber
+      blockTimestamp
+      transactionHash
+    }
+  }
+`;
+
 // ============================================
 // High-Level Functions
 // ============================================
@@ -422,6 +445,13 @@ export interface HistoryOptions {
   first?: number;
   skip?: number;
   // Future: sinceTimestamp, cursor, etc.
+}
+
+export interface SearchCreatesOptions {
+  provider?: `0x${string}`;
+  token?: `0x${string}`;
+  first?: number;
+  skip?: number;
 }
 
 const DEFAULT_HISTORY_LIMIT = 100;
@@ -612,6 +642,122 @@ export async function getAccountActivity(
     },
     ...(queryErrors.length > 0 ? { partial: true, queryErrors } : {}),
   };
+}
+
+/**
+ * Get the current subscription details (latest DetailsLog entry).
+ */
+export async function getSubscriptionDetails(
+  env: Env,
+  subscriptionId: `0x${string}`,
+  chainId: number = 8453,
+) {
+  try {
+    const data = await querySubgraph(env, chainId, GET_DETAILS_LOG, {
+      subscriptionId: subscriptionId.toLowerCase(),
+      first: 1,
+      skip: 0,
+    });
+
+    const latest: DetailsLog | null = data?.detailsLogs?.[0] ?? null;
+
+    return {
+      chainId,
+      subscriptionId,
+      details: latest
+        ? {
+            url: latest.url,
+            description: latest.description,
+            updatedAt: formatTimestamp(latest.timestamp),
+            transactionHash: latest.transactionHash,
+          }
+        : null,
+    };
+  } catch (err: any) {
+    const safeError = err?.message?.startsWith('Subgraph query failed')
+      ? err.message
+      : sanitizeSubgraphError(err).message;
+
+    return {
+      chainId,
+      subscriptionId,
+      details: null,
+      error: safeError,
+    };
+  }
+}
+
+export type SubscriptionCreateEvent = {
+  internal_id: string;
+  provider: string;
+  token: string;
+  timestamp: string;
+  formattedTimestamp: string;
+};
+
+/**
+ * Fetch subgraph Create events (subScriptEvent = 0) for subscription discovery.
+ */
+export async function searchSubscriptionCreates(
+  env: Env,
+  chainId: number = 8453,
+  options: SearchCreatesOptions = {},
+) {
+  const { first, skip } = normalizeHistoryOptions(options);
+
+  const where: Record<string, string> = { subScriptEvent: '0' };
+  if (options.provider) {
+    where.provider = options.provider.toLowerCase();
+  }
+  if (options.token) {
+    where.token = options.token.toLowerCase();
+  }
+
+  try {
+    const data = await querySubgraph(env, chainId, GET_SUBSCRIPTION_CREATES, {
+      where,
+      first,
+      skip,
+    });
+
+    const rawEvents: SubLog[] = data?.subLogs ?? [];
+    const seen = new Set<string>();
+    const events: SubscriptionCreateEvent[] = [];
+
+    for (const event of rawEvents) {
+      const key = event.internal_id.toLowerCase();
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      events.push({
+        internal_id: event.internal_id,
+        provider: event.provider,
+        token: event.token,
+        timestamp: event.timestamp,
+        formattedTimestamp: formatTimestamp(event.timestamp),
+      });
+    }
+
+    return {
+      chainId,
+      events,
+      hasMore: rawEvents.length === first,
+      count: events.length,
+    };
+  } catch (err: any) {
+    const safeError = err?.message?.startsWith('Subgraph query failed')
+      ? err.message
+      : sanitizeSubgraphError(err).message;
+
+    return {
+      chainId,
+      events: [],
+      hasMore: false,
+      count: 0,
+      error: safeError,
+    };
+  }
 }
 
 /**

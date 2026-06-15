@@ -5,7 +5,9 @@ import {
   getSubscriptionHistory,
   getProviderProfile,
   getAccountActivity,
+  getSubscriptionDetails,
   getSubscriptionDetailsHistory,
+  searchSubscriptionCreates,
   HISTORY_DEFAULT_LIMIT,
   HISTORY_MAX_LIMIT,
 } from '../src/tools/history.js';
@@ -118,6 +120,16 @@ describe('history functions (mocked subgraph)', () => {
       if (q.includes('detailsLogs')) {
         return Response.json({ data: { detailsLogs: [sampleDetailsLog] } });
       }
+      if (q.includes('SearchSubscriptionCreates')) {
+        return Response.json({
+          data: {
+            subLogs: [
+              { ...sampleSubLog, subScriptEvent: '0' },
+              { ...sampleSubLog, subScriptEvent: '0', internal_id: sampleSubLog.internal_id },
+            ],
+          },
+        });
+      }
       return Response.json({ data: {} });
     }) as typeof fetch;
   });
@@ -182,6 +194,20 @@ describe('history functions (mocked subgraph)', () => {
     expect(res.events.length).toBe(1);
     expect(res.events[0].formattedTimestamp).toBeDefined();
     expect(res.events[0].description).toBe('Monthly newsletter');
+  });
+
+  it('getSubscriptionDetails returns latest url and description only', async () => {
+    const res = await getSubscriptionDetails(baseEnv, sampleSubLog.internal_id as `0x${string}`);
+    expect(res.details?.url).toBe('https://example.com/feed');
+    expect(res.details?.description).toBe('Monthly newsletter');
+    expect(res.details?.updatedAt).toMatch(/^\d{2}\/\d{2}\/\d{4}/);
+  });
+
+  it('searchSubscriptionCreates deduplicates Create events by internal_id', async () => {
+    const res = await searchSubscriptionCreates(baseEnv, 8453, { first: 10 });
+    expect(res.events.length).toBe(1);
+    expect(res.events[0].internal_id).toBe(sampleSubLog.internal_id);
+    expect(res.events[0].formattedTimestamp).toBeDefined();
   });
 
   it('history functions return sanitized error object (graceful degradation) when GRAPH_BASE_URL missing', async () => {

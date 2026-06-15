@@ -37,6 +37,8 @@ declare namespace Cloudflare {
 		CFP_USERNAME?: string;
 		CFP_PASSWORD?: string;
 		CFP_ALLOWED_ORIGINS?: string;
+		/** Comma-separated browser origins allowed to call /api with CORS. Unset = CORS disabled. */
+		API_CORS_ALLOWED_ORIGINS?: string;
 	}
 }
 

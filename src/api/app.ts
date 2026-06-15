@@ -13,8 +13,11 @@ import {
   handleGetSubscriptionHistory,
   handleGetAccountActivity,
   handleGetProviderProfile,
+  handleGetSubscriptionDetails,
   handleGetSubscriptionDetailsHistory,
 } from './read.js';
+import { handleGetCatalog } from './catalog.js';
+import { handleSearchSubscriptions } from './discovery.js';
 import { createMockFacilitatorClient } from './mockFacilitator.js';
 import { createX402PaymentMiddleware } from './x402.js';
 
@@ -42,8 +45,11 @@ export type ApiAppOptions = {
  *
  * === Current Endpoints (all x402-protected unless noted) ===
  * Read:
+ *   - GET /api/catalog
  *   - GET /api/protocol/state
  *   - GET /api/subscriptions/due
+ *   - GET /api/subscriptions
+ *   - GET /api/subscriptions/:id/details
  *   - GET /api/subscriptions/:id
  *   - GET /api/subscriptions/:id/subscribers
  *   - GET /api/subscriptions/:id/fee-balance
@@ -108,6 +114,8 @@ export function createApiApp(options: ApiAppOptions = {}) {
 
   // === Read endpoints ===
 
+  app.get('/api/catalog', () => handleGetCatalog());
+
   app.get('/api/protocol/state', async (c: any) => {
     return await handleGetProtocolState(c.env);
   });
@@ -116,6 +124,15 @@ export function createApiApp(options: ApiAppOptions = {}) {
     const dayNumber = c.req.query('dayNumber');
     const frequency = c.req.query('frequency');
     return await handleGetSubscriptionsDue(c.env, dayNumber ?? null, frequency ?? null);
+  });
+
+  app.get('/api/subscriptions', async (c: any) => {
+    return await handleSearchSubscriptions(c.env, c.req.query());
+  });
+
+  app.get('/api/subscriptions/:id/details', async (c: any) => {
+    const id = c.req.param('id');
+    return await handleGetSubscriptionDetails(c.env, id);
   });
 
   app.get('/api/subscriptions/:id', async (c: any) => {
@@ -139,7 +156,7 @@ export function createApiApp(options: ApiAppOptions = {}) {
     return await handleGetApprovedToken(c.env, token);
   });
 
-  app.get('/api/approved-tokens', async () => handleListApprovedTokens());
+  app.get('/api/approved-tokens', async (c: any) => handleListApprovedTokens(c.env));
 
   app.get('/api/subscriptions/:id/fee-balance', async (c: any) => {
     const id = c.req.param('id');

@@ -20,30 +20,7 @@
  * Sec-Fetch-Site (not universally available outside browsers we care about).
  */
 
-function parseAllowedOrigins(env: Env): { wildcard: boolean; set: Set<string> } {
-	const raw = env.CFP_ALLOWED_ORIGINS;
-	if (!raw) {
-		return { wildcard: false, set: new Set() };
-	}
-	const entries = raw
-		.split(',')
-		.map((s) => s.trim())
-		.filter((s) => s.length > 0);
-	if (entries.includes('*')) {
-		return { wildcard: true, set: new Set() };
-	}
-	return { wildcard: false, set: new Set(entries.map(normalizeOrigin).filter((s): s is string => s !== null)) };
-}
-
-function normalizeOrigin(value: string): string | null {
-	try {
-		const u = new URL(value);
-		// Origin = scheme + "://" + host + (":" + port if non-default)
-		return u.origin.toLowerCase();
-	} catch {
-		return null;
-	}
-}
+import { normalizeOrigin, parseAllowedOrigins } from './origins.js';
 
 export function enforceOriginAllowlist(request: Request, env: Env): Response | null {
 	if (env.ENABLE_AUTH !== 'true') {
@@ -63,7 +40,7 @@ export function enforceOriginAllowlist(request: Request, env: Env): Response | n
 		return forbidden('Invalid Origin header');
 	}
 
-	const { wildcard, set } = parseAllowedOrigins(env);
+	const { wildcard, set } = parseAllowedOrigins(env.CFP_ALLOWED_ORIGINS);
 	if (wildcard) {
 		return null;
 	}

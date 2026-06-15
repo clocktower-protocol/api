@@ -7,6 +7,7 @@ import { enforceRateLimit } from './rateLimit.js';
 import { withSecurityHeaders } from './securityHeaders.js';
 import { validateEnv, validateMcpRequest } from './validation.js';
 import { createApiApp, createApiAppForEnv } from './api/app.js';
+import { handleApiCorsPreflight, withApiCorsHeaders } from './cors.js';
 
 /** Once per isolate, same idea as validateEnv in the MCP durable object on first init. */
 let apiEnvValidated = false;
@@ -90,9 +91,14 @@ async function handleRequest(
 	// be enabled for manual developer testing. It is disabled by default in the
 	// test environment. x402 is always required.
 	if (url.pathname.startsWith('/api')) {
+		const corsPreflight = handleApiCorsPreflight(request, env);
+		if (corsPreflight) {
+			return withSecurityHeaders(corsPreflight);
+		}
+
 		const configError = ensureApiEnvValidated(env);
 		if (configError) {
-			return configError;
+			return withSecurityHeaders(withApiCorsHeaders(request, configError, env));
 		}
 
 		const requireBasicAuth = env.API_REQUIRE_BASIC_AUTH !== 'false';
@@ -100,17 +106,18 @@ async function handleRequest(
 		if (requireBasicAuth) {
 			const unauthorized = enforceBasicAuth(request, env);
 			if (unauthorized) {
-				return unauthorized;
+				return withSecurityHeaders(withApiCorsHeaders(request, unauthorized, env));
 			}
 		}
 
 		const rateLimited = await enforceRateLimit(request, env);
 		if (rateLimited) {
-			return rateLimited;
+			return withSecurityHeaders(withApiCorsHeaders(request, rateLimited, env));
 		}
 
 		try {
-			return await getApi(env).fetch(request, env, ctx);
+			const apiResponse = await getApi(env).fetch(request, env, ctx);
+			return withSecurityHeaders(withApiCorsHeaders(request, apiResponse, env));
 		} catch (err) {
 			// Primary safety net for unauthenticated API requests (see also src/api/x402.ts).
 			// The official @x402/hono middleware can sometimes throw during
@@ -124,10 +131,11 @@ async function handleRequest(
 
 			if (!hasPayment) {
 				console.error('[x402] Unauthenticated /api request caused error in middleware → returning clean 402:', err);
-				return new Response(JSON.stringify({ error: 'Payment required' }), {
+				const paymentRequired = new Response(JSON.stringify({ error: 'Payment required' }), {
 					status: 402,
 					headers: { 'Content-Type': 'application/json' },
 				});
+				return withSecurityHeaders(withApiCorsHeaders(request, paymentRequired, env));
 			}
 
 			// If a payment header was present, re-throw so the normal error path

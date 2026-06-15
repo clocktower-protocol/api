@@ -10,16 +10,19 @@ import { API_PRICES, type ApiEndpoint } from './pricing.js';
 const BASE_USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as const;
 const BASE_NETWORK = 'eip155:8453' as const;
 
-type RouteManifestEntry = {
+export type RouteManifestEntry = {
   method: 'GET' | 'POST';
   path: string;
   priceKey: ApiEndpoint;
   description: string;
 };
 
-const ROUTE_MANIFEST: RouteManifestEntry[] = [
+export const API_ROUTE_MANIFEST: RouteManifestEntry[] = [
+  { method: 'GET', path: '/api/catalog', priceKey: 'catalog', description: 'Get REST API route catalog and pricing' },
   { method: 'GET', path: '/api/protocol/state', priceKey: 'protocolState', description: 'Get Clocktower protocol state' },
   { method: 'GET', path: '/api/subscriptions/due', priceKey: 'getSubscriptionsDue', description: 'Get subscriptions due' },
+  { method: 'GET', path: '/api/subscriptions', priceKey: 'searchSubscriptions', description: 'Search and discover subscriptions' },
+  { method: 'GET', path: '/api/subscriptions/:id/details', priceKey: 'subscriptionDetails', description: 'Get current subscription url and description' },
   { method: 'GET', path: '/api/subscriptions/:id', priceKey: 'getSubscription', description: 'Get subscription by ID' },
   { method: 'GET', path: '/api/subscriptions/:id/subscribers', priceKey: 'getSubscribers', description: 'Get subscribers for subscription' },
   { method: 'GET', path: '/api/accounts/:address/subscriptions', priceKey: 'getAccountSubscriptions', description: 'Get subscriptions for account' },
@@ -49,7 +52,7 @@ function buildRoutesConfig(
 ): Record<string, { accepts: object[]; description: string; mimeType: string }> {
   const config: Record<string, { accepts: object[]; description: string; mimeType: string }> = {};
 
-  for (const { method, path, priceKey, description } of ROUTE_MANIFEST) {
+  for (const { method, path, priceKey, description } of API_ROUTE_MANIFEST) {
     const key = `${method} ${path}`;
     config[key] = {
       accepts: [{

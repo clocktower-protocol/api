@@ -16,9 +16,10 @@ import {
   getSubscriptionHistory,
   getAccountActivity,
   getProviderProfile,
+  getSubscriptionDetails,
   getSubscriptionDetailsHistory,
 } from '../tools/history.js';
-import { APPROVED_TOKENS } from '../config/approvedTokens.js';
+import { listApprovedTokens } from '../tools/read.js';
 import { z } from 'zod';
 
 // Re-export useful schemas for routes
@@ -155,15 +156,38 @@ export async function handleGetSubscriptionsDue(
 }
 
 /**
- * Returns the lightly-managed list of approved tokens.
- * This is static configuration because the contract does not expose
- * an enumerable list of approvedERC20 entries.
+ * Returns approved tokens enriched with on-chain minimum and paused state.
  */
-export function handleListApprovedTokens() {
-  return jsonResponse({
-    chainId: 8453,
-    tokens: APPROVED_TOKENS,
-  });
+export async function handleListApprovedTokens(env: Env) {
+  try {
+    const data = await listApprovedTokens(env);
+    return jsonResponse(data);
+  } catch (err: any) {
+    console.error('list_approved_tokens failed', err);
+    return Errors.upstream('Failed to list approved tokens');
+  }
+}
+
+export async function handleGetSubscriptionDetails(env: Env, idParam: string) {
+  const parseResult = bytes32Schema.safeParse(idParam);
+  if (!parseResult.success) {
+    return Errors.validation('Invalid subscription id');
+  }
+
+  try {
+    const data = await getSubscriptionDetails(
+      env,
+      parseResult.data as `0x${string}`,
+      8453,
+    );
+    return jsonResponse(data);
+  } catch (err: any) {
+    console.error('get_subscription_details failed', err);
+    const msg = err?.message?.includes('Subgraph')
+      ? 'Subgraph backend unavailable or misconfigured'
+      : 'Failed to fetch subscription details';
+    return Errors.upstream(msg);
+  }
 }
 
 export async function handleGetFeeBalance(env: Env, idParam: string, addressParam: string) {

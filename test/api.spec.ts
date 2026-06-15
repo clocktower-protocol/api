@@ -216,4 +216,33 @@ describe('clocktower-mcp worker - /api (full surface with x402)', () => {
 
 		expect([402, 429]).toContain(res.status);
 	});
+
+	// === Tier 1 frontend readiness endpoints ===
+
+	it('protects catalog endpoint with x402', async () => {
+		const res = await fetchWorkerX402Only('/api/catalog');
+		expect([402, 429]).toContain(res.status);
+	});
+
+	it('protects subscription search endpoint with x402', async () => {
+		const res = await fetchWorkerX402Only('/api/subscriptions?first=10');
+		expect([402, 429]).toContain(res.status);
+	});
+
+	it('protects subscription details endpoint with x402', async () => {
+		const res = await fetchWorkerX402Only(
+			'/api/subscriptions/0x1234567890123456789012345678901234567890123456789012345678901234/details',
+		);
+		expect([402, 429]).toContain(res.status);
+	});
+
+	it('validates invalid subscription id on details endpoint', async () => {
+		const res = await fetchWorker('/api/subscriptions/not-a-valid-id/details');
+		expect([400, 401, 402, 429]).toContain(res.status);
+
+		if (res.status === 400) {
+			const body = await res.json();
+			expect(body.code).toBe('VALIDATION_ERROR');
+		}
+	});
 });

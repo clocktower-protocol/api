@@ -39,8 +39,12 @@ Tools are organized into two categories:
 - `get_fee_balance` — Get your current fee balance on a specific subscription
 - `get_subscribers` — List subscribers and fee balances for a subscription
 - `get_approved_token` — Check configuration for an approved ERC-20 token (on-chain)
-- `list_approved_tokens` — List all ERC-20 tokens approved for use with subscriptions (static config)
+- `list_approved_tokens` — List approved ERC-20 tokens with on-chain `minimum` and `paused` per token
 - `get_subscriptions_due` — Query subscriptions due on a given day/frequency (single-day probe; uses the same Multicall3 scan helper as remit readiness)
+
+**Discovery Tools** (subgraph + on-chain enrichment):
+- `search_subscriptions` — Browse/discover subscriptions ($0.05). Filters: `provider`, `token`, `frequency`, `cancelled`, `includeDetails`, `first`, `skip`
+- `get_subscription_details` — Current url/description for a subscription ($0.02)
 
 **History & Profile Tools** (subgraph-backed via The Graph, priced $0.02–$0.05 to cover query + bandwidth costs):
 - `get_subscription_history` — Activity history (SubLog events) for one subscription. Supports `first`/`skip` pagination. Returns properly normalized amounts (`amount`, `amountRaw`, `tokenDecimals`), `eventName`, `formattedTimestamp`, and `formattedAmount`.
@@ -90,15 +94,24 @@ Write handlers return structured JSON errors instead of throwing; that is intent
 
 | Endpoint | Description |
 |----------|-------------|
+| `GET /api/catalog` | Machine-readable route catalog with x402 pricing |
 | `GET /api/protocol/state` | Current protocol fee configuration |
 | `GET /api/subscriptions/due` | Subscriptions due on a given day/frequency (single-day; same scan helper as remit) |
+| `GET /api/subscriptions` | Search/discover subscriptions (see Discovery below) |
 | `GET /api/subscriptions/:id` | Single subscription by ID |
 | `GET /api/subscriptions/:id/subscribers` | Subscribers for a subscription |
 | `GET /api/subscriptions/:id/fee-balance?address=0x…` | Fee balance for a subscriber on a subscription |
 | `GET /api/accounts/:address/subscriptions` | Subscriptions for an account (rich) |
 | `GET /api/accounts/:address` | Full enriched account overview. Returns `subscribedTo` (what you pay into) and `created` (what you created as provider) |
-| `GET /api/approved-tokens` | List of approved tokens |
+| `GET /api/approved-tokens` | List of approved tokens (includes on-chain `minimum` and `paused`) |
 | `GET /api/approved-tokens/:token` | Approved token configuration |
+
+#### Discovery Endpoints (GET, subgraph + on-chain)
+
+| Endpoint | Price | Description |
+|----------|-------|-------------|
+| `GET /api/subscriptions` | $0.05 | Search active subscriptions. Query params: `provider`, `token`, `frequency`, `cancelled` (default `false`), `includeDetails`, `first` (max 50), `skip` |
+| `GET /api/subscriptions/:id/details` | $0.02 | Current url/description (latest DetailsLog) |
 
 #### History & Profile Endpoints (GET, subgraph-backed)
 These query The Graph for rich event history. Priced higher to cover external query costs. All support optional `?first=N&skip=M` pagination.
@@ -167,8 +180,18 @@ Validation errors on write endpoints may also include an `issues` array with fie
 
 ### Status Endpoints
 
-- `GET /api/` — Basic information about the REST API surface
-- `GET /api/status` — Lightweight health/status check
+- `GET /` — Basic worker information (not x402-protected)
+- `GET /api/status` — Lightweight health/status check ($0.01 via x402)
+
+### Browser CORS (optional)
+
+By default, browser cross-origin requests to `/api` are **not** allowed (no CORS headers). To enable a browser SPA on another origin, set:
+
+```
+API_CORS_ALLOWED_ORIGINS=https://app.example.com,http://localhost:5173
+```
+
+CORS is **not** authentication — x402 is still required on every `/api` call. CORS only controls whether the browser exposes responses to your frontend JavaScript.
 
 ---
 
@@ -188,7 +211,8 @@ Required for both MCP and REST:
 Optional:
 
 - `API_REQUIRE_BASIC_AUTH` — Default `false` (x402-only). Set to `true` to add Basic Auth on `/api` for local development only
-- `GRAPH_BASE_URL` / `GRAPH_BASE_SEPOLIA_URL` / `GRAPH_API_KEY` — The Graph subgraph endpoints + auth (required only for history/profile endpoints: get_*_history, *_activity, provider profile)
+- `API_CORS_ALLOWED_ORIGINS` — Comma-separated browser origins allowed to call `/api` with CORS. Unset = CORS disabled
+- `GRAPH_BASE_URL` / `GRAPH_BASE_SEPOLIA_URL` / `GRAPH_API_KEY` — The Graph subgraph endpoints + auth (required for history/profile/discovery endpoints)
 
 ### Deployment
 

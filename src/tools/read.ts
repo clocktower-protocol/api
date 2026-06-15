@@ -33,9 +33,11 @@ import {
   getSubscriptionHistory,
   getAccountActivity,
   getProviderProfile,
+  getSubscriptionDetails,
   getSubscriptionDetailsHistory,
   HISTORY_DEFAULT_LIMIT,
 } from './history.js';
+import { searchSubscriptions } from './discovery.js';
 import { API_PRICES } from '../api/pricing.js';
 import { z } from 'zod';
 
@@ -429,6 +431,30 @@ export async function getSubscriptionsDue(
 	return { chainId: chain.chainId, dayNumber, results };
 }
 
+export async function listApprovedTokens(env: Env) {
+	const { chain } = getContractContext(env);
+
+	const tokens = await Promise.all(
+		APPROVED_TOKENS.map(async (staticInfo) => {
+			const onChain = await getApprovedToken(env, staticInfo.address);
+			return {
+				address: staticInfo.address,
+				symbol: staticInfo.symbol,
+				name: staticInfo.name,
+				decimals: staticInfo.decimals,
+				paused: onChain.approvedToken.paused,
+				minimum: onChain.approvedToken.minimum,
+				minimumRaw: onChain.approvedToken.minimumRaw,
+			};
+		}),
+	);
+
+	return {
+		chainId: chain.chainId,
+		tokens,
+	};
+}
+
 export function registerPaidTools(server: X402McpServer, env: Env) {
 	server.paidTool(
 		'get_protocol_state',
@@ -508,12 +534,7 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 		{},
 		{},
 		async () =>
-			safeHandler('list_approved_tokens', async () =>
-				textResult({
-					chainId: 8453,
-					tokens: APPROVED_TOKENS,
-				}),
-			),
+			safeHandler('list_approved_tokens', async () => textResult(await listApprovedTokens(env))),
 	);
 
 	server.paidTool(
@@ -621,6 +642,50 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 		async ({ address }) =>
 			safeHandler('get_provider_profile', async () =>
 				textResult(await getProviderProfile(env, address as `0x${string}`, 8453)),
+			),
+	);
+
+	server.paidTool(
+		'get_subscription_details',
+		'Get current subscription url and description (latest DetailsLog)',
+		API_PRICES.subscriptionDetails,
+		{
+			id: bytes32Schema,
+		},
+		{},
+		async ({ id }) =>
+			safeHandler('get_subscription_details', async () =>
+				textResult(await getSubscriptionDetails(env, id as `0x${string}`, 8453)),
+			),
+	);
+
+	server.paidTool(
+		'search_subscriptions',
+		'Search and discover subscriptions (Create events + on-chain enrichment)',
+		API_PRICES.searchSubscriptions,
+		{
+			provider: addressSchema.optional(),
+			token: addressSchema.optional(),
+			frequency: frequencySchema.optional(),
+			cancelled: z.boolean().optional(),
+			includeDetails: z.boolean().optional(),
+			first: z.coerce.number().int().min(1).max(50).optional(),
+			skip: z.coerce.number().int().min(0).optional(),
+		},
+		{},
+		async (args) =>
+			safeHandler('search_subscriptions', async () =>
+				textResult(
+					await searchSubscriptions(env, {
+						provider: args.provider as `0x${string}` | undefined,
+						token: args.token as `0x${string}` | undefined,
+						frequency: args.frequency as number | undefined,
+						cancelled: args.cancelled as boolean | undefined,
+						includeDetails: args.includeDetails as boolean | undefined,
+						first: args.first as number | undefined,
+						skip: args.skip as number | undefined,
+					}),
+				),
 			),
 	);
 

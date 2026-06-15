@@ -15,6 +15,9 @@ export const API_PRICES = {
   getApprovedToken: 0.01,
   getSubscriptionsDue: 0.01,
   feeBalance: 0.01,
+  catalog: 0.01,
+  subscriptionDetails: 0.02,
+  searchSubscriptions: 0.05,
 
   // === History & Profile endpoints (Phase 0+ of subgraph integration plan) ===
   // These query The Graph subgraph for SubLog / DetailsLog / ProvDetailsLog / CallerLog.
