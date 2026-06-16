@@ -93,6 +93,7 @@ SECURITY_FOLLOWUPS.md
 
 # Local planning / recommendations documents (not committed)
 API_ENDPOINT_RECOMMENDATIONS.md
+SUBSCRIPTION_ENTITLEMENT_AUTH.md
 
 # Grok-generated session plans (not committed)
 **/*plan.md
