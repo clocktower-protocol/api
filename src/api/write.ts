@@ -2,7 +2,7 @@
  * Write Endpoints
  *
  * These handlers are called after x402 payment verification (via the official @x402/hono middleware).
- * They delegate to the existing transaction preparation/submission logic in src/tx/.
+ * They delegate to the existing transaction preparation logic in src/tx/.
  */
 
 import { jsonResponse, Errors } from './responses.js';
@@ -21,10 +21,7 @@ import {
   prepareEditDetails,
   prepareRemit,
 } from '../tx/prepare.js';
-import {
-  submitSignedTransactions,
-  getTransactionStatus,
-} from '../tx/submit.js';
+import { getTransactionStatus } from '../tx/status.js';
 
 // Import validation schemas
 import {
@@ -238,30 +235,7 @@ export async function handlePrepareRemit(c: Context) {
   }
 }
 
-// 10. Submit signed transactions
-export async function handleSubmitSignedTransactions(c: Context) {
-  try {
-    const body = await c.req.json();
-    const schema = z.object({
-      prepareId: z.string().uuid(),
-      signedTransactions: z.array(z.string().regex(/^0x[a-fA-F0-9]+$/)).min(1).max(5),
-    });
-    const parsed = schema.parse(body);
-
-    const result = await submitSignedTransactions(
-      c.env,
-      parsed.prepareId,
-      parsed.signedTransactions as `0x${string}`[]
-    );
-
-    // Consistent success shape for submit
-    return jsonResponse(result);
-  } catch (err: any) {
-    return handleWriteError(err, 'submit_signed_transactions');
-  }
-}
-
-// 11. Get transaction status
+// 10. Get transaction status
 export async function handleGetTransactionStatus(c: Context) {
   try {
     const body = await c.req.json();
@@ -313,14 +287,8 @@ function handleWriteError(err: any, operation: string) {
   if (message.includes('Amount below token minimum')) {
     return Errors.validation(message);
   }
-  if (message.includes('Prepare intent not found')) {
-    return Errors.notFound('Prepare intent not found or expired');
-  }
-  if (message.includes('Signed transaction signer does not match')) {
-    return Errors.validation('Signed transaction signer does not match prepare intent');
-  }
-  if (message.includes('Invalid nonce')) {
-    return Errors.validation('Invalid nonce for signed transaction');
+  if (message.includes('Write rate limit exceeded')) {
+    return Errors.validation(message);
   }
   if (message.includes('Remit not due') || message.includes('No due subscriptions')) {
     return Errors.validation(message);

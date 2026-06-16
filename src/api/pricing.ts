@@ -34,7 +34,7 @@ export const API_PRICES = {
   subscriptionDetailsHistory: 0.03, // Lighter: only DetailsLog (url/description changes) for one subscription.
   providerProfile: 0.02,          // Latest ProvDetailsLog only (company, domain, email, etc.). Very cheap.
 
-  // Write endpoints (higher price as they involve simulation + intent storage)
+  // Write endpoints (higher price as they involve simulation)
   checkSubscribeReadiness: 0.01,
   prepareCreateSubscription: 0.02,
   prepareSubscribe: 0.02,
@@ -44,7 +44,6 @@ export const API_PRICES = {
   prepareEditDetails: 0.02,
   checkRemitReadiness: 0.01,
   prepareRemit: 0.02,
-  submitSignedTransactions: 0.02,
   getTransactionStatus: 0.01,
 } as const;
 

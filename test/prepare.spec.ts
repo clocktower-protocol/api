@@ -12,13 +12,12 @@ import {
 import { checkRemitReadiness } from '../src/tx/remit-preflight.js';
 import * as remitScan from '../src/tx/remit-scan.js';
 import * as utils from '../src/utils.js';
-import { PREPARE_KV_PREFIX } from '../src/tx/constants.js';
-
 const testEnv = {
 	...env,
 	ALCHEMY_API_KEY: 'test-alchemy-key',
 	ALCHEMY_URL: 'https://base-mainnet.g.alchemy.com/v2/',
 	CLOCKTOWER_ADDRESS: '0xFaF5fc2f77b21BC188f492b827D366B03a07c61f',
+	WRITE_RATE_LIMIT_REQUESTS_PER_MINUTE: '1000',
 } as Env;
 
 function encodeUint(value: bigint | number): string {
@@ -86,7 +85,7 @@ describe('prepareCreateSubscription', () => {
 		globalThis.fetch = originalFetch;
 	});
 
-	it('returns prepareId and stores intent in KV', async () => {
+	it('returns unsigned transactions and EIP-5792 descriptor', async () => {
 		const from = '0x0000000000000000000000000000000000000001';
 		const result = await prepareCreateSubscription(
 			testEnv,
@@ -98,14 +97,31 @@ describe('prepareCreateSubscription', () => {
 			15,
 		);
 
-		expect(result.prepareId).toMatch(
-			/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
-		);
 		expect(result.unsignedTransactions).toHaveLength(1);
 		expect(result.eip5792.calls).toHaveLength(1);
+		expect(result.signingMode).toBe('raw');
+		expect(result.simulation.every((s) => s.success)).toBe(true);
+	});
 
-		const stored = await testEnv.PREPARE_INTENTS.get(`${PREPARE_KV_PREFIX}${result.prepareId}`);
-		expect(stored).not.toBeNull();
+	it('enforces per-address write rate limit on prepare', async () => {
+		const from = '0x00000000000000000000000000000000000000aa';
+		const limitedEnv = {
+			...testEnv,
+			WRITE_RATE_LIMIT_REQUESTS_PER_MINUTE: '1',
+		} as Env;
+
+		const args = [
+			limitedEnv,
+			from,
+			10n ** 18n,
+			'0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+			{ url: 'https://example.com', description: 'test' },
+			1,
+			15,
+		] as const;
+
+		await prepareCreateSubscription(...args);
+		await expect(prepareCreateSubscription(...args)).rejects.toThrow(/Write rate limit exceeded/);
 	});
 
 	// M1 — these failure modes must throw rather than return successfully.
@@ -394,9 +410,6 @@ describe('prepareUnsubscribe is-subscriber preflight (L13)', () => {
 		]);
 
 		const result = await prepareUnsubscribe(testEnv, FROM, subscriptionInput);
-		expect(result.prepareId).toMatch(
-			/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
-		);
 		expect(result.unsignedTransactions).toHaveLength(1);
 		expect(result.preflight).toMatchObject({ id: ID });
 	});
@@ -505,9 +518,6 @@ describe('remit prepare + readiness', () => {
 		}) as typeof fetch;
 
 		const result = await prepareRemit(testEnv, FROM);
-		expect(result.prepareId).toMatch(
-			/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
-		);
 		expect(result.unsignedTransactions).toHaveLength(1);
 		expect(result.preflight).toMatchObject({
 			totalSubscriptions: 2,

@@ -73,7 +73,6 @@ export type ApiAppOptions = {
  *   - POST /api/prepare/edit_details
  *   - POST /api/check_remit_readiness
  *   - POST /api/prepare/remit
- *   - POST /api/submit_signed_transactions
  *   - POST /api/transactions/status
  *
  * Not x402-protected: GET / (API discovery only)
@@ -200,7 +199,6 @@ export function createApiApp(options: ApiAppOptions = {}) {
   app.post('/api/prepare/edit_details', async (c: any) => writeHandlers.handlePrepareEditDetails(c));
   app.post('/api/check_remit_readiness', async (c: any) => writeHandlers.handleCheckRemitReadiness(c));
   app.post('/api/prepare/remit', async (c: any) => writeHandlers.handlePrepareRemit(c));
-  app.post('/api/submit_signed_transactions', async (c: any) => writeHandlers.handleSubmitSignedTransactions(c));
   app.post('/api/transactions/status', async (c: any) => writeHandlers.handleGetTransactionStatus(c));
 
   // x402-protected service status

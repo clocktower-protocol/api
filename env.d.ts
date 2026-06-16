@@ -14,7 +14,6 @@ declare namespace Cloudflare {
 	interface Env {
 		CLOCKTOWER_MCP: DurableObjectNamespace;
 		RATE_LIMITER: DurableObjectNamespace;
-		PREPARE_INTENTS: KVNamespace;
 		ALCHEMY_API_KEY: string;
 		ALCHEMY_URL: string;
 		CLOCKTOWER_ADDRESS: string;
@@ -31,7 +30,6 @@ declare namespace Cloudflare {
 		GRAPH_API_KEY?: string;             // Bearer token for Authorization header
 		RATE_LIMIT_REQUESTS_PER_MINUTE?: string;
 		WRITE_RATE_LIMIT_REQUESTS_PER_MINUTE?: string;
-		PREPARE_INTENT_TTL_SECONDS?: string;
 		ENABLE_AUTH?: string;
 		API_REQUIRE_BASIC_AUTH?: string;   // Controls whether Basic Auth is required for /api routes (x402 is always required)
 		CFP_USERNAME?: string;

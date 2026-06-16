@@ -17,7 +17,7 @@ import {
 	encodeUnsubscribe,
 	encodeUnsubscribeByProvider,
 } from './encode.js';
-import { storePrepareIntent } from './intent.js';
+import { enforceWriteRateLimitForAddress } from '../rateLimit.js';
 import { checkSubscribeReadiness, INFINITE_APPROVAL } from './preflight.js';
 import { checkRemitReadiness } from './remit-preflight.js';
 import { simulateUnsignedTransactions } from './simulate.js';
@@ -44,7 +44,7 @@ function toChainIdHex(chainId: number): `0x${string}` {
  * settlement so the caller is not charged for a doomed prepare.
  *
  * Note on consistency: this read hits the same RPC the user will eventually
- * submit through, so a just-subscribed user hitting an archive node before
+ * broadcast through, so a just-subscribed user hitting an archive node before
  * reorg-finality could see a stale negative. The thrown error message guides
  * the user to retry rather than treating the result as authoritative.
  */
@@ -118,8 +118,8 @@ async function buildPrepareResult(
 	const chain = resolveChain(env);
 	const client = createClocktowerClient(chain);
 
-	// Simulate BEFORE storing the intent or returning. A failed simulation
-	// guarantees the eventual on-chain submit will revert, so throwing here
+	// Simulate before returning. A failed simulation guarantees the eventual
+	// on-chain broadcast will revert, so throwing here
 	// lets `agents/x402` (verify-only-settle, see node_modules/agents/dist/mcp/x402.js
 	// `if (!failed)` around line 124) skip settlement so the caller is not
 	// charged for a doomed prepare. This is the M1 fix tracked in
@@ -130,12 +130,9 @@ async function buildPrepareResult(
 		throw new Error(`Simulation failed: ${firstFailure.error ?? 'unknown error'}`);
 	}
 
-	const intent = await storePrepareIntent(env, from, unsigned);
-
 	const signingMode = unsigned.length > 1 ? 'eip5792' : 'raw';
 
 	return {
-		prepareId: intent.prepareId,
 		chainId: BASE_CHAIN_ID,
 		signingMode,
 		eip5792: {
@@ -169,6 +166,8 @@ export async function prepareCreateSubscription(
 	frequency: number,
 	dueDay: number,
 ): Promise<PrepareResult> {
+	await enforceWriteRateLimitForAddress(env, from);
+
 	const chain = resolveChain(env);
 	const client = createClocktowerClient(chain);
 
@@ -208,6 +207,8 @@ export async function prepareSubscribe(
 	from: `0x${string}`,
 	subscription: WriteSubscription,
 ): Promise<PrepareResult> {
+	await enforceWriteRateLimitForAddress(env, from);
+
 	const chain = resolveChain(env);
 	const readiness = await checkSubscribeReadiness(env, chain, from, subscription);
 
@@ -245,6 +246,8 @@ export async function prepareCancelSubscription(
 	from: `0x${string}`,
 	subscription: WriteSubscription,
 ): Promise<PrepareResult> {
+	await enforceWriteRateLimitForAddress(env, from);
+
 	const chain = resolveChain(env);
 	const client = createClocktowerClient(chain);
 
@@ -263,6 +266,8 @@ export async function prepareUnsubscribe(
 	from: `0x${string}`,
 	subscription: WriteSubscription,
 ): Promise<PrepareResult> {
+	await enforceWriteRateLimitForAddress(env, from);
+
 	const chain = resolveChain(env);
 	const client = createClocktowerClient(chain);
 
@@ -293,6 +298,8 @@ export async function prepareUnsubscribeByProvider(
 	subscription: WriteSubscription,
 	subscriber: `0x${string}`,
 ): Promise<PrepareResult> {
+	await enforceWriteRateLimitForAddress(env, from);
+
 	const chain = resolveChain(env);
 	const client = createClocktowerClient(chain);
 
@@ -312,6 +319,8 @@ export async function prepareEditDetails(
 	id: `0x${string}`,
 	details: WriteDetails,
 ): Promise<PrepareResult> {
+	await enforceWriteRateLimitForAddress(env, from);
+
 	const chain = resolveChain(env);
 	const client = createClocktowerClient(chain);
 
@@ -335,6 +344,8 @@ export async function prepareRemit(
 	env: Env,
 	from: `0x${string}`,
 ): Promise<PrepareResult> {
+	await enforceWriteRateLimitForAddress(env, from);
+
 	const readiness = await checkRemitReadiness(env, from);
 	if (!readiness.ready) {
 		throw new Error(readiness.errors[0] ?? 'Remit not ready');

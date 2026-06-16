@@ -3,7 +3,6 @@ import { createApiApp } from '../src/api/app.js';
 import {
   handlePrepareCreateSubscription,
   handleCheckSubscribeReadiness,
-  handleSubmitSignedTransactions,
   handlePrepareSubscribe,
 } from '../src/api/write.js';
 import { createMockFacilitator } from './helpers/mockFacilitator.js';
@@ -61,38 +60,7 @@ describe('API write integration - real handlers', () => {
     expect(body.code).toBe('VALIDATION_ERROR');
   });
 
-  it('handleSubmitSignedTransactions returns proper error for missing prepareId', async () => {
-    const mockContext = {
-      req: {
-        json: async () => ({ signedTransactions: ['0xabc'] }),
-      },
-      env: {},
-    } as any;
 
-    const res = await handleSubmitSignedTransactions(mockContext);
-    expect(res.status).toBe(400);
-  });
-
-  // Phase 5 polish: structured NOT_FOUND errors from handlers should surface with 404
-  it('structured not-found errors surface with correct 404 status', async () => {
-    const mockContext = {
-      req: {
-        json: async () => ({
-          prepareId: '123e4567-e89b-12d3-a456-426614174000',
-          signedTransactions: ['0xabc123'],
-        }),
-      },
-      env: {},
-    } as any;
-
-    const res = await handleSubmitSignedTransactions(mockContext);
-    // In synthetic handler tests we may hit validation (400), not-found (404), or upstream (500).
-    // The key polish goal is consistent {error, code} shape and that the x402 layer sees a non-2xx.
-    expect([400, 404, 500]).toContain(res.status);
-    const body = await res.json();
-    expect(body.error).toBeDefined();
-    expect(body.code).toBeDefined();
-  });
 
   it('accepts human-readable amount for a 6-decimal token without amount conversion errors', async () => {
     const mockContext = {

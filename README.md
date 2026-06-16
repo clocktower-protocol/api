@@ -58,11 +58,11 @@ All history results are server-side limited (max 200 records, recommended ~100 p
 - Prepare tools for creating, subscribing, editing, cancelling, and unsubscribing
 - `check_remit_readiness` — Multi-day scan of due subscriptions before calling `remit()` ($0.01)
 - `prepare_remit` — Prepare permissionless `remit()` (earns caller fees in subscription ERC-20 tokens; $0.02)
-- `submit_signed_transactions` — Submit previously prepared and signed transactions
+- `get_transaction_status` — Poll confirmation status for a transaction hash after client-side broadcast ($0.01)
 
-**Remit flow:** `check_remit_readiness` → `prepare_remit` → sign → `submit_signed_transactions`. One `remit()` clears at most `maxRemits` subscriber payments per transaction; repeat until readiness reports caught up. Remit can be gas-heavy on large backlogs — the caller pays gas (unlike the operator cron bot). Use `get_subscriptions_due` for a lightweight single-day read; use `check_remit_readiness` before preparing a remit tx.
+**Remit flow:** `check_remit_readiness` → `prepare_remit` → sign → broadcast from wallet → repeat until readiness reports caught up. One `remit()` clears at most `maxRemits` subscriber payments per transaction. Remit can be gas-heavy on large backlogs — the caller pays gas (unlike the operator cron bot). Use `get_subscriptions_due` for a lightweight single-day read; use `check_remit_readiness` before preparing a remit tx.
 
-All write operations follow a prepare → sign → submit flow and include on-chain simulation before any payment is settled.
+All write operations follow a prepare → sign → broadcast (wallet) flow and include on-chain simulation before any payment is settled. The server does not relay signed transactions.
 
 ### Payments (MCP)
 
@@ -153,13 +153,12 @@ Subgraph errors return a graceful response containing an `error` field rather th
 | `POST /api/prepare/edit_details` | $0.02 | Prepare editing subscription details |
 | `POST /api/check_remit_readiness` | $0.01 | Check whether `remit()` is callable (multi-day due scan) |
 | `POST /api/prepare/remit` | $0.02 | Prepare permissionless `remit()` transaction |
-| `POST /api/submit_signed_transactions` | $0.02 | Submit previously prepared + signed transactions |
-| `POST /api/transactions/status` | $0.01 | Check status of a submitted transaction |
+| `POST /api/transactions/status` | $0.01 | Check status of a broadcast transaction |
 
 ### Pricing
 
 - Standard read operations: **$0.01**
-- Write preparation and submission operations: **$0.02**
+- Write preparation operations: **$0.02**
 - `check_subscribe_readiness` and transaction status: **$0.01**
 - History & profile (subgraph) queries: **$0.02–$0.05** (higher to cover The Graph query + transfer costs; see table above)
 

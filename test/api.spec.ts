@@ -96,16 +96,6 @@ describe('clocktower-mcp worker - /api (full surface with x402)', () => {
 		}
 	});
 
-	it('returns consistent error shape for malformed JSON on write endpoints', async () => {
-		const res = await fetchWorker('/api/submit_signed_transactions', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: 'not valid json',
-		});
-
-		expect([400, 401, 402, 429]).toContain(res.status);
-	});
-
 	it('protects all write endpoints with the security stack', async () => {
 		const writeEndpoints = [
 			'/api/check_subscribe_readiness',
@@ -116,7 +106,6 @@ describe('clocktower-mcp worker - /api (full surface with x402)', () => {
 			'/api/prepare/edit_details',
 			'/api/check_remit_readiness',
 			'/api/prepare/remit',
-			'/api/submit_signed_transactions',
 			'/api/transactions/status',
 		];
 

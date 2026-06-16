@@ -1,7 +1,8 @@
 /**
- * Write tools: prepare unsigned Clocktower transactions (x402) and relay user-signed raw txs.
- * Signing happens on the client wallet. EIP-5792 batch descriptors are returned when multiple
- * steps are needed (e.g. approve + subscribe). Gas is always paid by the user.
+ * Write tools: prepare unsigned Clocktower transactions (x402).
+ * Signing and broadcasting happen in the client wallet. EIP-5792 batch descriptors are
+ * returned when multiple steps are needed (e.g. approve + subscribe). Gas is always paid
+ * by the user.
  */
 import { z } from 'zod';
 import {
@@ -15,12 +16,8 @@ import {
 	prepareUnsubscribe,
 	prepareUnsubscribeByProvider,
 } from '../tx/prepare.js';
-import { getTransactionStatus, submitSignedTransactions } from '../tx/submit.js';
-import {
-	WRITE_PREPARE_PRICE,
-	WRITE_READINESS_PRICE,
-	WRITE_SUBMIT_PRICE,
-} from '../tx/constants.js';
+import { getTransactionStatus } from '../tx/status.js';
+import { WRITE_PREPARE_PRICE, WRITE_READINESS_PRICE } from '../tx/constants.js';
 import {
 	createSubscriptionInputSchema,
 	editDetailsInputSchema,
@@ -244,31 +241,6 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 			safeHandler('prepare_remit', async () => {
 				const parsed = remitInputSchema.parse({ from });
 				return textResult(await prepareRemit(env, parsed.from));
-			}),
-	);
-
-	server.paidTool(
-		'submit_signed_transactions',
-		'Broadcast user-signed raw transactions matching a prior prepare intent on Base mainnet',
-		WRITE_SUBMIT_PRICE,
-		{
-			prepareId: z.string().uuid(),
-			signedTransactions: z
-				.array(z.string().regex(/^0x[a-fA-F0-9]+$/))
-				.min(1)
-				.max(5),
-		},
-		writeAnnotations,
-		async (args) =>
-			safeHandler('submit_signed_transactions', async () => {
-				const { prepareId, signedTransactions } = args as {
-					prepareId: string;
-					signedTransactions: `0x${string}`[];
-				};
-
-				return textResult(
-					await submitSignedTransactions(env, prepareId, signedTransactions),
-				);
 			}),
 	);
 

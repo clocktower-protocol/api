@@ -62,7 +62,7 @@ export async function checkRemitReadiness(
 
 	if (expectedTransactions > 1) {
 		warnings.push(
-			`Queue may require ${expectedTransactions} separate remit transactions; call prepare_remit again after each submit until caught up.`,
+			`Queue may require ${expectedTransactions} separate remit transactions; call prepare_remit again after each broadcast until caught up.`,
 		);
 	}
 

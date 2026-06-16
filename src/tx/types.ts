@@ -9,21 +9,6 @@ export type UnsignedTransaction = {
 	from: `0x${string}`;
 };
 
-export type IntentTransaction = {
-	to: `0x${string}`;
-	data: `0x${string}`;
-	value: string;
-	functionSelector: `0x${string}`;
-};
-
-export type PrepareIntent = {
-	prepareId: string;
-	from: `0x${string}`;
-	chainId: typeof BASE_CHAIN_ID;
-	transactions: IntentTransaction[];
-	expiresAt: number;
-};
-
 export type Eip5792Call = {
 	to: `0x${string}`;
 	data: `0x${string}`;
@@ -36,7 +21,6 @@ export type SimulationResult = {
 };
 
 export type PrepareResult = {
-	prepareId: string;
 	chainId: typeof BASE_CHAIN_ID;
 	signingMode: 'eip5792' | 'raw';
 	eip5792: {
