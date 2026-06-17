@@ -16,7 +16,7 @@ export function handleGetCatalog(env: Env) {
 				},
 				builder: {
 					auth: 'SIWE session (Bearer token)',
-					enabled: 'ENTITLEMENT_BUILDER_SUB_ID configured',
+					enabled: 'BUILDER_SUB_ID configured',
 					limits: DEFAULT_TIER_LIMITS.builder,
 					authEndpoints: ['/api/auth/challenge', '/api/auth/verify'],
 				},

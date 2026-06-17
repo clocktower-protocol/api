@@ -51,7 +51,7 @@ export const BUILDER_ENTITLEMENT_ROUTES: EntitlementRoute[] = [
 ];
 
 export function isEntitlementAuthEnabled(env: Env): boolean {
-	const id = env.ENTITLEMENT_BUILDER_SUB_ID?.trim();
+	const id = env.BUILDER_SUB_ID?.trim();
 	return Boolean(id && /^0x[a-fA-F0-9]{64}$/.test(id));
 }
 
@@ -59,7 +59,7 @@ export function getEntitlementSubscriptionId(env: Env): `0x${string}` | null {
 	if (!isEntitlementAuthEnabled(env)) {
 		return null;
 	}
-	return env.ENTITLEMENT_BUILDER_SUB_ID!.trim() as `0x${string}`;
+	return env.BUILDER_SUB_ID!.trim() as `0x${string}`;
 }
 
 export function findEntitlementRoute(method: string, pathname: string): EntitlementRoute | null {

@@ -9,13 +9,13 @@ import { API_ROUTE_MANIFEST } from '../src/api/x402.js';
 const VALID_SUB_ID = `0x${'ab'.repeat(32)}` as const;
 
 describe('entitlement config', () => {
-	it('is disabled when ENTITLEMENT_BUILDER_SUB_ID is unset', () => {
-		expect(isEntitlementAuthEnabled({ ENTITLEMENT_BUILDER_SUB_ID: '' } as Env)).toBe(false);
+	it('is disabled when BUILDER_SUB_ID is unset', () => {
+		expect(isEntitlementAuthEnabled({ BUILDER_SUB_ID: '' } as Env)).toBe(false);
 		expect(isEntitlementAuthEnabled({} as Env)).toBe(false);
 	});
 
 	it('is enabled for valid subscription id', () => {
-		expect(isEntitlementAuthEnabled({ ENTITLEMENT_BUILDER_SUB_ID: VALID_SUB_ID } as Env)).toBe(true);
+		expect(isEntitlementAuthEnabled({ BUILDER_SUB_ID: VALID_SUB_ID } as Env)).toBe(true);
 	});
 
 	it('maps catalog and me routes', () => {

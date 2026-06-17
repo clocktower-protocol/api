@@ -49,7 +49,7 @@
 		"MCP_RATE_LIMIT_RPM": "300",
 		"MCP_WRITE_RATE_LIMIT_RPM": "60",
 		"API_REQUIRE_BASIC_AUTH": "false",
-		"ENTITLEMENT_BUILDER_SUB_ID": ""
+		"BUILDER_SUB_ID": ""
 		// GRAPH_* vars are NOT declared here (they contain secrets).
 		// They are supplied via `wrangler secret put` (production) or .dev.vars (local).
 		// See env.d.ts and the implementation plan for the exact names:
@@ -105,7 +105,7 @@
 				"RATE_LIMIT_REQUESTS_PER_MINUTE": "2",
 				"FREE_RATE_LIMIT_RPM": "2",
 				"API_REQUIRE_BASIC_AUTH": "false",
-				"ENTITLEMENT_BUILDER_SUB_ID": ""
+				"BUILDER_SUB_ID": ""
 				// Test GRAPH_* values are injected via vitest.config.mts (miniflare.bindings)
 				// so that this file never carries real or placeholder secret-shaped values.
 				// Example structure used in tests (see src/api/history.ts implementation):

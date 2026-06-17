@@ -21,7 +21,7 @@ Access uses three lanes: **free REST** (rate-limited), **Builder REST** (SIWE se
 | **Agent** | MCP `/mcp` | x402 (USDC on Base) | 300 rpm/IP; writes 60/min/address |
 
 - **Free tier**: No API key. Cross-account and provider **reads** are allowed (public on-chain data) but count against the expensive bucket. Provider management writes (`cancel`, `unsubscribe_by_provider`, `edit_details`) return 403.
-- **Builder tier**: Subscribe to the Clocktower Builder entitlement subscription on-chain, then `POST /api/auth/challenge` → sign SIWE message → `POST /api/auth/verify` for a session token. Use `:me` routes for your own account. Requires `ENTITLEMENT_BUILDER_SUB_ID` in Worker config.
+- **Builder tier**: Subscribe to the Clocktower Builder entitlement subscription on-chain, then `POST /api/auth/challenge` → sign SIWE message → `POST /api/auth/verify` for a session token. Use `:me` routes for your own account. Requires `BUILDER_SUB_ID` in Worker config.
 - **MCP**: Unchanged x402 flow; higher rate limits than the legacy flat 60 rpm cap.
 
 See `GET /api/catalog` for the machine-readable tier manifest.
@@ -161,7 +161,7 @@ The REST API provides the same capabilities as the MCP tools over standard HTTP.
 | `Authorization: Bearer <session>` | Builder tier — after SIWE verify |
 | x402 | **Not used on REST** (MCP only) |
 
-**Builder auth quickstart** (requires `ENTITLEMENT_BUILDER_SUB_ID` configured):
+**Builder auth quickstart** (requires `BUILDER_SUB_ID` configured):
 
 1. `POST /api/auth/challenge` with `{ "address": "0x…" }` → receive `message` + `nonce`
 2. Wallet `personal_sign` on the message
@@ -291,7 +291,7 @@ Required for both MCP and REST:
 
 Optional:
 
-- `ENTITLEMENT_BUILDER_SUB_ID` — On-chain Builder entitlement subscription ID (enables SIWE auth when set)
+- `BUILDER_SUB_ID` — On-chain Builder entitlement subscription ID (enables SIWE auth when set)
 - `BUILDER_RATE_LIMIT_RPM` / `BUILDER_SUBGRAPH_DAILY_LIMIT` / `BUILDER_WRITE_RATE_LIMIT_RPM` — Builder tier caps
 - `FREE_EXPENSIVE_RATE_LIMIT_RPM` / `FREE_SUBGRAPH_DAILY_LIMIT` / `FREE_WRITE_RATE_LIMIT_RPM` — Free tier caps
 - `API_REQUIRE_BASIC_AUTH` — Default `false`. Set to `true` to add Basic Auth on `/api` for local development only
@@ -318,7 +318,7 @@ Only the **MCP server** requires x402 payments in USDC on Base. The REST API is 
 
 1. Create KV namespaces: `wrangler kv namespace create SESSIONS_KV` and `RPC_CACHE_KV`; update IDs in `wrangler.jsonc`
 2. Publish the Builder entitlement subscription on Base (Clocktower LLC as provider)
-3. Set `ENTITLEMENT_BUILDER_SUB_ID` via `wrangler secret put` or vars
+3. Set `BUILDER_SUB_ID` via `wrangler secret put` or vars
 4. Configure Cloudflare edge rules (see below)
 
 ---
