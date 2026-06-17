@@ -18,16 +18,13 @@ import {
 } from './read.js';
 import { handleGetCatalog } from './catalog.js';
 import { handleSearchSubscriptions } from './discovery.js';
-import { createMockFacilitatorClient } from './mockFacilitator.js';
-import { createX402PaymentMiddleware } from './x402.js';
+import { handleAuthChallenge, handleAuthVerify } from './auth.js';
+import { withPublicCacheHeaders } from '../rpcCache.js';
 
 // Write handlers
 import * as writeHandlers from './write.js';
 
-export type ApiAppOptions = {
-  /** For tests: inject a mock facilitator so we can test full x402 + real handler flows */
-  facilitatorClient?: any;
-};
+export type ApiAppOptions = Record<string, never>;
 
 /**
  * Clocktower REST API
@@ -35,13 +32,9 @@ export type ApiAppOptions = {
  * This module defines the REST API surface mounted under `/api`.
  *
  * === Authentication Model ===
- * x402 micropayments (USDC on Base) are the **primary and non-bypassable**
- * authorization + payment layer on every `/api/*` route (including `/api/status`).
- *
- * Basic Auth (`API_REQUIRE_BASIC_AUTH`) is an optional extra safety layer for local
- * manual testing only. Production default is `false` in wrangler.jsonc (x402-only).
- *
- * IP rate limiting still applies on top (see src/index.ts).
+ * REST `/api/*` is free with tiered rate limits (see src/index.ts).
+ * Builder subscribers authenticate via SIWE session (Bearer token).
+ * MCP `/mcp` remains x402-gated for agents.
  *
  * === Current Endpoints (all x402-protected unless noted) ===
  * Read:
@@ -84,39 +77,38 @@ export type ApiAppOptions = {
  *   - src/index.ts         → Top-level routing + security layers
  */
 
-export function createApiAppForEnv(env: Env, options: ApiAppOptions = {}) {
-  const facilitatorClient =
-    options.facilitatorClient ??
-    (env.X402_USE_MOCK_FACILITATOR === 'true' ? createMockFacilitatorClient() : undefined);
-  return createApiApp({ ...options, facilitatorClient });
+export function createApiAppForEnv(_env: Env, options: ApiAppOptions = {}) {
+  return createApiApp(options);
 }
 
-export function createApiApp(options: ApiAppOptions = {}) {
+export function createApiApp(_options: ApiAppOptions = {}) {
   const app = new Hono<{ Bindings: Env }>();
 
-  const x402Middleware = createX402PaymentMiddleware(options);
-  app.use('/api/*', x402Middleware);
-
-  // API discovery (not under /api — no x402)
   app.get('/', (c) => {
     const requireBasic = c.env.API_REQUIRE_BASIC_AUTH !== 'false';
     return jsonResponse({
       status: 'ok',
       message: 'Clocktower REST API',
-      version: 'x402-primary',
+      version: 'tiered-access',
       auth: {
-        x402: 'required on all /api routes (via @x402/hono)',
+        rest: 'free with rate limits, or Builder SIWE session',
+        mcp: 'x402 required on /mcp',
         basicAuth: requireBasic ? 'optional (enabled via flag)' : 'disabled',
       },
     });
   });
 
+  app.post('/api/auth/challenge', async (c: any) => handleAuthChallenge(c.req.raw, c.env));
+  app.post('/api/auth/verify', async (c: any) => handleAuthVerify(c.req.raw, c.env));
+
   // === Read endpoints ===
 
-  app.get('/api/catalog', () => handleGetCatalog());
+  app.get('/api/catalog', (c: any) => handleGetCatalog(c.env));
 
   app.get('/api/protocol/state', async (c: any) => {
-    return await handleGetProtocolState(c.env);
+    const lane = c.req.header('X-Clocktower-Lane') ?? 'free';
+    const response = await handleGetProtocolState(c.env);
+    return lane === 'free' ? withPublicCacheHeaders(response) : response;
   });
 
   app.get('/api/subscriptions/due', async (c: any) => {
@@ -201,12 +193,11 @@ export function createApiApp(options: ApiAppOptions = {}) {
   app.post('/api/prepare/remit', async (c: any) => writeHandlers.handlePrepareRemit(c));
   app.post('/api/transactions/status', async (c: any) => writeHandlers.handleGetTransactionStatus(c));
 
-  // x402-protected service status
   app.get('/api/status', (c) => {
     return jsonResponse({
       status: 'ok',
       service: 'clocktower-rest-api',
-      x402: 'required via @x402/hono',
+      lane: c.req.header('X-Clocktower-Lane') ?? 'free',
     });
   });
 

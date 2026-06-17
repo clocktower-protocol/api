@@ -5,8 +5,6 @@ import {
   handleCheckSubscribeReadiness,
   handlePrepareSubscribe,
 } from '../src/api/write.js';
-import { createMockFacilitator } from './helpers/mockFacilitator.js';
-
 /**
  * Phase 3: Integration-level happy path tests for write endpoints.
  *
@@ -96,10 +94,9 @@ describe('API write integration - real handlers', () => {
   });
 });
 
-describe('API write integration - x402 gate at route level (using factory)', () => {
-  it('missing X-Payment on a write route returns 402 (x402 is enforced)', async () => {
-    const mockFacilitator = createMockFacilitator();
-    const app = createApiApp({ facilitatorClient: mockFacilitator as any });
+describe('API write integration - free REST (no x402 on /api)', () => {
+  it('write routes are reachable without X-Payment (validation may return 400)', async () => {
+    const app = createApiApp();
 
     const req = new Request('http://example.com/api/check_subscribe_readiness', {
       method: 'POST',
@@ -109,9 +106,8 @@ describe('API write integration - x402 gate at route level (using factory)', () 
 
     const res = await app.fetch(req, {
       API_REQUIRE_BASIC_AUTH: 'false',
-      X402_RECIPIENT: '0x0000000000000000000000000000000000000001',
     } as any);
 
-    expect(res.status).toBe(402);
+    expect(res.status).not.toBe(402);
   });
 });

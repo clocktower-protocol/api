@@ -18,14 +18,18 @@ import {
 import { checkRemitReadiness } from '../src/tx/remit-preflight.js';
 import * as remitScan from '../src/tx/remit-scan.js';
 import * as utils from '../src/utils.js';
+import { clearActiveLane, setActiveLane } from '../src/requestLane.js';
 import { createGasAwareFetch } from './rpc-mocks.js';
 const testEnv = {
 	...env,
 	ALCHEMY_API_KEY: 'test-alchemy-key',
 	ALCHEMY_URL: 'https://base-mainnet.g.alchemy.com/v2/',
 	CLOCKTOWER_ADDRESS: '0xFaF5fc2f77b21BC188f492b827D366B03a07c61f',
-	WRITE_RATE_LIMIT_REQUESTS_PER_MINUTE: '1000',
+	MCP_WRITE_RATE_LIMIT_RPM: '1000',
 } as Env;
+
+beforeEach(() => setActiveLane('mcp'));
+afterEach(() => clearActiveLane());
 
 function encodeUint(value: bigint | number): string {
 	return `0x${BigInt(value).toString(16).padStart(64, '0')}`;
@@ -135,10 +139,11 @@ describe('prepareCreateSubscription', () => {
 	});
 
 	it('enforces per-address write rate limit on prepare', async () => {
+		setActiveLane('free');
 		const from = '0x00000000000000000000000000000000000000aa';
 		const limitedEnv = {
 			...testEnv,
-			WRITE_RATE_LIMIT_REQUESTS_PER_MINUTE: '1',
+			FREE_WRITE_RATE_LIMIT_RPM: '1',
 		} as Env;
 
 		const args = [
@@ -153,6 +158,7 @@ describe('prepareCreateSubscription', () => {
 
 		await prepareCreateSubscription(...args);
 		await expect(prepareCreateSubscription(...args)).rejects.toThrow(/Write rate limit exceeded/);
+		setActiveLane('mcp');
 	});
 
 	// M1 — these failure modes must throw rather than return successfully.

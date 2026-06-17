@@ -2,16 +2,29 @@
 
 Clocktower MCP is a Cloudflare Workers-based server that provides access to the Clocktower Protocol (a subscription management system on Base) through both the Model Context Protocol (MCP) and a REST API.
 
-All access is protected by x402 micropayments using USDC on Base.
+Access uses three lanes: **free REST** (rate-limited), **Builder REST** (SIWE session + on-chain entitlement subscription), and **MCP** (x402 for agents).
 
 ## Overview
 
 - **Protocol**: Clocktower on Base mainnet (eip155:8453)
-- **Payments**: x402 (USDC micropayments)
 - **Hosting**: Cloudflare Workers + Durable Objects
 - **Interfaces**:
-  - MCP Server (for AI agents and MCP clients)
-  - REST API (for direct HTTP integration)
+  - MCP Server (for AI agents — x402 USDC micropayments)
+  - REST API (free with rate limits, or Builder session for higher limits)
+
+## Access tiers
+
+| Lane | Surface | Auth | Default limits |
+|------|---------|------|----------------|
+| **Free** | REST `/api/*` | None | 20 rpm/IP; expensive routes 3 rpm; subgraph 100/day/IP; writes 2 prepare/min/IP |
+| **Builder** | REST `/api/*` | SIWE session (`Authorization: Bearer cts_…`) | 120 rpm/address; subgraph 10k/day; writes 30/min; scoped to your wallet |
+| **Agent** | MCP `/mcp` | x402 (USDC on Base) | 300 rpm/IP; writes 60/min/address |
+
+- **Free tier**: No API key. Cross-account and provider **reads** are allowed (public on-chain data) but count against the expensive bucket. Provider management writes (`cancel`, `unsubscribe_by_provider`, `edit_details`) return 403.
+- **Builder tier**: Subscribe to the Clocktower Builder entitlement subscription on-chain, then `POST /api/auth/challenge` → sign SIWE message → `POST /api/auth/verify` for a session token. Use `:me` routes for your own account. Requires `ENTITLEMENT_BUILDER_SUB_ID` in Worker config.
+- **MCP**: Unchanged x402 flow; higher rate limits than the legacy flat 60 rpm cap.
+
+See `GET /api/catalog` for the machine-readable tier manifest.
 
 ---
 
@@ -136,29 +149,36 @@ All MCP tools are paid using the x402 protocol. Your MCP client must support sen
 
 ## REST API
 
-The REST API provides the same capabilities as the MCP tools over standard HTTP, protected by x402.
+The REST API provides the same capabilities as the MCP tools over standard HTTP. **No x402 payment is required** — access is controlled by tiered rate limits and optional Builder sessions.
 
 **Base URL**: `https://your-worker.your-subdomain.workers.dev/api`
 
 ### Authentication
 
-**x402 is the primary and required authentication method.** Every request to the REST API must include a valid x402 payment header (`X-Payment`) using USDC on Base.
+| Method | When |
+|--------|------|
+| None | Free tier — call any allowed endpoint directly |
+| `Authorization: Bearer <session>` | Builder tier — after SIWE verify |
+| x402 | **Not used on REST** (MCP only) |
 
-Optional HTTP Basic Auth on `/api` is controlled by `API_REQUIRE_BASIC_AUTH` (default **`false`** in `wrangler.jsonc`). Set to `true` only for local manual testing — x402 is still required.
+**Builder auth quickstart** (requires `ENTITLEMENT_BUILDER_SUB_ID` configured):
 
-### x402 settlement (failed requests are not charged)
+1. `POST /api/auth/challenge` with `{ "address": "0x…" }` → receive `message` + `nonce`
+2. Wallet `personal_sign` on the message
+3. `POST /api/auth/verify` with `{ "message", "signature" }` → receive `token`
+4. Send `Authorization: Bearer <token>` on subsequent `/api` calls
 
-The REST layer uses `@x402/hono`, which verifies payment, runs your route handler, and **only settles USDC when the handler returns a status below 400**. If the handler returns `400`, `404`, or `500` (validation, not-found, upstream errors), settlement is cancelled — the same practical guarantee as MCP’s verify-only-settle behavior with `agents/x402`.
+Builder scope: own account (`/api/accounts/me`, …), content subs you subscribe to or created, discovery, subscriber writes for your wallet. Provider management and cross-account reads are **not** included in Builder scope (use the free tier for public cross-account reads).
 
-Write handlers return structured JSON errors instead of throwing; that is intentional and compatible with this middleware. See `test/api-x402-hono-settlement.spec.ts` for a source-level regression guard.
+Optional HTTP Basic Auth on `/api` is controlled by `API_REQUIRE_BASIC_AUTH` (default **`false`**).
 
 ### Endpoints
 
-#### Read Endpoints (GET) — $0.01 each
+#### Read Endpoints (GET)
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /api/catalog` | Machine-readable route catalog with x402 pricing |
+| `GET /api/catalog` | Machine-readable route catalog and tier limits |
 | `GET /api/protocol/state` | Current protocol fee configuration |
 | `GET /api/subscriptions/due` | Subscriptions due on a given day/frequency (single-day; same scan helper as remit) |
 | `GET /api/subscriptions` | Search/discover subscriptions (see Discovery below) |
@@ -170,12 +190,12 @@ Write handlers return structured JSON errors instead of throwing; that is intent
 | `GET /api/approved-tokens` | List of approved tokens (includes on-chain `minimum` and `paused`) |
 | `GET /api/approved-tokens/:token` | Approved token configuration |
 
-#### Discovery Endpoints (GET, subgraph + on-chain)
+#### Discovery Endpoints (GET, subgraph + on-chain — expensive bucket)
 
-| Endpoint | Price | Description |
-|----------|-------|-------------|
-| `GET /api/subscriptions` | $0.05 | Search active subscriptions. Query params: `provider`, `token`, `frequency`, `cancelled` (default `false`), `includeDetails`, `first` (max 50), `skip` |
-| `GET /api/subscriptions/:id/details` | $0.02 | Current url/description (latest DetailsLog) |
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/subscriptions` | Search active subscriptions. Query params: `provider`, `token`, `frequency`, `cancelled` (default `false`), `includeDetails`, `first` (max 50), `skip` |
+| `GET /api/subscriptions/:id/details` | Current url/description (latest DetailsLog) |
 
 #### History & Profile Endpoints (GET, subgraph-backed)
 These query The Graph for rich event history. Priced higher to cover external query costs. All support optional `?first=N&skip=M` pagination.
@@ -185,17 +205,17 @@ Returned SubLog events include:
 - Normalized amount fields (`amount`, `amountRaw`, `tokenDecimals`)
 - `formattedTimestamp` and `formattedAmount`
 
-| Endpoint | Price | Description |
-|----------|-------|-------------|
-| `GET /api/subscriptions/:id/history` | $0.05 | Activity history for a subscription (formatted SubLog events) |
-| `GET /api/accounts/:address/activity` | $0.05 | Combined activity for an account (subscriber + provider views) with breakdown |
-| `GET /api/providers/:address` | $0.02 | Latest provider profile (ProvDetailsLog) |
-| `GET /api/subscriptions/:id/details-history` | $0.03 | URL/description change history for a subscription (DetailsLog) |
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/subscriptions/:id/history` | Activity history for a subscription (formatted SubLog events) |
+| `GET /api/accounts/:address/activity` | Combined activity for an account (subscriber + provider views) with breakdown |
+| `GET /api/providers/:address` | Latest provider profile (ProvDetailsLog) |
+| `GET /api/subscriptions/:id/details-history` | URL/description change history for a subscription (DetailsLog) |
 
 Subgraph errors return a graceful response containing an `error` field rather than failing the entire request.
 
 **Design Notes**
-- **Cost Model**: History endpoints are priced higher ($0.02–$0.05) than standard reads because they perform external The Graph queries + data transfer. Pricing uses a base fee + modest per-batch adder, with hard server-side limits to control costs.
+- **Cost Model**: History endpoints hit the **expensive rate bucket** and subgraph daily cap because they perform external The Graph queries + data transfer.
 - **No Raw GraphQL Proxy**: We intentionally did **not** expose a low-level `/graph` passthrough proxy. All access goes through high-level, shaped, paid endpoints with formatting, limits, and normalization. This matches the original design goal of consistency and cost control.
 
 **Security Notes (History Endpoints)**
@@ -208,29 +228,20 @@ Subgraph errors return a graceful response containing an `error` field rather th
 
 All `prepare_*` endpoints accept optional `readinessOnly: true` and `simulateFromAddress` in the JSON body (see Prepare response format above).
 
-| Endpoint | Price | Description |
-|----------|-------|-------------|
-| `POST /api/check_subscribe_readiness` | $0.01 | Validate whether an account can subscribe |
-| `POST /api/prepare/create_subscription` | $0.02 | Prepare a new subscription |
-| `POST /api/prepare/subscribe` | $0.02 | Prepare subscribing to an existing subscription |
-| `POST /api/prepare/cancel_subscription` | $0.02 | Prepare cancelling a subscription |
-| `POST /api/prepare/unsubscribe` | $0.02 | Prepare unsubscribing from a subscription |
-| `POST /api/prepare/unsubscribe_by_provider` | $0.02 | Prepare provider-initiated unsubscribe |
-| `POST /api/prepare/edit_details` | $0.02 | Prepare editing subscription details |
-| `POST /api/check_remit_readiness` | $0.01 | Check whether `remit()` is callable (multi-day due scan) |
-| `POST /api/prepare/remit` | $0.02 | Prepare permissionless `remit()` transaction |
-| `POST /api/transactions/status` | $0.01 | Check status of a broadcast transaction |
+| Endpoint | Free tier | Description |
+|----------|-----------|-------------|
+| `POST /api/check_subscribe_readiness` | Allowed | Validate whether an account can subscribe |
+| `POST /api/prepare/create_subscription` | 2/min/IP | Prepare a new subscription |
+| `POST /api/prepare/subscribe` | 2/min/IP | Prepare subscribing to an existing subscription |
+| `POST /api/prepare/cancel_subscription` | **403** | Prepare cancelling a subscription (Builder session required) |
+| `POST /api/prepare/unsubscribe` | 2/min/IP | Prepare unsubscribing from a subscription |
+| `POST /api/prepare/unsubscribe_by_provider` | **403** | Provider-initiated unsubscribe |
+| `POST /api/prepare/edit_details` | **403** | Provider metadata edit |
+| `POST /api/check_remit_readiness` | Allowed | Check whether `remit()` is callable |
+| `POST /api/prepare/remit` | 2/min/IP | Prepare permissionless `remit()` transaction |
+| `POST /api/transactions/status` | Allowed | Check status of a broadcast transaction |
 
-Full prepare responses include simulation, `gasEstimates`, and `gasSummary` (see Prepare response format in the MCP section above). Use `readinessOnly: true` for a cheaper preflight-only response with no gas fields.
-
-### Pricing
-
-- Standard read operations: **$0.01**
-- Write preparation operations: **$0.02**
-- `check_subscribe_readiness` and transaction status: **$0.01**
-- History & profile (subgraph) queries: **$0.02–$0.05** (higher to cover The Graph query + transfer costs; see table above)
-
-All prices are paid in USDC on Base via x402.
+Full prepare responses include simulation, `gasEstimates`, and `gasSummary` (see Prepare response format in the MCP section above).
 
 ### Error Format
 
@@ -249,7 +260,7 @@ Validation errors on write endpoints may also include an `issues` array with fie
 ### Status Endpoints
 
 - `GET /` — Basic worker information (not x402-protected)
-- `GET /api/status` — Lightweight health/status check ($0.01 via x402)
+- `GET /api/status` — Lightweight health/status check (free)
 
 ### Browser CORS (optional)
 
@@ -259,7 +270,7 @@ By default, browser cross-origin requests to `/api` are **not** allowed (no CORS
 API_CORS_ALLOWED_ORIGINS=https://app.example.com,http://localhost:5173
 ```
 
-CORS is **not** authentication — x402 is still required on every `/api` call. CORS only controls whether the browser exposes responses to your frontend JavaScript.
+CORS is **not** authentication and is **not** granted by a Builder subscription. Ops must whitelist origins in `API_CORS_ALLOWED_ORIGINS`.
 
 ---
 
@@ -273,15 +284,20 @@ Required for both MCP and REST:
 |----------|-------------|
 | `ALCHEMY_API_KEY` | Alchemy API key for Base |
 | `CLOCKTOWER_ADDRESS` | Deployed Clocktower contract address |
-| `X402_RECIPIENT` | Address that receives x402 payments |
-| `RATE_LIMIT_REQUESTS_PER_MINUTE` | Rate limiting configuration |
+| `X402_RECIPIENT` | Address that receives MCP x402 payments |
+| `FREE_RATE_LIMIT_RPM` | Free tier global limit (default 20) |
+| `MCP_RATE_LIMIT_RPM` | MCP IP limit (default 300) |
+| `MCP_WRITE_RATE_LIMIT_RPM` | MCP prepare limit per address (default 60) |
 
 Optional:
 
-- `API_REQUIRE_BASIC_AUTH` — Default `false` (x402-only). Set to `true` to add Basic Auth on `/api` for local development only
+- `ENTITLEMENT_BUILDER_SUB_ID` — On-chain Builder entitlement subscription ID (enables SIWE auth when set)
+- `BUILDER_RATE_LIMIT_RPM` / `BUILDER_SUBGRAPH_DAILY_LIMIT` / `BUILDER_WRITE_RATE_LIMIT_RPM` — Builder tier caps
+- `FREE_EXPENSIVE_RATE_LIMIT_RPM` / `FREE_SUBGRAPH_DAILY_LIMIT` / `FREE_WRITE_RATE_LIMIT_RPM` — Free tier caps
+- `API_REQUIRE_BASIC_AUTH` — Default `false`. Set to `true` to add Basic Auth on `/api` for local development only
 - `API_CORS_ALLOWED_ORIGINS` — Comma-separated browser origins allowed to call `/api` with CORS. Unset = CORS disabled
-- `WRITE_RATE_LIMIT_REQUESTS_PER_MINUTE` — Per-`from`-address cap on prepare/write calls (default **10**/minute when unset)
 - `GRAPH_BASE_URL` / `GRAPH_BASE_SEPOLIA_URL` / `GRAPH_API_KEY` — The Graph subgraph endpoints + auth (required for history/profile/discovery endpoints)
+- `SESSIONS_KV` / `RPC_CACHE_KV` — KV bindings for Builder sessions and RPC cache (see `wrangler.jsonc`)
 
 ### Deployment
 
@@ -296,7 +312,14 @@ Configure secrets using `wrangler secret put`.
 
 ### Payments
 
-Both the MCP server and REST API require valid x402 payments in USDC on Base for every operation. See the [x402 specification](https://github.com/coinbase/x402) for client implementation details.
+Only the **MCP server** requires x402 payments in USDC on Base. The REST API is free with rate limits. See the [x402 specification](https://github.com/coinbase/x402) for MCP client integration.
+
+### Launch checklist
+
+1. Create KV namespaces: `wrangler kv namespace create SESSIONS_KV` and `RPC_CACHE_KV`; update IDs in `wrangler.jsonc`
+2. Publish the Builder entitlement subscription on Base (Clocktower LLC as provider)
+3. Set `ENTITLEMENT_BUILDER_SUB_ID` via `wrangler secret put` or vars
+4. Configure Cloudflare edge rules (see below)
 
 ---
 
@@ -308,18 +331,28 @@ The project includes a comprehensive test suite using Vitest + Cloudflare's test
 npm test
 ```
 
-Tests default to x402-primary mode.
+Tests cover free-tier policy, entitlement config, and MCP x402 invariants.
 
 ---
 
 ## Security & Rate Limiting
 
-- IP-based rate limiting on all routes
-- Per-address write rate limiting on prepare and other write handlers (keyed on `from`)
+- **Tier-aware rate limits** — separate buckets for free, builder, and MCP lanes
+- **Expensive route bucket** — subgraph-heavy endpoints (history, discovery, cross-account reads)
+- **Subgraph daily caps** — per-IP (free) or per-address (builder)
+- Per-address write rate limiting on prepare (keyed on `from`, lane-specific)
 - Geo-blocking support
-- All write operations are simulated on Base before payment settlement
-- Gas estimation verifies RPC chainId matches Base mainnet (8453)
-- Payments are only settled on successful handler execution
+- MCP: write simulation before x402 settlement; payments only settle on success
+- **Caching**: subgraph responses (45s TTL), public GET edge cache on free-tier protocol state
+
+### Cloudflare edge protections (configure in dashboard)
+
+| Rule | Suggested config |
+|------|------------------|
+| Rate Limiting | Block `>500 req / 5 min` per IP on `/api*` and `/mcp` |
+| WAF | Block empty `User-Agent`; challenge `/api/auth/*` at `>30/min/IP` |
+| DDoS | Keep HTTP DDoS managed ruleset enabled (default) |
+| Bot Fight Mode | Enable on zone to reduce scripted free-tier abuse |
 
 For security-related notes, see `SECURITY_FOLLOWUPS.md`.
 

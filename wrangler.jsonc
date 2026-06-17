@@ -30,11 +30,26 @@
 			"tag": "v2"
 		}
 	],
+	"kv_namespaces": [
+		{
+			"binding": "SESSIONS_KV",
+			"id": "00000000000000000000000000000001"
+		},
+		{
+			"binding": "RPC_CACHE_KV",
+			"id": "00000000000000000000000000000002"
+		}
+	],
 	"vars": {
 		"ALCHEMY_URL": "https://base-mainnet.g.alchemy.com/v2/",
 		"CLOCKTOWER_ADDRESS": "0xFaF5fc2f77b21BC188f492b827D366B03a07c61f",
 		"RATE_LIMIT_REQUESTS_PER_MINUTE": "60",
-		"API_REQUIRE_BASIC_AUTH": "false"
+		"FREE_RATE_LIMIT_RPM": "20",
+		"BUILDER_RATE_LIMIT_RPM": "120",
+		"MCP_RATE_LIMIT_RPM": "300",
+		"MCP_WRITE_RATE_LIMIT_RPM": "60",
+		"API_REQUIRE_BASIC_AUTH": "false",
+		"ENTITLEMENT_BUILDER_SUB_ID": ""
 		// GRAPH_* vars are NOT declared here (they contain secrets).
 		// They are supplied via `wrangler secret put` (production) or .dev.vars (local).
 		// See env.d.ts and the implementation plan for the exact names:
@@ -74,11 +89,23 @@
 			// API_REQUIRE_BASIC_AUTH is set to false here so tests default to
 			// x402-primary mode (Basic Auth is an optional extra safety layer
 			// only for manual developer testing during the transition).
+			"kv_namespaces": [
+				{
+					"binding": "SESSIONS_KV",
+					"id": "test-sessions-kv"
+				},
+				{
+					"binding": "RPC_CACHE_KV",
+					"id": "test-rpc-cache-kv"
+				}
+			],
 			"vars": {
 				"ALCHEMY_URL": "https://base-mainnet.g.alchemy.com/v2/",
 				"CLOCKTOWER_ADDRESS": "0xFaF5fc2f77b21BC188f492b827D366B03a07c61f",
 				"RATE_LIMIT_REQUESTS_PER_MINUTE": "2",
-				"API_REQUIRE_BASIC_AUTH": "false"
+				"FREE_RATE_LIMIT_RPM": "2",
+				"API_REQUIRE_BASIC_AUTH": "false",
+				"ENTITLEMENT_BUILDER_SUB_ID": ""
 				// Test GRAPH_* values are injected via vitest.config.mts (miniflare.bindings)
 				// so that this file never carries real or placeholder secret-shaped values.
 				// Example structure used in tests (see src/api/history.ts implementation):

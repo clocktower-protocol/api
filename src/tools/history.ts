@@ -157,9 +157,8 @@ export function formatSubLogEvent(log: SubLog, isProviderView = false) {
  */
 function getCacheKey(chainId: number, query: string, variables: Record<string, any>): string {
   const varString = JSON.stringify(variables);
-  // Simple hash for cache key
   const hash = btoa(query + varString).slice(0, 32);
-  return `subgraph:${chainId}:${hash}`;
+  return `https://clocktower-cache.internal/subgraph/${chainId}/${hash}`;
 }
 
 /**
@@ -279,7 +278,10 @@ async function querySubgraph(
     if (cache) {
       try {
         const responseToCache = new Response(JSON.stringify(json.data), {
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Cache-Control': `max-age=${cacheTtlSeconds}, stale-while-revalidate=30`,
+          },
         });
         await cache.put(cacheKey, responseToCache);
       } catch {

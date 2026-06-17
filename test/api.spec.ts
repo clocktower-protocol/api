@@ -34,7 +34,7 @@ async function fetchWorkerX402Only(pathname: string, init: RequestInit = {}) {
 	return res;
 }
 
-describe('clocktower-mcp worker - /api (full surface with x402)', () => {
+describe('clocktower-mcp worker - /api (tiered free REST)', () => {
 	it('returns consistent error shape for unknown API routes', async () => {
 		const res = await fetchWorker('/api/unknown/path');
 		expect(res.status).toBe(404);
@@ -45,11 +45,8 @@ describe('clocktower-mcp worker - /api (full surface with x402)', () => {
 	});
 
 	it('applies defensive security headers to API responses', async () => {
-		// /api/protocol/state now has x402 protection (early wiring).
-		// In the test environment we may get:
-		// 200, 500 (RPC failure), 401 (auth), 429 (rate limit), or 402 (x402 payment required)
 		const res = await fetchWorker('/api/protocol/state');
-		expect([200, 500, 401, 429, 402]).toContain(res.status);
+		expect([200, 500, 401, 429]).toContain(res.status);
 
 		expect(res.headers.get('x-content-type-options')).toBe('nosniff');
 		expect(res.headers.get('x-frame-options')).toBe('DENY');
@@ -58,7 +55,7 @@ describe('clocktower-mcp worker - /api (full surface with x402)', () => {
 
 	it('returns consistent error shape on invalid input (bad subscription id)', async () => {
 		const res = await fetchWorker('/api/subscriptions/not-a-valid-id');
-		expect([400, 401, 402, 429]).toContain(res.status);
+		expect([400, 401, 402, 403, 429]).toContain(res.status);
 
 		if (res.status === 400) {
 			const body = await res.json();
@@ -88,7 +85,7 @@ describe('clocktower-mcp worker - /api (full surface with x402)', () => {
 		});
 
 		// Should hit either auth (401), payment (402), rate limit (429), or validation (400)
-		expect([400, 401, 402, 429]).toContain(res.status);
+		expect([400, 401, 402, 403, 429]).toContain(res.status);
 
 		if (res.status === 400) {
 			const body = await res.json();
@@ -117,7 +114,7 @@ describe('clocktower-mcp worker - /api (full surface with x402)', () => {
 			});
 
 			// All should be protected (401/402/429/400)
-			expect([400, 401, 402, 429]).toContain(res.status);
+			expect([400, 401, 402, 403, 429]).toContain(res.status);
 		}
 	});
 
@@ -227,7 +224,7 @@ describe('clocktower-mcp worker - /api (full surface with x402)', () => {
 
 	it('validates invalid subscription id on details endpoint', async () => {
 		const res = await fetchWorker('/api/subscriptions/not-a-valid-id/details');
-		expect([400, 401, 402, 429]).toContain(res.status);
+		expect([400, 401, 402, 403, 429]).toContain(res.status);
 
 		if (res.status === 400) {
 			const body = await res.json();

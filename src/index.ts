@@ -3,11 +3,16 @@ import { enforceOriginAllowlist } from './csrf.js';
 import { enforceGeoBlock } from './geoBlock.js';
 import { ClocktowerMCP } from './mcp.js';
 import { RateLimiter } from './RateLimiter.js';
-import { enforceRateLimit } from './rateLimit.js';
+import { enforceMcpRateLimit, enforceTierRateLimits } from './rateLimit.js';
 import { withSecurityHeaders } from './securityHeaders.js';
 import { validateEnv, validateMcpRequest } from './validation.js';
 import { createApiApp, createApiAppForEnv } from './api/app.js';
 import { handleApiCorsPreflight, withApiCorsHeaders } from './cors.js';
+import { getRateLimitIdentity, resolveApiAccess } from './middleware/accessLane.js';
+import { enforceBuilderPolicy, rewriteMePath } from './middleware/entitlementPolicy.js';
+import { enforceFreeTierPolicy } from './middleware/freeTierPolicy.js';
+import { clearActiveLane, setActiveLane } from './requestLane.js';
+import type { AccessLane } from './config/rateLimits.js';
 
 /** Once per isolate, same idea as validateEnv in the MCP durable object on first init. */
 let apiEnvValidated = false;
@@ -42,6 +47,16 @@ function getApi(env: Env): ReturnType<typeof createApiApp> {
 	return productionApi;
 }
 
+function withLaneHeaders(response: Response, lane: AccessLane): Response {
+	const headers = new Headers(response.headers);
+	headers.set('X-Clocktower-Lane', lane);
+	return new Response(response.body, {
+		status: response.status,
+		statusText: response.statusText,
+		headers,
+	});
+}
+
 async function handleRequest(
 	request: Request,
 	env: Env,
@@ -60,8 +75,6 @@ async function handleRequest(
 			return invalidRequest;
 		}
 
-		// CSRF defense runs before auth so we never even compare credentials
-		// for a cross-origin browser POST that wouldn't be allowed anyway.
 		const forbiddenOrigin = enforceOriginAllowlist(request, env);
 		if (forbiddenOrigin) {
 			return forbiddenOrigin;
@@ -72,24 +85,20 @@ async function handleRequest(
 			return unauthorized;
 		}
 
-		const rateLimited = await enforceRateLimit(request, env);
-		if (rateLimited) {
-			return rateLimited;
-		}
+		setActiveLane('mcp');
+		try {
+			const rateLimited = await enforceMcpRateLimit(request, env);
+			if (rateLimited) {
+				return rateLimited;
+			}
 
-		// Mount the MCP server (stateful via Durable Objects)
-		const mcpHandler = ClocktowerMCP.serve("/mcp");
-		return mcpHandler.fetch(request, env, ctx);
+			const mcpHandler = ClocktowerMCP.serve('/mcp');
+			return await mcpHandler.fetch(request, env, ctx);
+		} finally {
+			clearActiveLane();
+		}
 	}
 
-	// === API Routes (powered by Hono) ===
-	// x402 micropayments are the primary and authoritative payment/auth layer.
-	// All routes inside the Hono app are protected by the official @x402/hono middleware.
-	// making x402 non-bypassable.
-	//
-	// Basic Auth (`API_REQUIRE_BASIC_AUTH`) is an optional extra gate that can
-	// be enabled for manual developer testing. It is disabled by default in the
-	// test environment. x402 is always required.
 	if (url.pathname.startsWith('/api')) {
 		const corsPreflight = handleApiCorsPreflight(request, env);
 		if (corsPreflight) {
@@ -110,37 +119,45 @@ async function handleRequest(
 			}
 		}
 
-		const rateLimited = await enforceRateLimit(request, env);
-		if (rateLimited) {
-			return withSecurityHeaders(withApiCorsHeaders(request, rateLimited, env));
-		}
+		const access = await resolveApiAccess(request, env);
+		setActiveLane(access.lane);
 
 		try {
-			const apiResponse = await getApi(env).fetch(request, env, ctx);
-			return withSecurityHeaders(withApiCorsHeaders(request, apiResponse, env));
-		} catch (err) {
-			// Primary safety net for unauthenticated API requests (see also src/api/x402.ts).
-			// The official @x402/hono middleware can sometimes throw during
-			// lazy initialization (or on malformed payments) instead of returning
-			// a clean 402. In those cases we fall back to 402 for requests that
-			// have no payment header, so that the rate limiting + x402 behavior
-			// (and normal unauthenticated traffic) remains predictable.
-			const hasPayment = request.headers.has('X-Payment') ||
-				request.headers.has('PAYMENT-SIGNATURE') ||
-				request.headers.has('x-payment');
-
-			if (!hasPayment) {
-				console.error('[x402] Unauthenticated /api request caused error in middleware → returning clean 402:', err);
-				const paymentRequired = new Response(JSON.stringify({ error: 'Payment required' }), {
-					status: 402,
-					headers: { 'Content-Type': 'application/json' },
-				});
-				return withSecurityHeaders(withApiCorsHeaders(request, paymentRequired, env));
+			if (access.lane === 'free') {
+				const policyBlocked = enforceFreeTierPolicy(request.method, url.pathname);
+				if (policyBlocked) {
+					return withSecurityHeaders(withApiCorsHeaders(request, policyBlocked, env));
+				}
+			} else if (access.session) {
+				const policyBlocked = await enforceBuilderPolicy(request, env, access.session);
+				if (policyBlocked) {
+					return withSecurityHeaders(withApiCorsHeaders(request, policyBlocked, env));
+				}
 			}
 
-			// If a payment header was present, re-throw so the normal error path
-			// (or the x402 layer itself) can handle it.
-			throw err;
+			const identity = getRateLimitIdentity(access, request);
+			const rateLimited = await enforceTierRateLimits(request, env, access.lane, identity);
+			if (rateLimited) {
+				return withSecurityHeaders(withApiCorsHeaders(request, rateLimited, env));
+			}
+
+			let apiRequest = request;
+			if (access.lane === 'builder' && access.session && url.pathname.includes('/me')) {
+				const rewritten = new URL(request.url);
+				rewritten.pathname = rewriteMePath(url.pathname, access.session);
+				apiRequest = new Request(rewritten.toString(), request);
+			}
+
+			const headers = new Headers(apiRequest.headers);
+			headers.set('X-Clocktower-Lane', access.lane);
+			apiRequest = new Request(apiRequest.url, { ...apiRequest, headers });
+
+			const apiResponse = await getApi(env).fetch(apiRequest, env, ctx);
+			return withSecurityHeaders(
+				withApiCorsHeaders(request, withLaneHeaders(apiResponse, access.lane), env),
+			);
+		} finally {
+			clearActiveLane();
 		}
 	}
 
@@ -149,7 +166,11 @@ async function handleRequest(
 		name: 'clocktower-mcp',
 		mcp: '/mcp',
 		rest: '/api',
-		note: 'REST API uses x402 as the primary and required layer.',
+		note: 'REST API is free with tiered rate limits. MCP requires x402.',
+		access: {
+			rest: 'free (rate-limited) or builder session',
+			mcp: 'x402 required',
+		},
 	});
 }
 
