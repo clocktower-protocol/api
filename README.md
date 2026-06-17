@@ -77,9 +77,16 @@ Full prepare responses (default) include:
 | `signingMode` | `raw` for a single tx, or `eip5792` when multiple steps are needed (e.g. approve + subscribe). |
 | `eip5792` | Batch descriptor when `signingMode` is `eip5792`. |
 | `simulation` | On-chain simulation results (must succeed before payment settles). |
+| `gasEstimates` | Per-transaction gas budget on Base (chainId 8453): `gasLimit`, EIP-1559 fees, `estimatedCostWei` / `estimatedCostEth`, and `source` (`simulated` or `heuristic` fallback). |
+| `gasSummary` | Aggregated totals across `gasEstimates`. For remit backlogs, includes `backlogMultiplier`, `totalBacklogEstimatedCostWei`, and `totalBacklogEstimatedCostEth` when multiple broadcasts are expected. |
 | `preflight` | Operation-specific context (allowance, remit queue size, etc.). |
 
-Optional **`readinessOnly: true`** on any `prepare_*` request (REST body or MCP tool argument) runs preflight/readiness checks only — no unsigned transactions or simulation. The response uses `readinessOnly: true` with `ready`, `errors`, `warnings`, `details`, and `instructions`. Dedicated `check_subscribe_readiness` / `check_remit_readiness` endpoints remain available at the lower $0.01 price.
+Optional request fields on any `prepare_*` call (REST body or MCP tool argument):
+
+- **`readinessOnly: true`** — run preflight/readiness checks only; no unsigned transactions, simulation, or gas estimates. Response uses `readinessOnly: true` with `ready`, `errors`, `warnings`, `details`, and `instructions`. Dedicated `check_subscribe_readiness` / `check_remit_readiness` endpoints remain available at the lower $0.01 price.
+- **`simulateFromAddress`** — optional `0x` address passed to `eth_estimateGas` when the signing wallet differs from the account that will broadcast (defaults to `from`).
+
+Gas estimates are advisory: fees can change between prepare and broadcast. Estimation always verifies the RPC reports Base mainnet (chainId 8453).
 
 Include `requestId` when reporting prepare issues. Write errors from the prepare layer may also return `requestId` for log correlation.
 
@@ -161,7 +168,7 @@ Subgraph errors return a graceful response containing an `error` field rather th
 
 #### Write Endpoints (POST)
 
-All `prepare_*` endpoints accept optional `readinessOnly: true` in the JSON body (see Prepare response format above).
+All `prepare_*` endpoints accept optional `readinessOnly: true` and `simulateFromAddress` in the JSON body (see Prepare response format above).
 
 | Endpoint | Price | Description |
 |----------|-------|-------------|

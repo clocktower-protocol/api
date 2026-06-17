@@ -98,7 +98,10 @@ export async function handlePrepareCreateSubscription(c: Context) {
       toWriteDetails(parsed.details),
       parsed.frequency,
       parsed.dueDay,
-      { readinessOnly: parsed.readinessOnly },
+      {
+        readinessOnly: parsed.readinessOnly,
+        simulateFromAddress: parsed.simulateFromAddress,
+      },
     );
 
     return jsonResponse(result);
@@ -121,7 +124,10 @@ export async function handlePrepareSubscribe(c: Context) {
       c.env,
       parsed.from,
       toWriteSubscription(normalizedSubscription),
-      { readinessOnly: parsed.readinessOnly },
+      {
+        readinessOnly: parsed.readinessOnly,
+        simulateFromAddress: parsed.simulateFromAddress,
+      },
     );
 
     return jsonResponse(result);
@@ -142,7 +148,10 @@ export async function handlePrepareCancelSubscription(c: Context) {
       c.env,
       parsed.from,
       toWriteSubscription(normalizedSubscription),
-      { readinessOnly: parsed.readinessOnly },
+      {
+        readinessOnly: parsed.readinessOnly,
+        simulateFromAddress: parsed.simulateFromAddress,
+      },
     );
 
     return jsonResponse(result);
@@ -163,7 +172,10 @@ export async function handlePrepareUnsubscribe(c: Context) {
       c.env,
       parsed.from,
       toWriteSubscription(normalizedSubscription),
-      { readinessOnly: parsed.readinessOnly },
+      {
+        readinessOnly: parsed.readinessOnly,
+        simulateFromAddress: parsed.simulateFromAddress,
+      },
     );
 
     return jsonResponse(result);
@@ -185,7 +197,10 @@ export async function handlePrepareUnsubscribeByProvider(c: Context) {
       parsed.from,
       toWriteSubscription(normalizedSubscription),
       parsed.subscriber,
-      { readinessOnly: parsed.readinessOnly },
+      {
+        readinessOnly: parsed.readinessOnly,
+        simulateFromAddress: parsed.simulateFromAddress,
+      },
     );
 
     return jsonResponse(result);
@@ -205,7 +220,10 @@ export async function handlePrepareEditDetails(c: Context) {
       parsed.from,
       parsed.id,
       toWriteDetails(parsed.details),
-      { readinessOnly: parsed.readinessOnly },
+      {
+        readinessOnly: parsed.readinessOnly,
+        simulateFromAddress: parsed.simulateFromAddress,
+      },
     );
 
     return jsonResponse(result);
@@ -234,7 +252,10 @@ export async function handlePrepareRemit(c: Context) {
     const body = await c.req.json();
     const parsed = remitInputSchema.parse(body);
 
-    const result = await prepareRemit(c.env, parsed.from, { readinessOnly: parsed.readinessOnly });
+    const result = await prepareRemit(c.env, parsed.from, {
+      readinessOnly: parsed.readinessOnly,
+      simulateFromAddress: parsed.simulateFromAddress,
+    });
 
     return jsonResponse(result);
   } catch (err: any) {

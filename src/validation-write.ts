@@ -54,6 +54,12 @@ export const readinessOnlySchema = z
 		'If true, run preflight/readiness only without building unsigned transactions or simulation.',
 	);
 
+export const simulateFromAddressSchema = addressSchema
+	.optional()
+	.describe(
+		'Optional account passed to eth_estimateGas; defaults to from when omitted.',
+	);
+
 // Description is bounded by UTF-8 byte length, not JS char count, because the
 // downstream contract storage charges for bytes. A 255-char string of 4-byte
 // emoji would otherwise occupy ~1 KB on-chain (subscriber pays gas, but a
@@ -125,6 +131,7 @@ export const createSubscriptionInputSchema = z
 		frequency: z.number().int().min(0).max(3),
 		dueDay: dueDaySchema,
 		readinessOnly: readinessOnlySchema,
+		simulateFromAddress: simulateFromAddressSchema,
 	})
 	.superRefine((value, ctx) => {
 		const error = validateDueDayForFrequency(value.frequency, value.dueDay);
@@ -137,12 +144,14 @@ export const subscribeInputSchema = z.object({
 	from: fromAddressSchema,
 	subscription: subscriptionInputSchema,
 	readinessOnly: readinessOnlySchema,
+	simulateFromAddress: simulateFromAddressSchema,
 });
 
 export const subscriptionActionInputSchema = z.object({
 	from: fromAddressSchema,
 	subscription: subscriptionInputSchema,
 	readinessOnly: readinessOnlySchema,
+	simulateFromAddress: simulateFromAddressSchema,
 });
 
 export const unsubscribeByProviderInputSchema = z.object({
@@ -150,6 +159,7 @@ export const unsubscribeByProviderInputSchema = z.object({
 	subscription: subscriptionInputSchema,
 	subscriber: addressSchema,
 	readinessOnly: readinessOnlySchema,
+	simulateFromAddress: simulateFromAddressSchema,
 });
 
 export const editDetailsInputSchema = z.object({
@@ -157,11 +167,13 @@ export const editDetailsInputSchema = z.object({
 	id: bytes32Schema,
 	details: detailsSchema,
 	readinessOnly: readinessOnlySchema,
+	simulateFromAddress: simulateFromAddressSchema,
 });
 
 export const remitInputSchema = z.object({
 	from: fromAddressSchema,
 	readinessOnly: readinessOnlySchema,
+	simulateFromAddress: simulateFromAddressSchema,
 });
 
 export function toWriteDetails(input: z.infer<typeof detailsSchema>): WriteDetails {

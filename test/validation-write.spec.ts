@@ -3,6 +3,7 @@ import {
 	createSubscriptionInputSchema,
 	detailsSchema,
 	humanAmountSchema,
+	remitInputSchema,
 	validateDueDayForFrequency,
 } from '../src/validation-write.js';
 
@@ -55,6 +56,18 @@ describe('validation-write', () => {
 			description,
 		});
 		expect(result.success).toBe(true);
+	});
+
+	it('accepts optional simulateFromAddress on prepare inputs', () => {
+		const simulateFrom = '0x00000000000000000000000000000000000000aa';
+		const result = remitInputSchema.safeParse({
+			from: '0x0000000000000000000000000000000000000001',
+			simulateFromAddress: simulateFrom,
+		});
+		expect(result.success).toBe(true);
+		if (result.success) {
+			expect(result.data.simulateFromAddress).toBe(simulateFrom);
+		}
 	});
 
 	it('accepts empty url and valid create subscription input', () => {

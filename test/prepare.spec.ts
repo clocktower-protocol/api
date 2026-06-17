@@ -1,7 +1,13 @@
 import { env } from 'cloudflare:test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { encodeAbiParameters, toFunctionSelector } from 'viem';
-import { encodeCreateSubscription, encodeRemit, encodeSubscribe, getFunctionSelector } from '../src/tx/encode.js';
+import {
+	encodeCreateSubscription,
+	encodeRemit,
+	encodeSubscribe,
+	getFunctionSelector,
+} from '../src/tx/encode.js';
+import * as gas from '../src/tx/gas.js';
 import {
 	prepareCancelSubscription,
 	prepareCreateSubscription,
@@ -102,6 +108,30 @@ describe('prepareCreateSubscription', () => {
 		expect(result.gasEstimates).toHaveLength(1);
 		expect(result.gasEstimates[0]?.chainId).toBe(8453);
 		expect(result.gasEstimates[0]?.source).toBe('simulated');
+	});
+
+	it('passes simulateFromAddress through to gas estimation', async () => {
+		const from = '0x0000000000000000000000000000000000000001';
+		const simulateFrom = '0x00000000000000000000000000000000000000aa';
+		const estimateSpy = vi.spyOn(gas, 'estimateGasForTransactions');
+
+		await prepareCreateSubscription(
+			testEnv,
+			from,
+			10n ** 18n,
+			'0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+			{ url: 'https://example.com', description: 'test' },
+			1,
+			15,
+			{ simulateFromAddress: simulateFrom },
+		);
+
+		expect(estimateSpy).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.any(Array),
+			expect.objectContaining({ simulateFromAddress: simulateFrom }),
+		);
+		estimateSpy.mockRestore();
 	});
 
 	it('enforces per-address write rate limit on prepare', async () => {

@@ -22,6 +22,7 @@ import {
 	createSubscriptionInputSchema,
 	editDetailsInputSchema,
 	readinessOnlySchema,
+	simulateFromAddressSchema,
 	remitInputSchema,
 	subscribeInputSchema,
 	subscriptionActionInputSchema,
@@ -76,6 +77,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 			frequency: z.number().int().min(0).max(3),
 			dueDay: z.number().int(),
 			readinessOnly: readinessOnlySchema,
+			simulateFromAddress: simulateFromAddressSchema,
 		},
 		writeAnnotations,
 		async (args) =>
@@ -96,7 +98,10 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						toWriteDetails(parsed.details),
 						parsed.frequency,
 						parsed.dueDay,
-						{ readinessOnly: parsed.readinessOnly },
+						{
+							readinessOnly: parsed.readinessOnly,
+							simulateFromAddress: parsed.simulateFromAddress,
+						},
 					),
 				);
 			}),
@@ -110,11 +115,12 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 			from: addressSchema,
 			subscription: subscribeInputSchema.shape.subscription,
 			readinessOnly: readinessOnlySchema,
+			simulateFromAddress: simulateFromAddressSchema,
 		},
 		writeAnnotations,
-		async ({ from, subscription, readinessOnly }) =>
+		async (args) =>
 			safeHandler('prepare_subscribe', async () => {
-				let parsed = subscribeInputSchema.parse({ from, subscription, readinessOnly });
+				const parsed = subscribeInputSchema.parse(args);
 
 				const normalizedSubscription = await normalizeSubscriptionAmount(env, parsed.subscription);
 
@@ -123,7 +129,10 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						env,
 						parsed.from,
 						toWriteSubscription(normalizedSubscription),
-						{ readinessOnly: parsed.readinessOnly },
+						{
+							readinessOnly: parsed.readinessOnly,
+							simulateFromAddress: parsed.simulateFromAddress,
+						},
 					),
 				);
 			}),
@@ -137,11 +146,12 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 			from: addressSchema,
 			subscription: subscriptionActionInputSchema.shape.subscription,
 			readinessOnly: readinessOnlySchema,
+			simulateFromAddress: simulateFromAddressSchema,
 		},
 		destructiveAnnotations,
-		async ({ from, subscription, readinessOnly }) =>
+		async (args) =>
 			safeHandler('prepare_cancel_subscription', async () => {
-				const parsed = subscriptionActionInputSchema.parse({ from, subscription, readinessOnly });
+				const parsed = subscriptionActionInputSchema.parse(args);
 				const normalizedSubscription = await normalizeSubscriptionAmount(env, parsed.subscription);
 
 				return textResult(
@@ -149,7 +159,10 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						env,
 						parsed.from,
 						toWriteSubscription(normalizedSubscription),
-						{ readinessOnly: parsed.readinessOnly },
+						{
+							readinessOnly: parsed.readinessOnly,
+							simulateFromAddress: parsed.simulateFromAddress,
+						},
 					),
 				);
 			}),
@@ -163,11 +176,12 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 			from: addressSchema,
 			subscription: subscriptionActionInputSchema.shape.subscription,
 			readinessOnly: readinessOnlySchema,
+			simulateFromAddress: simulateFromAddressSchema,
 		},
 		destructiveAnnotations,
-		async ({ from, subscription, readinessOnly }) =>
+		async (args) =>
 			safeHandler('prepare_unsubscribe', async () => {
-				const parsed = subscriptionActionInputSchema.parse({ from, subscription, readinessOnly });
+				const parsed = subscriptionActionInputSchema.parse(args);
 				const normalizedSubscription = await normalizeSubscriptionAmount(env, parsed.subscription);
 
 				return textResult(
@@ -175,7 +189,10 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						env,
 						parsed.from,
 						toWriteSubscription(normalizedSubscription),
-						{ readinessOnly: parsed.readinessOnly },
+						{
+							readinessOnly: parsed.readinessOnly,
+							simulateFromAddress: parsed.simulateFromAddress,
+						},
 					),
 				);
 			}),
@@ -190,6 +207,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 			subscription: unsubscribeByProviderInputSchema.shape.subscription,
 			subscriber: addressSchema,
 			readinessOnly: readinessOnlySchema,
+			simulateFromAddress: simulateFromAddressSchema,
 		},
 		destructiveAnnotations,
 		async (args) =>
@@ -203,7 +221,10 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						parsed.from,
 						toWriteSubscription(normalizedSubscription),
 						parsed.subscriber,
-						{ readinessOnly: parsed.readinessOnly },
+						{
+							readinessOnly: parsed.readinessOnly,
+							simulateFromAddress: parsed.simulateFromAddress,
+						},
 					),
 				);
 			}),
@@ -218,6 +239,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 			id: bytes32Schema,
 			details: editDetailsInputSchema.shape.details,
 			readinessOnly: readinessOnlySchema,
+			simulateFromAddress: simulateFromAddressSchema,
 		},
 		writeAnnotations,
 		async (args) =>
@@ -229,7 +251,10 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						parsed.from,
 						parsed.id,
 						toWriteDetails(parsed.details),
-						{ readinessOnly: parsed.readinessOnly },
+						{
+							readinessOnly: parsed.readinessOnly,
+							simulateFromAddress: parsed.simulateFromAddress,
+						},
 					),
 				);
 			}),
@@ -257,13 +282,17 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 		{
 			from: addressSchema,
 			readinessOnly: readinessOnlySchema,
+			simulateFromAddress: simulateFromAddressSchema,
 		},
 		destructiveAnnotations,
-		async ({ from, readinessOnly }) =>
+		async (args) =>
 			safeHandler('prepare_remit', async () => {
-				const parsed = remitInputSchema.parse({ from, readinessOnly });
+				const parsed = remitInputSchema.parse(args);
 				return textResult(
-					await prepareRemit(env, parsed.from, { readinessOnly: parsed.readinessOnly }),
+					await prepareRemit(env, parsed.from, {
+						readinessOnly: parsed.readinessOnly,
+						simulateFromAddress: parsed.simulateFromAddress,
+					}),
 				);
 			}),
 	);
