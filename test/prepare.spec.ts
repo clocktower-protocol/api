@@ -512,6 +512,18 @@ describe('remit prepare + readiness', () => {
 		expect('unsignedTransactions' in result).toBe(false);
 	});
 
+	it('prepareRemit includes gasSummary and backlog warning for multi-tx queues', async () => {
+		vi.spyOn(remitScan, 'scanDueSubscriptionIds').mockResolvedValue(25);
+		vi.spyOn(utils, 'getCurrentDay').mockReturnValue(1000);
+
+		globalThis.fetch = createGasAwareFetch([encodeUint(999), encodeUint(10), '0x']);
+
+		const result = await prepareRemit(testEnv, FROM);
+		expect(result.gasSummary?.backlogMultiplier).toBe(3);
+		expect(result.gasSummary?.transactionCount).toBe(1);
+		expect(result.warnings.some((w) => w.includes('3 broadcasts'))).toBe(true);
+	});
+
 	it('prepareRemit succeeds when readiness passes and simulation succeeds', async () => {
 		vi.spyOn(remitScan, 'scanDueSubscriptionIds').mockResolvedValue(2);
 		vi.spyOn(utils, 'getCurrentDay').mockReturnValue(1000);

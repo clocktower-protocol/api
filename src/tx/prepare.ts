@@ -24,7 +24,11 @@ import {
 	runPrepare,
 	type PrepareOptions,
 } from './prepare-response.js';
-import { estimateGasForTransactions } from './gas.js';
+import {
+	buildGasSummary,
+	buildRemitBacklogGasWarning,
+	estimateGasForTransactions,
+} from './gas.js';
 import { checkRemitReadiness } from './remit-preflight.js';
 import { simulateUnsignedTransactions } from './simulate.js';
 import type { PrepareResponse, PrepareResult, UnsignedTransaction } from './types.js';
@@ -146,6 +150,22 @@ async function buildPrepareResult(
 		{ simulateFromAddress: options?.simulateFromAddress },
 	);
 
+	const expectedTransactions =
+		typeof preflight?.expectedTransactions === 'number'
+			? preflight.expectedTransactions
+			: undefined;
+	const gasSummary = buildGasSummary(gasEstimates, {
+		expectedTransactions: expectedTransactions ?? 1,
+	});
+	const backlogWarning =
+		expectedTransactions !== undefined
+			? buildRemitBacklogGasWarning(expectedTransactions, gasSummary)
+			: null;
+	const allGasWarnings = [
+		...gasWarnings,
+		...(backlogWarning ? [backlogWarning] : []),
+	];
+
 	const signingMode = unsigned.length > 1 ? 'eip5792' : 'raw';
 
 	return finalizePrepareResult(
@@ -172,10 +192,11 @@ async function buildPrepareResult(
 			})),
 			simulation,
 			gasEstimates,
+			gasSummary,
 			preflight,
 		},
 		preflight,
-		gasWarnings,
+		allGasWarnings,
 	);
 }
 
