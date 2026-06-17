@@ -21,6 +21,7 @@ import {
   prepareEditDetails,
   prepareRemit,
 } from '../tx/prepare.js';
+import { getRequestId } from '../tx/prepare-response.js';
 import { getTransactionStatus } from '../tx/status.js';
 
 // Import validation schemas
@@ -96,7 +97,8 @@ export async function handlePrepareCreateSubscription(c: Context) {
       parsed.token,
       toWriteDetails(parsed.details),
       parsed.frequency,
-      parsed.dueDay
+      parsed.dueDay,
+      { readinessOnly: parsed.readinessOnly },
     );
 
     return jsonResponse(result);
@@ -118,7 +120,8 @@ export async function handlePrepareSubscribe(c: Context) {
     const result = await prepareSubscribe(
       c.env,
       parsed.from,
-      toWriteSubscription(normalizedSubscription)
+      toWriteSubscription(normalizedSubscription),
+      { readinessOnly: parsed.readinessOnly },
     );
 
     return jsonResponse(result);
@@ -138,7 +141,8 @@ export async function handlePrepareCancelSubscription(c: Context) {
     const result = await prepareCancelSubscription(
       c.env,
       parsed.from,
-      toWriteSubscription(normalizedSubscription)
+      toWriteSubscription(normalizedSubscription),
+      { readinessOnly: parsed.readinessOnly },
     );
 
     return jsonResponse(result);
@@ -158,7 +162,8 @@ export async function handlePrepareUnsubscribe(c: Context) {
     const result = await prepareUnsubscribe(
       c.env,
       parsed.from,
-      toWriteSubscription(normalizedSubscription)
+      toWriteSubscription(normalizedSubscription),
+      { readinessOnly: parsed.readinessOnly },
     );
 
     return jsonResponse(result);
@@ -179,7 +184,8 @@ export async function handlePrepareUnsubscribeByProvider(c: Context) {
       c.env,
       parsed.from,
       toWriteSubscription(normalizedSubscription),
-      parsed.subscriber
+      parsed.subscriber,
+      { readinessOnly: parsed.readinessOnly },
     );
 
     return jsonResponse(result);
@@ -198,7 +204,8 @@ export async function handlePrepareEditDetails(c: Context) {
       c.env,
       parsed.from,
       parsed.id,
-      toWriteDetails(parsed.details)
+      toWriteDetails(parsed.details),
+      { readinessOnly: parsed.readinessOnly },
     );
 
     return jsonResponse(result);
@@ -227,7 +234,7 @@ export async function handlePrepareRemit(c: Context) {
     const body = await c.req.json();
     const parsed = remitInputSchema.parse(body);
 
-    const result = await prepareRemit(c.env, parsed.from);
+    const result = await prepareRemit(c.env, parsed.from, { readinessOnly: parsed.readinessOnly });
 
     return jsonResponse(result);
   } catch (err: any) {
@@ -256,11 +263,13 @@ export async function handleGetTransactionStatus(c: Context) {
    Shared Error Handler for Write Endpoints
    ===================================================== */
 function handleWriteError(err: any, operation: string) {
+  const requestId = getRequestId(err);
+
   // If the error is already one of our structured error responses, return it directly
   // (preserve appropriate status based on the error code for consistency with read handlers)
   if (err && typeof err === 'object' && 'error' in err && 'code' in err) {
     const status = err.code === 'NOT_FOUND' ? 404 : 400;
-    return jsonResponse(err, status);
+    return jsonResponse(requestId ? { ...err, requestId } : err, status);
   }
 
   // Zod validation errors → return rich validation error with issues array
@@ -268,6 +277,7 @@ function handleWriteError(err: any, operation: string) {
     return jsonResponse({
       error: 'Validation failed',
       code: 'VALIDATION_ERROR',
+      ...(requestId ? { requestId } : {}),
       issues: err.issues.map((issue) => ({
         path: issue.path.join('.'),
         message: issue.message,
@@ -276,31 +286,42 @@ function handleWriteError(err: any, operation: string) {
   }
 
   const message = err?.message || String(err);
+  const withRequestId = (body: Record<string, unknown>, status: number) =>
+    jsonResponse(requestId ? { ...body, requestId } : body, status);
 
   // Common domain errors from the tx layer (map to appropriate error codes)
   if (message.includes('Subscription not found')) {
-    return Errors.notFound('Subscription not found on chain');
+    return withRequestId(
+      { error: 'Subscription not found on chain', code: 'NOT_FOUND' },
+      404,
+    );
   }
   if (message.includes('Token is paused')) {
-    return Errors.validation('Token is paused on protocol');
+    return withRequestId(
+      { error: 'Token is paused on protocol', code: 'VALIDATION_ERROR' },
+      400,
+    );
   }
   if (message.includes('Amount below token minimum')) {
-    return Errors.validation(message);
+    return withRequestId({ error: message, code: 'VALIDATION_ERROR' }, 400);
   }
   if (message.includes('Write rate limit exceeded')) {
-    return Errors.validation(message);
+    return withRequestId({ error: message, code: 'VALIDATION_ERROR' }, 400);
   }
   if (message.includes('Remit not due') || message.includes('No due subscriptions')) {
-    return Errors.validation(message);
+    return withRequestId({ error: message, code: 'VALIDATION_ERROR' }, 400);
   }
   if (message.includes('Simulation failed')) {
-    return Errors.validation(message);
+    return withRequestId({ error: message, code: 'VALIDATION_ERROR' }, 400);
   }
 
   // @x402/hono skips settlement when the handler returns status >= 400 (see README REST
   // section and test/api-x402-hono-settlement.spec.ts). Returning JSON here is correct.
-  console.error(`[write] ${operation} failed`, err);
+  console.error(`[write] ${operation} failed`, { requestId, err });
 
-  return Errors.upstream(message || `Failed to ${operation}`);
+  return withRequestId(
+    { error: message || `Failed to ${operation}`, code: 'UPSTREAM_ERROR' },
+    500,
+  );
 }
 

@@ -20,9 +20,25 @@ export type SimulationResult = {
 	error?: string;
 };
 
+export type ReadinessOnlyResult = {
+	requestId: string;
+	readinessOnly: true;
+	chainId: typeof BASE_CHAIN_ID;
+	operation: string;
+	ready: boolean;
+	errors: string[];
+	warnings: string[];
+	instructions: string[];
+	details: Record<string, unknown>;
+};
+
 export type PrepareResult = {
+	requestId: string;
+	readinessOnly?: false;
 	chainId: typeof BASE_CHAIN_ID;
 	signingMode: 'eip5792' | 'raw';
+	instructions: string[];
+	warnings: string[];
 	eip5792: {
 		version: '1.0';
 		chainId: `0x${string}`;
@@ -39,6 +55,8 @@ export type PrepareResult = {
 	simulation: SimulationResult[];
 	preflight?: Record<string, unknown>;
 };
+
+export type PrepareResponse = PrepareResult | ReadinessOnlyResult;
 
 export type SubscribeReadinessResult = {
 	ready: boolean;

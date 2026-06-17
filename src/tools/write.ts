@@ -21,6 +21,7 @@ import { WRITE_PREPARE_PRICE, WRITE_READINESS_PRICE } from '../tx/constants.js';
 import {
 	createSubscriptionInputSchema,
 	editDetailsInputSchema,
+	readinessOnlySchema,
 	remitInputSchema,
 	subscribeInputSchema,
 	subscriptionActionInputSchema,
@@ -74,6 +75,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 			details: createSubscriptionInputSchema.shape.details,
 			frequency: z.number().int().min(0).max(3),
 			dueDay: z.number().int(),
+			readinessOnly: readinessOnlySchema,
 		},
 		writeAnnotations,
 		async (args) =>
@@ -94,6 +96,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						toWriteDetails(parsed.details),
 						parsed.frequency,
 						parsed.dueDay,
+						{ readinessOnly: parsed.readinessOnly },
 					),
 				);
 			}),
@@ -106,16 +109,22 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 		{
 			from: addressSchema,
 			subscription: subscribeInputSchema.shape.subscription,
+			readinessOnly: readinessOnlySchema,
 		},
 		writeAnnotations,
-		async ({ from, subscription }) =>
+		async ({ from, subscription, readinessOnly }) =>
 			safeHandler('prepare_subscribe', async () => {
-				let parsed = subscribeInputSchema.parse({ from, subscription });
+				let parsed = subscribeInputSchema.parse({ from, subscription, readinessOnly });
 
 				const normalizedSubscription = await normalizeSubscriptionAmount(env, parsed.subscription);
 
 				return textResult(
-					await prepareSubscribe(env, parsed.from, toWriteSubscription(normalizedSubscription)),
+					await prepareSubscribe(
+						env,
+						parsed.from,
+						toWriteSubscription(normalizedSubscription),
+						{ readinessOnly: parsed.readinessOnly },
+					),
 				);
 			}),
 	);
@@ -127,11 +136,12 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 		{
 			from: addressSchema,
 			subscription: subscriptionActionInputSchema.shape.subscription,
+			readinessOnly: readinessOnlySchema,
 		},
 		destructiveAnnotations,
-		async ({ from, subscription }) =>
+		async ({ from, subscription, readinessOnly }) =>
 			safeHandler('prepare_cancel_subscription', async () => {
-				const parsed = subscriptionActionInputSchema.parse({ from, subscription });
+				const parsed = subscriptionActionInputSchema.parse({ from, subscription, readinessOnly });
 				const normalizedSubscription = await normalizeSubscriptionAmount(env, parsed.subscription);
 
 				return textResult(
@@ -139,6 +149,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						env,
 						parsed.from,
 						toWriteSubscription(normalizedSubscription),
+						{ readinessOnly: parsed.readinessOnly },
 					),
 				);
 			}),
@@ -151,15 +162,21 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 		{
 			from: addressSchema,
 			subscription: subscriptionActionInputSchema.shape.subscription,
+			readinessOnly: readinessOnlySchema,
 		},
 		destructiveAnnotations,
-		async ({ from, subscription }) =>
+		async ({ from, subscription, readinessOnly }) =>
 			safeHandler('prepare_unsubscribe', async () => {
-				const parsed = subscriptionActionInputSchema.parse({ from, subscription });
+				const parsed = subscriptionActionInputSchema.parse({ from, subscription, readinessOnly });
 				const normalizedSubscription = await normalizeSubscriptionAmount(env, parsed.subscription);
 
 				return textResult(
-					await prepareUnsubscribe(env, parsed.from, toWriteSubscription(normalizedSubscription)),
+					await prepareUnsubscribe(
+						env,
+						parsed.from,
+						toWriteSubscription(normalizedSubscription),
+						{ readinessOnly: parsed.readinessOnly },
+					),
 				);
 			}),
 	);
@@ -172,6 +189,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 			from: addressSchema,
 			subscription: unsubscribeByProviderInputSchema.shape.subscription,
 			subscriber: addressSchema,
+			readinessOnly: readinessOnlySchema,
 		},
 		destructiveAnnotations,
 		async (args) =>
@@ -185,6 +203,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						parsed.from,
 						toWriteSubscription(normalizedSubscription),
 						parsed.subscriber,
+						{ readinessOnly: parsed.readinessOnly },
 					),
 				);
 			}),
@@ -198,6 +217,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 			from: addressSchema,
 			id: bytes32Schema,
 			details: editDetailsInputSchema.shape.details,
+			readinessOnly: readinessOnlySchema,
 		},
 		writeAnnotations,
 		async (args) =>
@@ -209,6 +229,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						parsed.from,
 						parsed.id,
 						toWriteDetails(parsed.details),
+						{ readinessOnly: parsed.readinessOnly },
 					),
 				);
 			}),
@@ -235,12 +256,15 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 		WRITE_PREPARE_PRICE,
 		{
 			from: addressSchema,
+			readinessOnly: readinessOnlySchema,
 		},
 		destructiveAnnotations,
-		async ({ from }) =>
+		async ({ from, readinessOnly }) =>
 			safeHandler('prepare_remit', async () => {
-				const parsed = remitInputSchema.parse({ from });
-				return textResult(await prepareRemit(env, parsed.from));
+				const parsed = remitInputSchema.parse({ from, readinessOnly });
+				return textResult(
+					await prepareRemit(env, parsed.from, { readinessOnly: parsed.readinessOnly }),
+				);
 			}),
 	);
 

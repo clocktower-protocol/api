@@ -97,6 +97,10 @@ describe('prepareCreateSubscription', () => {
 			15,
 		);
 
+		expect(result.requestId).toMatch(
+			/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+		);
+		expect(result.instructions.length).toBeGreaterThan(0);
 		expect(result.unsignedTransactions).toHaveLength(1);
 		expect(result.eip5792.calls).toHaveLength(1);
 		expect(result.signingMode).toBe('raw');
@@ -500,6 +504,30 @@ describe('remit prepare + readiness', () => {
 		await expect(prepareRemit(testEnv, FROM)).rejects.toThrow(/before next unchecked day/);
 	});
 
+	it('prepareRemit with readinessOnly skips unsigned transactions', async () => {
+		vi.spyOn(remitScan, 'scanDueSubscriptionIds').mockResolvedValue(2);
+		vi.spyOn(utils, 'getCurrentDay').mockReturnValue(1000);
+
+		let callCount = 0;
+		globalThis.fetch = vi.fn(async () => {
+			callCount += 1;
+			return Response.json({
+				jsonrpc: '2.0',
+				id: 1,
+				result: callCount === 1 ? encodeUint(999) : encodeUint(10),
+			});
+		}) as typeof fetch;
+
+		const result = await prepareRemit(testEnv, FROM, { readinessOnly: true });
+		expect(result.readinessOnly).toBe(true);
+		expect(result.requestId).toMatch(
+			/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+		);
+		expect(result.ready).toBe(true);
+		expect(result.instructions.length).toBeGreaterThan(0);
+		expect('unsignedTransactions' in result).toBe(false);
+	});
+
 	it('prepareRemit succeeds when readiness passes and simulation succeeds', async () => {
 		vi.spyOn(remitScan, 'scanDueSubscriptionIds').mockResolvedValue(2);
 		vi.spyOn(utils, 'getCurrentDay').mockReturnValue(1000);
@@ -518,6 +546,8 @@ describe('remit prepare + readiness', () => {
 		}) as typeof fetch;
 
 		const result = await prepareRemit(testEnv, FROM);
+		expect(result.requestId).toBeDefined();
+		expect(result.instructions.length).toBeGreaterThan(0);
 		expect(result.unsignedTransactions).toHaveLength(1);
 		expect(result.preflight).toMatchObject({
 			totalSubscriptions: 2,

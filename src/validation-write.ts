@@ -47,6 +47,13 @@ const bigintStringSchema = z
 
 export const fromAddressSchema = addressSchema.describe('Address that will sign and send the transaction(s)');
 
+export const readinessOnlySchema = z
+	.boolean()
+	.optional()
+	.describe(
+		'If true, run preflight/readiness only without building unsigned transactions or simulation.',
+	);
+
 // Description is bounded by UTF-8 byte length, not JS char count, because the
 // downstream contract storage charges for bytes. A 255-char string of 4-byte
 // emoji would otherwise occupy ~1 KB on-chain (subscriber pays gas, but a
@@ -117,6 +124,7 @@ export const createSubscriptionInputSchema = z
 		details: detailsSchema,
 		frequency: z.number().int().min(0).max(3),
 		dueDay: dueDaySchema,
+		readinessOnly: readinessOnlySchema,
 	})
 	.superRefine((value, ctx) => {
 		const error = validateDueDayForFrequency(value.frequency, value.dueDay);
@@ -128,27 +136,32 @@ export const createSubscriptionInputSchema = z
 export const subscribeInputSchema = z.object({
 	from: fromAddressSchema,
 	subscription: subscriptionInputSchema,
+	readinessOnly: readinessOnlySchema,
 });
 
 export const subscriptionActionInputSchema = z.object({
 	from: fromAddressSchema,
 	subscription: subscriptionInputSchema,
+	readinessOnly: readinessOnlySchema,
 });
 
 export const unsubscribeByProviderInputSchema = z.object({
 	from: fromAddressSchema,
 	subscription: subscriptionInputSchema,
 	subscriber: addressSchema,
+	readinessOnly: readinessOnlySchema,
 });
 
 export const editDetailsInputSchema = z.object({
 	from: fromAddressSchema,
 	id: bytes32Schema,
 	details: detailsSchema,
+	readinessOnly: readinessOnlySchema,
 });
 
 export const remitInputSchema = z.object({
 	from: fromAddressSchema,
+	readinessOnly: readinessOnlySchema,
 });
 
 export function toWriteDetails(input: z.infer<typeof detailsSchema>): WriteDetails {

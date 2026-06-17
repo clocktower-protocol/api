@@ -64,6 +64,25 @@ All history results are server-side limited (max 200 records, recommended ~100 p
 
 All write operations follow a prepare → sign → broadcast (wallet) flow and include on-chain simulation before any payment is settled. The server does not relay signed transactions.
 
+#### Prepare response format
+
+Full prepare responses (default) include:
+
+| Field | Description |
+|-------|-------------|
+| `requestId` | Correlation UUID for support and logs. Not stored server-side and not required for follow-up calls. |
+| `instructions` | Ordered steps for signing and broadcasting from the wallet. |
+| `warnings` | Non-fatal hints (e.g. remit may need multiple transactions). |
+| `unsignedTransactions` | Calldata for the wallet to sign (`to`, `data`, `value`, `chainId`, `from`). |
+| `signingMode` | `raw` for a single tx, or `eip5792` when multiple steps are needed (e.g. approve + subscribe). |
+| `eip5792` | Batch descriptor when `signingMode` is `eip5792`. |
+| `simulation` | On-chain simulation results (must succeed before payment settles). |
+| `preflight` | Operation-specific context (allowance, remit queue size, etc.). |
+
+Optional **`readinessOnly: true`** on any `prepare_*` request (REST body or MCP tool argument) runs preflight/readiness checks only — no unsigned transactions or simulation. The response uses `readinessOnly: true` with `ready`, `errors`, `warnings`, `details`, and `instructions`. Dedicated `check_subscribe_readiness` / `check_remit_readiness` endpoints remain available at the lower $0.01 price.
+
+Include `requestId` when reporting prepare issues. Write errors from the prepare layer may also return `requestId` for log correlation.
+
 ### Payments (MCP)
 
 All MCP tools are paid using the x402 protocol. Your MCP client must support sending USDC payments on Base when calling tools.
@@ -142,6 +161,8 @@ Subgraph errors return a graceful response containing an `error` field rather th
 
 #### Write Endpoints (POST)
 
+All `prepare_*` endpoints accept optional `readinessOnly: true` in the JSON body (see Prepare response format above).
+
 | Endpoint | Price | Description |
 |----------|-------|-------------|
 | `POST /api/check_subscribe_readiness` | $0.01 | Validate whether an account can subscribe |
@@ -171,11 +192,12 @@ All errors return a consistent JSON shape:
 ```json
 {
   "error": "Human readable message",
-  "code": "VALIDATION_ERROR" | "NOT_FOUND" | "UPSTREAM_ERROR" | "RATE_LIMITED"
+  "code": "VALIDATION_ERROR" | "NOT_FOUND" | "UPSTREAM_ERROR" | "RATE_LIMITED",
+  "requestId": "optional-uuid-for-prepare-failures"
 }
 ```
 
-Validation errors on write endpoints may also include an `issues` array with field-level details.
+Validation errors on write endpoints may also include an `issues` array with field-level details. MCP prepare failures may return `code: "PREPARE_FAILURE"` with a `requestId` when the error originated in the prepare layer.
 
 ### Status Endpoints
 

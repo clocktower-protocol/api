@@ -17,11 +17,18 @@ import {
 	encodeUnsubscribe,
 	encodeUnsubscribeByProvider,
 } from './encode.js';
-import { enforceWriteRateLimitForAddress } from '../rateLimit.js';
 import { checkSubscribeReadiness, INFINITE_APPROVAL } from './preflight.js';
+import {
+	buildReadinessOnlyResult,
+	finalizePrepareResult,
+	runPrepare,
+	type PrepareOptions,
+} from './prepare-response.js';
 import { checkRemitReadiness } from './remit-preflight.js';
 import { simulateUnsignedTransactions } from './simulate.js';
-import type { PrepareResult, UnsignedTransaction } from './types.js';
+import type { PrepareResponse, PrepareResult, UnsignedTransaction } from './types.js';
+
+export type { PrepareOptions };
 
 function toChainIdHex(chainId: number): `0x${string}` {
 	return `0x${chainId.toString(16)}` as `0x${string}`;
@@ -113,6 +120,7 @@ async function buildPrepareResult(
 	env: Env,
 	from: `0x${string}`,
 	unsigned: UnsignedTransaction[],
+	requestId: string,
 	preflight?: Record<string, unknown>,
 ): Promise<PrepareResult> {
 	const chain = resolveChain(env);
@@ -132,29 +140,33 @@ async function buildPrepareResult(
 
 	const signingMode = unsigned.length > 1 ? 'eip5792' : 'raw';
 
-	return {
-		chainId: BASE_CHAIN_ID,
-		signingMode,
-		eip5792: {
-			version: '1.0',
-			chainId: toChainIdHex(BASE_CHAIN_ID),
-			from,
-			calls: unsigned.map((tx) => ({
+	return finalizePrepareResult(
+		requestId,
+		{
+			chainId: BASE_CHAIN_ID,
+			signingMode,
+			eip5792: {
+				version: '1.0',
+				chainId: toChainIdHex(BASE_CHAIN_ID),
+				from,
+				calls: unsigned.map((tx) => ({
+					to: tx.to,
+					data: tx.data,
+					value: `0x${tx.value.toString(16)}` as `0x${string}`,
+				})),
+			},
+			unsignedTransactions: unsigned.map((tx) => ({
 				to: tx.to,
 				data: tx.data,
-				value: `0x${tx.value.toString(16)}` as `0x${string}`,
+				value: tx.value.toString(),
+				chainId: tx.chainId,
+				from: tx.from,
 			})),
+			simulation,
+			preflight,
 		},
-		unsignedTransactions: unsigned.map((tx) => ({
-			to: tx.to,
-			data: tx.data,
-			value: tx.value.toString(),
-			chainId: tx.chainId,
-			from: tx.from,
-		})),
-		simulation,
 		preflight,
-	};
+	);
 }
 
 export async function prepareCreateSubscription(
@@ -165,40 +177,64 @@ export async function prepareCreateSubscription(
 	details: WriteDetails,
 	frequency: number,
 	dueDay: number,
-): Promise<PrepareResult> {
-	await enforceWriteRateLimitForAddress(env, from);
+	options?: PrepareOptions,
+): Promise<PrepareResponse> {
+	return runPrepare('prepare_create_subscription', env, from, async ({ requestId }) => {
+		const chain = resolveChain(env);
+		const client = createClocktowerClient(chain);
 
-	const chain = resolveChain(env);
-	const client = createClocktowerClient(chain);
-
-	const approvedToken = parseApprovedTokenRecord(
-		await client.readContract({
-			address: chain.contractAddress,
-			abi: CLOCKTOWER_READ_ABI,
-			functionName: 'approvedERC20',
-			args: [token],
-		}),
-	);
-
-	// Throw rather than warn: a paused token cannot host new subscriptions, so
-	// any prepare against it is guaranteed to revert. Throwing lets x402 skip
-	// settlement (see comment in buildPrepareResult and M1 in SECURITY_FOLLOWUPS.md).
-	if (approvedToken.paused) {
-		throw new Error('Token is paused on protocol');
-	}
-	if (amount < approvedToken.minimum) {
-		throw new Error(
-			`Amount below token minimum (${approvedToken.minimum.toString()} protocol units)`,
+		const approvedToken = parseApprovedTokenRecord(
+			await client.readContract({
+				address: chain.contractAddress,
+				abi: CLOCKTOWER_READ_ABI,
+				functionName: 'approvedERC20',
+				args: [token],
+			}),
 		);
-	}
 
-	const data = encodeCreateSubscription(amount, token, details, frequency, dueDay);
-	const unsigned = [buildUnsigned(from, chain.contractAddress, data)];
+		// Throw rather than warn: a paused token cannot host new subscriptions, so
+		// any prepare against it is guaranteed to revert. Throwing lets x402 skip
+		// settlement (see comment in buildPrepareResult and M1 in SECURITY_FOLLOWUPS.md).
+		if (approvedToken.paused) {
+			throw new Error('Token is paused on protocol');
+		}
+		if (amount < approvedToken.minimum) {
+			throw new Error(
+				`Amount below token minimum (${approvedToken.minimum.toString()} protocol units)`,
+			);
+		}
 
-	return buildPrepareResult(env, from, unsigned, {
-		token,
-		frequency,
-		dueDay,
+		if (options?.readinessOnly) {
+			return buildReadinessOnlyResult(
+				requestId,
+				'prepare_create_subscription',
+				true,
+				[],
+				[],
+				{
+					token,
+					frequency,
+					dueDay,
+					minimum: approvedToken.minimum.toString(),
+					decimals: approvedToken.decimals,
+				},
+			);
+		}
+
+		const data = encodeCreateSubscription(amount, token, details, frequency, dueDay);
+		const unsigned = [buildUnsigned(from, chain.contractAddress, data)];
+
+		return buildPrepareResult(
+			env,
+			from,
+			unsigned,
+			requestId,
+			{
+				token,
+				frequency,
+				dueDay,
+			},
+		);
 	});
 }
 
@@ -206,36 +242,53 @@ export async function prepareSubscribe(
 	env: Env,
 	from: `0x${string}`,
 	subscription: WriteSubscription,
-): Promise<PrepareResult> {
-	await enforceWriteRateLimitForAddress(env, from);
+	options?: PrepareOptions,
+): Promise<PrepareResponse> {
+	return runPrepare('prepare_subscribe', env, from, async ({ requestId }) => {
+		const chain = resolveChain(env);
+		const readiness = await checkSubscribeReadiness(env, chain, from, subscription);
 
-	const chain = resolveChain(env);
-	const readiness = await checkSubscribeReadiness(env, chain, from, subscription);
+		if (options?.readinessOnly) {
+			return buildReadinessOnlyResult(
+				requestId,
+				'prepare_subscribe',
+				readiness.ready,
+				readiness.errors,
+				readiness.warnings,
+				{
+					needsApproval: readiness.needsApproval,
+					allowance: readiness.allowance,
+					balance: readiness.balance,
+					requiredAmount: readiness.requiredAmount,
+				},
+			);
+		}
 
-	if (readiness.errors.length > 0) {
-		throw new Error(readiness.errors.join('; '));
-	}
+		if (readiness.errors.length > 0) {
+			throw new Error(readiness.errors.join('; '));
+		}
 
-	const sub = readiness.subscription ?? subscription;
-	const unsigned: UnsignedTransaction[] = [];
+		const sub = readiness.subscription ?? subscription;
+		const unsigned: UnsignedTransaction[] = [];
 
-	if (readiness.needsApproval) {
+		if (readiness.needsApproval) {
+			unsigned.push(
+				buildUnsigned(
+					from,
+					sub.token,
+					encodeApprove(chain.contractAddress, INFINITE_APPROVAL),
+				),
+			);
+		}
+
 		unsigned.push(
-			buildUnsigned(
-				from,
-				sub.token,
-				encodeApprove(chain.contractAddress, INFINITE_APPROVAL),
-			),
+			buildUnsigned(from, chain.contractAddress, encodeSubscribe(sub)),
 		);
-	}
 
-	unsigned.push(
-		buildUnsigned(from, chain.contractAddress, encodeSubscribe(sub)),
-	);
-
-	return buildPrepareResult(env, from, unsigned, {
-		needsApproval: readiness.needsApproval,
-		warnings: readiness.warnings,
+		return buildPrepareResult(env, from, unsigned, requestId, {
+			needsApproval: readiness.needsApproval,
+			warnings: readiness.warnings,
+		});
 	});
 }
 
@@ -245,50 +298,81 @@ export async function prepareCancelSubscription(
 	env: Env,
 	from: `0x${string}`,
 	subscription: WriteSubscription,
-): Promise<PrepareResult> {
-	await enforceWriteRateLimitForAddress(env, from);
+	options?: PrepareOptions,
+): Promise<PrepareResponse> {
+	return runPrepare('prepare_cancel_subscription', env, from, async ({ requestId }) => {
+		const chain = resolveChain(env);
+		const client = createClocktowerClient(chain);
 
-	const chain = resolveChain(env);
-	const client = createClocktowerClient(chain);
+		const canonical = await fetchCanonicalSubscription(client, chain, subscription.id);
+		const isProvider = canonical.provider.toLowerCase() === from.toLowerCase();
 
-	const canonical = await fetchCanonicalSubscription(client, chain, subscription.id);
-	if (canonical.provider.toLowerCase() !== from.toLowerCase()) {
-		throw new Error('Only the subscription provider can cancel');
-	}
+		if (options?.readinessOnly) {
+			return buildReadinessOnlyResult(
+				requestId,
+				'prepare_cancel_subscription',
+				isProvider,
+				isProvider ? [] : ['Only the subscription provider can cancel'],
+				[],
+				{ id: canonical.id, provider: canonical.provider },
+			);
+		}
 
-	const data = encodeCancelSubscription(canonical);
-	const unsigned = [buildUnsigned(from, chain.contractAddress, data)];
-	return buildPrepareResult(env, from, unsigned, { id: canonical.id });
+		if (!isProvider) {
+			throw new Error('Only the subscription provider can cancel');
+		}
+
+		const data = encodeCancelSubscription(canonical);
+		const unsigned = [buildUnsigned(from, chain.contractAddress, data)];
+		return buildPrepareResult(env, from, unsigned, requestId, { id: canonical.id });
+	});
 }
 
 export async function prepareUnsubscribe(
 	env: Env,
 	from: `0x${string}`,
 	subscription: WriteSubscription,
-): Promise<PrepareResult> {
-	await enforceWriteRateLimitForAddress(env, from);
+	options?: PrepareOptions,
+): Promise<PrepareResponse> {
+	return runPrepare('prepare_unsubscribe', env, from, async ({ requestId }) => {
+		const chain = resolveChain(env);
+		const client = createClocktowerClient(chain);
 
-	const chain = resolveChain(env);
-	const client = createClocktowerClient(chain);
+		const canonical = await fetchCanonicalSubscription(client, chain, subscription.id);
 
-	const canonical = await fetchCanonicalSubscription(client, chain, subscription.id);
+		// L13: confirm the caller is actually subscribed before encoding. The
+		// contract reverts cleanly otherwise; this check just spares the user
+		// gas (and, per M1, ensures x402 doesn't charge for a doomed prepare).
+		const isSubscriber = await isAccountSubscribedTo(client, chain, from, canonical.id);
 
-	// L13: confirm the caller is actually subscribed before encoding. The
-	// contract reverts cleanly otherwise; this check just spares the user
-	// gas (and, per M1, ensures x402 doesn't charge for a doomed prepare).
-	const isSubscriber = await isAccountSubscribedTo(client, chain, from, canonical.id);
-	if (!isSubscriber) {
-		throw new Error(
-			`Account ${from} is not currently subscribed to ${canonical.id}; ` +
-				'if you just subscribed, retry in a few seconds.',
-		);
-	}
+		if (options?.readinessOnly) {
+			return buildReadinessOnlyResult(
+				requestId,
+				'prepare_unsubscribe',
+				isSubscriber,
+				isSubscriber
+					? []
+					: [
+							`Account ${from} is not currently subscribed to ${canonical.id}; if you just subscribed, retry in a few seconds.`,
+						],
+				[],
+				{ id: canonical.id },
+			);
+		}
 
-	const data = encodeUnsubscribe(canonical);
-	const unsigned = [buildUnsigned(from, chain.contractAddress, data)];
-	return buildPrepareResult(env, from, unsigned, {
-		id: canonical.id,
-		note: 'Caller must be an active subscriber',
+		if (!isSubscriber) {
+			throw new Error(
+				`Account ${from} is not currently subscribed to ${canonical.id}; ` +
+					'if you just subscribed, retry in a few seconds.',
+			);
+		}
+
+		const data = encodeUnsubscribe(canonical);
+		const unsigned = [buildUnsigned(from, chain.contractAddress, data)];
+		return buildPrepareResult(env, from, unsigned, requestId, {
+			id: canonical.id,
+			note: 'Caller must be an active subscriber',
+		});
 	});
 }
 
@@ -297,20 +381,34 @@ export async function prepareUnsubscribeByProvider(
 	from: `0x${string}`,
 	subscription: WriteSubscription,
 	subscriber: `0x${string}`,
-): Promise<PrepareResult> {
-	await enforceWriteRateLimitForAddress(env, from);
+	options?: PrepareOptions,
+): Promise<PrepareResponse> {
+	return runPrepare('prepare_unsubscribe_by_provider', env, from, async ({ requestId }) => {
+		const chain = resolveChain(env);
+		const client = createClocktowerClient(chain);
 
-	const chain = resolveChain(env);
-	const client = createClocktowerClient(chain);
+		const canonical = await fetchCanonicalSubscription(client, chain, subscription.id);
+		const isProvider = canonical.provider.toLowerCase() === from.toLowerCase();
 
-	const canonical = await fetchCanonicalSubscription(client, chain, subscription.id);
-	if (canonical.provider.toLowerCase() !== from.toLowerCase()) {
-		throw new Error('Only the subscription provider can unsubscribe a subscriber');
-	}
+		if (options?.readinessOnly) {
+			return buildReadinessOnlyResult(
+				requestId,
+				'prepare_unsubscribe_by_provider',
+				isProvider,
+				isProvider ? [] : ['Only the subscription provider can unsubscribe a subscriber'],
+				[],
+				{ id: canonical.id, subscriber, provider: canonical.provider },
+			);
+		}
 
-	const data = encodeUnsubscribeByProvider(canonical, subscriber);
-	const unsigned = [buildUnsigned(from, chain.contractAddress, data)];
-	return buildPrepareResult(env, from, unsigned, { id: canonical.id, subscriber });
+		if (!isProvider) {
+			throw new Error('Only the subscription provider can unsubscribe a subscriber');
+		}
+
+		const data = encodeUnsubscribeByProvider(canonical, subscriber);
+		const unsigned = [buildUnsigned(from, chain.contractAddress, data)];
+		return buildPrepareResult(env, from, unsigned, requestId, { id: canonical.id, subscriber });
+	});
 }
 
 export async function prepareEditDetails(
@@ -318,49 +416,82 @@ export async function prepareEditDetails(
 	from: `0x${string}`,
 	id: `0x${string}`,
 	details: WriteDetails,
-): Promise<PrepareResult> {
-	await enforceWriteRateLimitForAddress(env, from);
+	options?: PrepareOptions,
+): Promise<PrepareResponse> {
+	return runPrepare('prepare_edit_details', env, from, async ({ requestId }) => {
+		const chain = resolveChain(env);
+		const client = createClocktowerClient(chain);
 
-	const chain = resolveChain(env);
-	const client = createClocktowerClient(chain);
+		// Validate the subscription exists and the caller is the provider before
+		// encoding calldata. The on-chain check is authoritative, but failing here
+		// avoids burning the user's gas on a guaranteed revert.
+		const canonical = await fetchCanonicalSubscription(client, chain, id);
+		const isProvider = canonical.provider.toLowerCase() === from.toLowerCase();
 
-	// Validate the subscription exists and the caller is the provider before
-	// encoding calldata. The on-chain check is authoritative, but failing here
-	// avoids burning the user's gas on a guaranteed revert.
-	const canonical = await fetchCanonicalSubscription(client, chain, id);
-	if (canonical.provider.toLowerCase() !== from.toLowerCase()) {
-		throw new Error('Only the subscription provider can edit details');
-	}
+		if (options?.readinessOnly) {
+			return buildReadinessOnlyResult(
+				requestId,
+				'prepare_edit_details',
+				isProvider,
+				isProvider ? [] : ['Only the subscription provider can edit details'],
+				[],
+				{ id: canonical.id, provider: canonical.provider },
+			);
+		}
 
-	const data = encodeEditDetails(details, id);
-	const unsigned = [buildUnsigned(from, chain.contractAddress, data)];
-	return buildPrepareResult(env, from, unsigned, {
-		id: canonical.id,
-		note: 'Caller must be the subscription provider (createdSubs)',
+		if (!isProvider) {
+			throw new Error('Only the subscription provider can edit details');
+		}
+
+		const data = encodeEditDetails(details, id);
+		const unsigned = [buildUnsigned(from, chain.contractAddress, data)];
+		return buildPrepareResult(env, from, unsigned, requestId, {
+			id: canonical.id,
+			note: 'Caller must be the subscription provider (createdSubs)',
+		});
 	});
 }
 
 export async function prepareRemit(
 	env: Env,
 	from: `0x${string}`,
-): Promise<PrepareResult> {
-	await enforceWriteRateLimitForAddress(env, from);
+	options?: PrepareOptions,
+): Promise<PrepareResponse> {
+	return runPrepare('prepare_remit', env, from, async ({ requestId }) => {
+		const readiness = await checkRemitReadiness(env, from);
 
-	const readiness = await checkRemitReadiness(env, from);
-	if (!readiness.ready) {
-		throw new Error(readiness.errors[0] ?? 'Remit not ready');
-	}
+		if (options?.readinessOnly) {
+			return buildReadinessOnlyResult(
+				requestId,
+				'prepare_remit',
+				readiness.ready,
+				readiness.errors,
+				readiness.warnings,
+				{
+					currentDay: readiness.currentDay,
+					nextUncheckedDay: readiness.nextUncheckedDay,
+					totalSubscriptions: readiness.totalSubscriptions,
+					maxRemits: readiness.maxRemits,
+					expectedTransactions: readiness.expectedTransactions,
+				},
+			);
+		}
 
-	const chain = resolveChain(env);
-	const data = encodeRemit();
-	const unsigned = [buildUnsigned(from, chain.contractAddress, data)];
+		if (!readiness.ready) {
+			throw new Error(readiness.errors[0] ?? 'Remit not ready');
+		}
 
-	return buildPrepareResult(env, from, unsigned, {
-		currentDay: readiness.currentDay,
-		nextUncheckedDay: readiness.nextUncheckedDay,
-		totalSubscriptions: readiness.totalSubscriptions,
-		maxRemits: readiness.maxRemits,
-		expectedTransactions: readiness.expectedTransactions,
-		warnings: readiness.warnings,
+		const chain = resolveChain(env);
+		const data = encodeRemit();
+		const unsigned = [buildUnsigned(from, chain.contractAddress, data)];
+
+		return buildPrepareResult(env, from, unsigned, requestId, {
+			currentDay: readiness.currentDay,
+			nextUncheckedDay: readiness.nextUncheckedDay,
+			totalSubscriptions: readiness.totalSubscriptions,
+			maxRemits: readiness.maxRemits,
+			expectedTransactions: readiness.expectedTransactions,
+			warnings: readiness.warnings,
+		});
 	});
 }

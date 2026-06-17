@@ -16,6 +16,7 @@ export type ApiErrorCode =
 export type ApiError = {
   error: string;
   code: ApiErrorCode;
+  requestId?: string;
   issues?: Array<{ path: string; message: string }>;
 };
 

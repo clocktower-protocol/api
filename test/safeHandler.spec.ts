@@ -5,6 +5,7 @@ import {
 	ContractFunctionRevertedError,
 	HttpRequestError,
 } from 'viem';
+import { attachRequestId } from '../src/tx/prepare-response.js';
 import { safeHandler } from '../src/tools/safeHandler.js';
 
 const SAMPLE_ABI = [
@@ -19,7 +20,7 @@ const SAMPLE_ABI = [
 
 type ErrorPayload = {
 	error: string;
-	code: 'INVALID_INPUT' | 'CONTRACT_REVERT' | 'RPC_FAILURE';
+	code: 'INVALID_INPUT' | 'CONTRACT_REVERT' | 'PREPARE_FAILURE' | 'RPC_FAILURE';
 	requestId?: string;
 	reason?: string;
 	issues?: Array<{ path: string; message: string }>;
@@ -212,6 +213,17 @@ describe('safeHandler', () => {
 			});
 			expect(result.isError).toBe(true);
 		}
+	});
+
+	it('surfaces prepare-layer failures with the attached requestId', async () => {
+		const result = await safeHandler('prepare_subscribe', async () => {
+			throw attachRequestId(new Error('Simulation failed: execution reverted'), 'abc-request-id');
+		});
+
+		const payload = parseResult(result);
+		expect(payload.code).toBe('PREPARE_FAILURE');
+		expect(payload.error).toContain('Simulation failed');
+		expect(payload.requestId).toBe('abc-request-id');
 	});
 
 	it('wraps history tools (get_provider_profile example) without leaking internals', async () => {

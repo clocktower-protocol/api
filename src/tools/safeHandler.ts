@@ -32,6 +32,7 @@
 
 import { BaseError, ContractFunctionRevertedError } from 'viem';
 import { ZodError } from 'zod';
+import { getRequestId } from '../tx/prepare-response.js';
 import { serializeJson } from '../utils.js';
 
 export type SafeToolResult = {
@@ -41,7 +42,7 @@ export type SafeToolResult = {
 
 type ErrorPayload = {
 	error: string;
-	code: 'INVALID_INPUT' | 'CONTRACT_REVERT' | 'RPC_FAILURE';
+	code: 'INVALID_INPUT' | 'CONTRACT_REVERT' | 'PREPARE_FAILURE' | 'RPC_FAILURE';
 	requestId?: string;
 	reason?: string;
 	issues?: Array<{ path: string; message: string }>;
@@ -87,10 +88,22 @@ export async function safeHandler<T extends SafeToolResult>(
 
 		const revert = findContractRevert(err);
 		if (revert && typeof revert.reason === 'string' && revert.reason.length > 0) {
+			const requestId = getRequestId(err);
 			return asResult({
 				error: 'Contract reverted',
 				code: 'CONTRACT_REVERT',
 				reason: revert.reason,
+				...(requestId ? { requestId } : {}),
+			});
+		}
+
+		const attachedRequestId = getRequestId(err);
+		if (attachedRequestId && err instanceof Error) {
+			console.error(`[safeHandler] ${name} failed`, { requestId: attachedRequestId, error: err });
+			return asResult({
+				error: err.message,
+				code: 'PREPARE_FAILURE',
+				requestId: attachedRequestId,
 			});
 		}
 
