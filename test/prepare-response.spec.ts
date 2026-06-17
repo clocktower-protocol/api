@@ -30,6 +30,17 @@ describe('prepare-response helpers', () => {
 				},
 				unsignedTransactions: [],
 				simulation: [{ success: true }],
+				gasEstimates: [
+					{
+						chainId: BASE_CHAIN_ID,
+						gasLimit: '200000',
+						maxFeePerGas: '3000000',
+						maxPriorityFeePerGas: '1000000',
+						estimatedCostWei: '600000000000000',
+						estimatedCostEth: '0.0006',
+						source: 'simulated',
+					},
+				],
 				preflight: { warnings: ['Queue may require 2 transactions'] },
 			},
 			{ warnings: ['Queue may require 2 transactions'] },

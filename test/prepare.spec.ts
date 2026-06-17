@@ -12,6 +12,7 @@ import {
 import { checkRemitReadiness } from '../src/tx/remit-preflight.js';
 import * as remitScan from '../src/tx/remit-scan.js';
 import * as utils from '../src/utils.js';
+import { createGasAwareFetch } from './rpc-mocks.js';
 const testEnv = {
 	...env,
 	ALCHEMY_API_KEY: 'test-alchemy-key',
@@ -64,21 +65,14 @@ describe('tx encode', () => {
 
 describe('prepareCreateSubscription', () => {
 	const originalFetch = globalThis.fetch;
-	let callIndex = 0;
 
 	beforeEach(() => {
-		callIndex = 0;
-		globalThis.fetch = vi.fn(async () => {
-			const responses = [
-				// approvedERC20: token, decimals, paused, minimum
-				`0x000000000000000000000000833589fcd6edb6e08f4c7c32d4f71b54bda02913${encodeUint(6).slice(2)}${encodeBool(false).slice(2)}${encodeUint(0).slice(2)}`,
-				// eth_call simulation
-				'0x',
-			];
-			const result = responses[callIndex] ?? '0x';
-			callIndex += 1;
-			return Response.json({ jsonrpc: '2.0', id: 1, result });
-		}) as typeof fetch;
+		globalThis.fetch = createGasAwareFetch([
+			// approvedERC20: token, decimals, paused, minimum
+			`0x000000000000000000000000833589fcd6edb6e08f4c7c32d4f71b54bda02913${encodeUint(6).slice(2)}${encodeBool(false).slice(2)}${encodeUint(0).slice(2)}`,
+			// eth_call simulation
+			'0x',
+		]);
 	});
 
 	afterEach(() => {
@@ -105,6 +99,9 @@ describe('prepareCreateSubscription', () => {
 		expect(result.eip5792.calls).toHaveLength(1);
 		expect(result.signingMode).toBe('raw');
 		expect(result.simulation.every((s) => s.success)).toBe(true);
+		expect(result.gasEstimates).toHaveLength(1);
+		expect(result.gasEstimates[0]?.chainId).toBe(8453);
+		expect(result.gasEstimates[0]?.source).toBe('simulated');
 	});
 
 	it('enforces per-address write rate limit on prepare', async () => {
@@ -153,26 +150,14 @@ describe('prepareCreateSubscription', () => {
 	});
 
 	it('throws when on-chain simulation reverts', async () => {
-		callIndex = 0;
-		globalThis.fetch = vi.fn(async () => {
-			const responses = [
-				// call 0: approvedERC20 — not paused, minimum 0
-				Response.json({
-					jsonrpc: '2.0',
-					id: 1,
-					result: `0x000000000000000000000000833589fcd6edb6e08f4c7c32d4f71b54bda02913${encodeUint(6).slice(2)}${encodeBool(false).slice(2)}${encodeUint(0).slice(2)}`,
-				}),
-				// call 1: simulation eth_call — JSON-RPC error (revert)
-				Response.json({
-					jsonrpc: '2.0',
-					id: 1,
-					error: { code: 3, message: 'execution reverted: SubAlreadyExists' },
-				}),
-			];
-			const idx = callIndex;
-			callIndex += 1;
-			return responses[idx] ?? responses[responses.length - 1];
-		}) as typeof fetch;
+		globalThis.fetch = createGasAwareFetch([
+			`0x000000000000000000000000833589fcd6edb6e08f4c7c32d4f71b54bda02913${encodeUint(6).slice(2)}${encodeBool(false).slice(2)}${encodeUint(0).slice(2)}`,
+			Response.json({
+				jsonrpc: '2.0',
+				id: 1,
+				error: { code: 3, message: 'execution reverted: SubAlreadyExists' },
+			}),
+		]);
 
 		await expect(
 			prepareCreateSubscription(
@@ -406,10 +391,9 @@ describe('prepareUnsubscribe is-subscriber preflight (L13)', () => {
 	it('returns a prepare result when caller is subscribed (case-insensitive id match)', async () => {
 		// Mixed-case id from the contract; the helper must compare lowercased.
 		const mixedCaseId = `0x${'11'.repeat(32)}`.toUpperCase().replace('0X', '0x') as `0x${string}`;
-		globalThis.fetch = makeSequencedFetch([
+		globalThis.fetch = createGasAwareFetch([
 			mockIdSubMapResult(),
 			mockGetAccountSubscriptionsResult([mixedCaseId]),
-			// Simulation eth_call success.
 			'0x',
 		]);
 
@@ -532,18 +516,11 @@ describe('remit prepare + readiness', () => {
 		vi.spyOn(remitScan, 'scanDueSubscriptionIds').mockResolvedValue(2);
 		vi.spyOn(utils, 'getCurrentDay').mockReturnValue(1000);
 
-		let callCount = 0;
-		globalThis.fetch = vi.fn(async () => {
-			callCount += 1;
-			if (callCount <= 2) {
-				return Response.json({
-					jsonrpc: '2.0',
-					id: 1,
-					result: callCount === 1 ? encodeUint(999) : encodeUint(10),
-				});
-			}
-			return Response.json({ jsonrpc: '2.0', id: 1, result: '0x' });
-		}) as typeof fetch;
+		globalThis.fetch = createGasAwareFetch([
+			encodeUint(999),
+			encodeUint(10),
+			'0x',
+		]);
 
 		const result = await prepareRemit(testEnv, FROM);
 		expect(result.requestId).toBeDefined();

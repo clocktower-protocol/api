@@ -24,6 +24,7 @@ import {
 	runPrepare,
 	type PrepareOptions,
 } from './prepare-response.js';
+import { estimateGasForTransactions } from './gas.js';
 import { checkRemitReadiness } from './remit-preflight.js';
 import { simulateUnsignedTransactions } from './simulate.js';
 import type { PrepareResponse, PrepareResult, UnsignedTransaction } from './types.js';
@@ -122,6 +123,7 @@ async function buildPrepareResult(
 	unsigned: UnsignedTransaction[],
 	requestId: string,
 	preflight?: Record<string, unknown>,
+	options?: PrepareOptions,
 ): Promise<PrepareResult> {
 	const chain = resolveChain(env);
 	const client = createClocktowerClient(chain);
@@ -137,6 +139,12 @@ async function buildPrepareResult(
 	if (firstFailure) {
 		throw new Error(`Simulation failed: ${firstFailure.error ?? 'unknown error'}`);
 	}
+
+	const { estimates: gasEstimates, warnings: gasWarnings } = await estimateGasForTransactions(
+		client,
+		unsigned,
+		{ simulateFromAddress: options?.simulateFromAddress },
+	);
 
 	const signingMode = unsigned.length > 1 ? 'eip5792' : 'raw';
 
@@ -163,9 +171,11 @@ async function buildPrepareResult(
 				from: tx.from,
 			})),
 			simulation,
+			gasEstimates,
 			preflight,
 		},
 		preflight,
+		gasWarnings,
 	);
 }
 
@@ -234,6 +244,7 @@ export async function prepareCreateSubscription(
 				frequency,
 				dueDay,
 			},
+			options,
 		);
 	});
 }
@@ -285,10 +296,17 @@ export async function prepareSubscribe(
 			buildUnsigned(from, chain.contractAddress, encodeSubscribe(sub)),
 		);
 
-		return buildPrepareResult(env, from, unsigned, requestId, {
-			needsApproval: readiness.needsApproval,
-			warnings: readiness.warnings,
-		});
+		return buildPrepareResult(
+			env,
+			from,
+			unsigned,
+			requestId,
+			{
+				needsApproval: readiness.needsApproval,
+				warnings: readiness.warnings,
+			},
+			options,
+		);
 	});
 }
 
@@ -324,7 +342,7 @@ export async function prepareCancelSubscription(
 
 		const data = encodeCancelSubscription(canonical);
 		const unsigned = [buildUnsigned(from, chain.contractAddress, data)];
-		return buildPrepareResult(env, from, unsigned, requestId, { id: canonical.id });
+		return buildPrepareResult(env, from, unsigned, requestId, { id: canonical.id }, options);
 	});
 }
 
@@ -369,10 +387,17 @@ export async function prepareUnsubscribe(
 
 		const data = encodeUnsubscribe(canonical);
 		const unsigned = [buildUnsigned(from, chain.contractAddress, data)];
-		return buildPrepareResult(env, from, unsigned, requestId, {
-			id: canonical.id,
-			note: 'Caller must be an active subscriber',
-		});
+		return buildPrepareResult(
+			env,
+			from,
+			unsigned,
+			requestId,
+			{
+				id: canonical.id,
+				note: 'Caller must be an active subscriber',
+			},
+			options,
+		);
 	});
 }
 
@@ -407,7 +432,14 @@ export async function prepareUnsubscribeByProvider(
 
 		const data = encodeUnsubscribeByProvider(canonical, subscriber);
 		const unsigned = [buildUnsigned(from, chain.contractAddress, data)];
-		return buildPrepareResult(env, from, unsigned, requestId, { id: canonical.id, subscriber });
+		return buildPrepareResult(
+			env,
+			from,
+			unsigned,
+			requestId,
+			{ id: canonical.id, subscriber },
+			options,
+		);
 	});
 }
 
@@ -445,10 +477,17 @@ export async function prepareEditDetails(
 
 		const data = encodeEditDetails(details, id);
 		const unsigned = [buildUnsigned(from, chain.contractAddress, data)];
-		return buildPrepareResult(env, from, unsigned, requestId, {
-			id: canonical.id,
-			note: 'Caller must be the subscription provider (createdSubs)',
-		});
+		return buildPrepareResult(
+			env,
+			from,
+			unsigned,
+			requestId,
+			{
+				id: canonical.id,
+				note: 'Caller must be the subscription provider (createdSubs)',
+			},
+			options,
+		);
 	});
 }
 
@@ -485,13 +524,20 @@ export async function prepareRemit(
 		const data = encodeRemit();
 		const unsigned = [buildUnsigned(from, chain.contractAddress, data)];
 
-		return buildPrepareResult(env, from, unsigned, requestId, {
-			currentDay: readiness.currentDay,
-			nextUncheckedDay: readiness.nextUncheckedDay,
-			totalSubscriptions: readiness.totalSubscriptions,
-			maxRemits: readiness.maxRemits,
-			expectedTransactions: readiness.expectedTransactions,
-			warnings: readiness.warnings,
-		});
+		return buildPrepareResult(
+			env,
+			from,
+			unsigned,
+			requestId,
+			{
+				currentDay: readiness.currentDay,
+				nextUncheckedDay: readiness.nextUncheckedDay,
+				totalSubscriptions: readiness.totalSubscriptions,
+				maxRemits: readiness.maxRemits,
+				expectedTransactions: readiness.expectedTransactions,
+				warnings: readiness.warnings,
+			},
+			options,
+		);
 	});
 }

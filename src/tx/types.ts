@@ -20,6 +20,27 @@ export type SimulationResult = {
 	error?: string;
 };
 
+export type GasEstimate = {
+	chainId: typeof BASE_CHAIN_ID;
+	gasLimit: string;
+	maxFeePerGas: string;
+	maxPriorityFeePerGas: string;
+	estimatedCostWei: string;
+	estimatedCostEth: string;
+	source: 'simulated' | 'heuristic';
+};
+
+export type GasSummary = {
+	chainId: typeof BASE_CHAIN_ID;
+	totalGasLimit: string;
+	totalEstimatedCostWei: string;
+	totalEstimatedCostEth: string;
+	transactionCount: number;
+	backlogMultiplier?: number;
+	totalBacklogEstimatedCostWei?: string;
+	totalBacklogEstimatedCostEth?: string;
+};
+
 export type ReadinessOnlyResult = {
 	requestId: string;
 	readinessOnly: true;
@@ -53,6 +74,8 @@ export type PrepareResult = {
 		from: `0x${string}`;
 	}>;
 	simulation: SimulationResult[];
+	gasEstimates: GasEstimate[];
+	gasSummary?: GasSummary;
 	preflight?: Record<string, unknown>;
 };
 

@@ -4,6 +4,8 @@ import type { PrepareResult, ReadinessOnlyResult, PrepareResponse } from './type
 
 export type PrepareOptions = {
 	readinessOnly?: boolean;
+	/** Account passed to eth_estimateGas; defaults to `from`. */
+	simulateFromAddress?: `0x${string}`;
 };
 
 export function createRequestId(): string {
@@ -58,6 +60,12 @@ export function buildPrepareInstructions(
 		);
 	}
 
+	steps.push(
+		'Ensure the wallet is connected to Base mainnet (chain ID 8453) before signing.',
+	);
+	steps.push(
+		'Review gasEstimates and gasSummary; budgets are advisory and may change before broadcast.',
+	);
 	steps.push(
 		'After broadcast, poll get_transaction_status (REST: POST /api/transactions/status) with the transaction hash.',
 	);
@@ -153,8 +161,9 @@ export function finalizePrepareResult(
 	requestId: string,
 	result: Omit<PrepareResult, 'requestId' | 'instructions' | 'warnings'>,
 	preflight?: Record<string, unknown>,
+	extraWarnings: string[] = [],
 ): PrepareResult {
-	const warnings = collectPreflightWarnings(preflight);
+	const warnings = [...collectPreflightWarnings(preflight), ...extraWarnings];
 	return {
 		...result,
 		requestId,
