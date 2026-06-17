@@ -55,14 +55,20 @@ Tools are organized into two categories:
 All history results are server-side limited (max 200 records, recommended ~100 per call) and include `hasMore` for pagination. Amounts are normalized to the token’s native decimals (consistent with the rest of the API). Subgraph failures return structured responses with an `error` field instead of failing hard.
 
 **Write Tools** (priced at $0.01–$0.02):
-- Prepare tools for creating, subscribing, editing, cancelling, and unsubscribing
+- `check_subscribe_readiness` — Validate allowance, balance, and protocol rules before subscribing ($0.01)
+- `prepare_create_subscription` — Prepare unsigned `createSubscription` ($0.02)
+- `prepare_subscribe` — Prepare unsigned `subscribe` (includes ERC-20 `approve` when needed; $0.02)
+- `prepare_cancel_subscription` — Prepare provider cancel ($0.02)
+- `prepare_unsubscribe` — Prepare subscriber unsubscribe ($0.02)
+- `prepare_unsubscribe_by_provider` — Prepare provider-initiated unsubscribe ($0.02)
+- `prepare_edit_details` — Prepare provider metadata edit ($0.02)
 - `check_remit_readiness` — Multi-day scan of due subscriptions before calling `remit()` ($0.01)
 - `prepare_remit` — Prepare permissionless `remit()` (earns caller fees in subscription ERC-20 tokens; $0.02)
 - `get_transaction_status` — Poll confirmation status for a transaction hash after client-side broadcast ($0.01)
 
-**Remit flow:** `check_remit_readiness` → `prepare_remit` → sign → broadcast from wallet → repeat until readiness reports caught up. One `remit()` clears at most `maxRemits` subscriber payments per transaction. Remit can be gas-heavy on large backlogs — the caller pays gas (unlike the operator cron bot). Use `get_subscriptions_due` for a lightweight single-day read; use `check_remit_readiness` before preparing a remit tx.
+**Write workflow:** prepare (or readiness check) → sign in wallet → broadcast from wallet → optionally poll `get_transaction_status`. The server returns unsigned calldata and never relays signed transactions. Each full prepare runs on-chain simulation and gas estimation on Base (chainId 8453) before x402 payment settles; failed simulation or validation throws so you are not charged.
 
-All write operations follow a prepare → sign → broadcast (wallet) flow and include on-chain simulation before any payment is settled. The server does not relay signed transactions.
+**Remit flow:** `check_remit_readiness` → `prepare_remit` → sign → broadcast from wallet → repeat until readiness reports caught up. One `remit()` clears at most `maxRemits` subscriber payments per transaction. When the backlog needs multiple broadcasts, `preflight.expectedTransactions`, `gasSummary.backlogMultiplier`, and `warnings` describe the total gas budget. Remit can be gas-heavy on large backlogs — the caller pays gas (unlike the operator cron bot). Use `get_subscriptions_due` for a lightweight single-day read; use `check_remit_readiness` before preparing a remit tx.
 
 #### Prepare response format
 
@@ -86,7 +92,39 @@ Optional request fields on any `prepare_*` call (REST body or MCP tool argument)
 - **`readinessOnly: true`** — run preflight/readiness checks only; no unsigned transactions, simulation, or gas estimates. Response uses `readinessOnly: true` with `ready`, `errors`, `warnings`, `details`, and `instructions`. Dedicated `check_subscribe_readiness` / `check_remit_readiness` endpoints remain available at the lower $0.01 price.
 - **`simulateFromAddress`** — optional `0x` address passed to `eth_estimateGas` when the signing wallet differs from the account that will broadcast (defaults to `from`).
 
-Gas estimates are advisory: fees can change between prepare and broadcast. Estimation always verifies the RPC reports Base mainnet (chainId 8453).
+Gas estimates are advisory: fees can change between prepare and broadcast. Estimation always verifies the RPC reports Base mainnet (chainId 8453). Per-transaction limits come from `eth_estimateGas` when possible; otherwise a conservative heuristic is used and a warning is added (`source: "heuristic"`).
+
+Example excerpt from a full prepare response:
+
+```json
+{
+  "requestId": "550e8400-e29b-41d4-a716-446655440000",
+  "chainId": 8453,
+  "signingMode": "raw",
+  "gasEstimates": [
+    {
+      "chainId": 8453,
+      "gasLimit": "150000",
+      "maxFeePerGas": "3000000",
+      "maxPriorityFeePerGas": "1000000",
+      "estimatedCostWei": "450000000000000",
+      "estimatedCostEth": "0.00045",
+      "source": "simulated"
+    }
+  ],
+  "gasSummary": {
+    "chainId": 8453,
+    "totalGasLimit": "150000",
+    "totalEstimatedCostWei": "450000000000000",
+    "totalEstimatedCostEth": "0.00045",
+    "transactionCount": 1
+  },
+  "warnings": [],
+  "instructions": ["Sign unsignedTransactions[0] with the from wallet.", "..."]
+}
+```
+
+For remit backlogs, `gasSummary` may also include `backlogMultiplier`, `totalBacklogEstimatedCostWei`, and `totalBacklogEstimatedCostEth`.
 
 Include `requestId` when reporting prepare issues. Write errors from the prepare layer may also return `requestId` for log correlation.
 
@@ -183,6 +221,8 @@ All `prepare_*` endpoints accept optional `readinessOnly: true` and `simulateFro
 | `POST /api/prepare/remit` | $0.02 | Prepare permissionless `remit()` transaction |
 | `POST /api/transactions/status` | $0.01 | Check status of a broadcast transaction |
 
+Full prepare responses include simulation, `gasEstimates`, and `gasSummary` (see Prepare response format in the MCP section above). Use `readinessOnly: true` for a cheaper preflight-only response with no gas fields.
+
 ### Pricing
 
 - Standard read operations: **$0.01**
@@ -240,6 +280,7 @@ Optional:
 
 - `API_REQUIRE_BASIC_AUTH` — Default `false` (x402-only). Set to `true` to add Basic Auth on `/api` for local development only
 - `API_CORS_ALLOWED_ORIGINS` — Comma-separated browser origins allowed to call `/api` with CORS. Unset = CORS disabled
+- `WRITE_RATE_LIMIT_REQUESTS_PER_MINUTE` — Per-`from`-address cap on prepare/write calls (default **10**/minute when unset)
 - `GRAPH_BASE_URL` / `GRAPH_BASE_SEPOLIA_URL` / `GRAPH_API_KEY` — The Graph subgraph endpoints + auth (required for history/profile/discovery endpoints)
 
 ### Deployment
@@ -273,9 +314,11 @@ Tests default to x402-primary mode.
 
 ## Security & Rate Limiting
 
-- IP-based rate limiting
+- IP-based rate limiting on all routes
+- Per-address write rate limiting on prepare and other write handlers (keyed on `from`)
 - Geo-blocking support
-- All write operations are simulated before payment settlement
+- All write operations are simulated on Base before payment settlement
+- Gas estimation verifies RPC chainId matches Base mainnet (8453)
 - Payments are only settled on successful handler execution
 
 For security-related notes, see `SECURITY_FOLLOWUPS.md`.
