@@ -17,8 +17,10 @@ describe('tier rate limits config', () => {
 		expect(classifyRoute('GET', '/api/subscriptions/0x' + 'a'.repeat(64))).toBe('cheap');
 	});
 
-	it('classifies provider writes separately', () => {
-		expect(classifyRoute('POST', '/api/prepare/cancel_subscription')).toBe('provider_write');
+	it('classifies all prepare endpoints as write', () => {
+		expect(classifyRoute('POST', '/api/prepare/cancel_subscription')).toBe('write');
+		expect(classifyRoute('POST', '/api/prepare/unsubscribe_by_provider')).toBe('write');
+		expect(classifyRoute('POST', '/api/prepare/edit_details')).toBe('write');
 		expect(classifyRoute('POST', '/api/prepare/subscribe')).toBe('write');
 	});
 

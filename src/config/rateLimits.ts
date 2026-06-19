@@ -4,7 +4,7 @@
 
 export type AccessLane = 'free' | 'builder' | 'mcp';
 
-export type RouteClass = 'cheap' | 'expensive' | 'readiness' | 'write' | 'provider_write';
+export type RouteClass = 'cheap' | 'expensive' | 'readiness' | 'write';
 
 export type TierLimitConfig = {
 	globalRpm: number;
@@ -18,12 +18,6 @@ export const DEFAULT_TIER_LIMITS: Record<AccessLane, TierLimitConfig> = {
 	builder: { globalRpm: 120, expensiveRpm: 120, subgraphDaily: 10_000, writeRpm: 30 },
 	mcp: { globalRpm: 300, expensiveRpm: 300, subgraphDaily: Number.MAX_SAFE_INTEGER, writeRpm: 60 },
 };
-
-const PROVIDER_WRITE_PATHS = new Set([
-	'/api/prepare/cancel_subscription',
-	'/api/prepare/unsubscribe_by_provider',
-	'/api/prepare/edit_details',
-]);
 
 const READINESS_PATHS = new Set([
 	'/api/check_subscribe_readiness',
@@ -97,9 +91,6 @@ export function classifyRoute(method: string, pathname: string): RouteClass {
 	const path = pathname.split('?')[0];
 
 	if (method === 'POST') {
-		if (PROVIDER_WRITE_PATHS.has(path)) {
-			return 'provider_write';
-		}
 		if (READINESS_PATHS.has(path)) {
 			return 'readiness';
 		}

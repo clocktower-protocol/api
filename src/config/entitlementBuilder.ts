@@ -45,9 +45,9 @@ export const BUILDER_ENTITLEMENT_ROUTES: EntitlementRoute[] = [
 	{ method: 'POST', pathPattern: /^\/api\/prepare\/unsubscribe$/, rule: { kind: 'subscriber_write' } },
 	{ method: 'POST', pathPattern: /^\/api\/prepare\/remit$/, rule: { kind: 'subscriber_write' } },
 	{ method: 'POST', pathPattern: /^\/api\/transactions\/status$/, rule: { kind: 'subscriber_write' } },
-	{ method: 'POST', pathPattern: /^\/api\/prepare\/cancel_subscription$/, rule: { kind: 'denied' } },
-	{ method: 'POST', pathPattern: /^\/api\/prepare\/unsubscribe_by_provider$/, rule: { kind: 'denied' } },
-	{ method: 'POST', pathPattern: /^\/api\/prepare\/edit_details$/, rule: { kind: 'denied' } },
+	{ method: 'POST', pathPattern: /^\/api\/prepare\/cancel_subscription$/, rule: { kind: 'subscriber_write' } },
+	{ method: 'POST', pathPattern: /^\/api\/prepare\/unsubscribe_by_provider$/, rule: { kind: 'subscriber_write' } },
+	{ method: 'POST', pathPattern: /^\/api\/prepare\/edit_details$/, rule: { kind: 'subscriber_write' } },
 ];
 
 export function isEntitlementAuthEnabled(env: Env): boolean {

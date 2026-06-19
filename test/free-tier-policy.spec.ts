@@ -18,9 +18,10 @@ async function fetchWorker(pathname: string, init: RequestInit = {}) {
 }
 
 describe('free tier policy', () => {
-	it('denies provider management writes', () => {
-		const res = enforceFreeTierPolicy('POST', '/api/prepare/cancel_subscription');
-		expect(res?.status).toBe(403);
+	it('allows provider management writes at middleware level', () => {
+		expect(enforceFreeTierPolicy('POST', '/api/prepare/cancel_subscription')).toBeNull();
+		expect(enforceFreeTierPolicy('POST', '/api/prepare/unsubscribe_by_provider')).toBeNull();
+		expect(enforceFreeTierPolicy('POST', '/api/prepare/edit_details')).toBeNull();
 	});
 
 	it('denies :me routes without session', () => {

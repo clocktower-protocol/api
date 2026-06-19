@@ -20,7 +20,7 @@ Access uses three lanes: **free REST** (rate-limited), **Builder REST** (SIWE se
 | **Builder** | REST `/api/*` | SIWE session (`Authorization: Bearer cts_…`) | 120 rpm/address; subgraph 10k/day; writes 30/min; scoped to your wallet |
 | **Agent** | MCP `/mcp` | x402 (USDC on Base) | 300 rpm/IP; writes 60/min/address |
 
-- **Free tier**: No API key. Cross-account and provider **reads** are allowed (public on-chain data) but count against the expensive bucket. Provider management writes (`cancel`, `unsubscribe_by_provider`, `edit_details`) return 403.
+- **Free tier**: No API key. Same REST endpoints as Builder; lower rate limits (20 rpm global, 2 prepare/min/IP, etc.). Cross-account reads allowed (expensive bucket). Provider writes (`cancel`, `unsubscribe_by_provider`, `edit_details`) use the write bucket; on-chain authorization still applies in prepare handlers.
 - **Builder tier**: Subscribe to the Clocktower Builder entitlement subscription on-chain, then `POST /api/auth/challenge` → sign SIWE message → `POST /api/auth/verify` for a session token. Use `:me` routes for your own account. Requires `BUILDER_SUB_ID` in Worker config.
 - **MCP**: Unchanged x402 flow; higher rate limits than the legacy flat 60 rpm cap.
 
@@ -233,10 +233,10 @@ All `prepare_*` endpoints accept optional `readinessOnly: true` and `simulateFro
 | `POST /api/check_subscribe_readiness` | Allowed | Validate whether an account can subscribe |
 | `POST /api/prepare/create_subscription` | 2/min/IP | Prepare a new subscription |
 | `POST /api/prepare/subscribe` | 2/min/IP | Prepare subscribing to an existing subscription |
-| `POST /api/prepare/cancel_subscription` | **403** | Prepare cancelling a subscription (Builder session required) |
+| `POST /api/prepare/cancel_subscription` | 2/min/IP | Prepare cancelling a subscription (provider must match `from`) |
 | `POST /api/prepare/unsubscribe` | 2/min/IP | Prepare unsubscribing from a subscription |
-| `POST /api/prepare/unsubscribe_by_provider` | **403** | Provider-initiated unsubscribe |
-| `POST /api/prepare/edit_details` | **403** | Provider metadata edit |
+| `POST /api/prepare/unsubscribe_by_provider` | 2/min/IP | Provider-initiated unsubscribe |
+| `POST /api/prepare/edit_details` | 2/min/IP | Provider metadata edit |
 | `POST /api/check_remit_readiness` | Allowed | Check whether `remit()` is callable |
 | `POST /api/prepare/remit` | 2/min/IP | Prepare permissionless `remit()` transaction |
 | `POST /api/transactions/status` | Allowed | Check status of a broadcast transaction |
