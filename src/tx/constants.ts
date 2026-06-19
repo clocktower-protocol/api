@@ -20,3 +20,6 @@ export const MULTICALL_CHUNK_SIZE = 100;
 
 export const ZERO_SUBSCRIPTION_ID =
 	`0x${'00'.repeat(32)}` as `0x${string}`;
+
+export const ZERO_ADDRESS =
+	'0x0000000000000000000000000000000000000000' as `0x${string}`;

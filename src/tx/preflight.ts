@@ -8,8 +8,23 @@ import {
 	parseSubscriptionRecord,
 } from '../validation.js';
 import { convertProtocolAmountToTokenNative } from '../utils.js';
-import { ALLOWANCE_THRESHOLD, INFINITE_APPROVAL } from './constants.js';
+import { ALLOWANCE_THRESHOLD, INFINITE_APPROVAL, ZERO_ADDRESS, ZERO_SUBSCRIPTION_ID } from './constants.js';
 import type { SubscribeReadinessResult } from './types.js';
+
+function emptySubscribeReadiness(
+	warnings: string[],
+	errors: string[],
+): SubscribeReadinessResult {
+	return {
+		ready: false,
+		needsApproval: false,
+		allowance: '0',
+		balance: '0',
+		requiredAmount: '0',
+		warnings,
+		errors,
+	};
+}
 
 export async function checkSubscribeReadiness(
 	env: Env,
@@ -31,15 +46,27 @@ export async function checkSubscribeReadiness(
 		});
 		onChainSubscription = parseSubscriptionRecord(raw);
 	} catch (error) {
-		return {
-			ready: false,
-			needsApproval: false,
-			allowance: '0',
-			balance: '0',
-			requiredAmount: '0',
-			warnings,
-			errors: [error instanceof Error ? error.message : 'Subscription not found'],
-		};
+		return emptySubscribeReadiness(warnings, [
+			error instanceof Error ? error.message : 'Subscription not found',
+		]);
+	}
+
+	if (
+		onChainSubscription.id === ZERO_SUBSCRIPTION_ID ||
+		onChainSubscription.provider === ZERO_ADDRESS
+	) {
+		return emptySubscribeReadiness(warnings, ['Subscription not found on chain']);
+	}
+
+	// ERC20 allowance/balance are read from the subscription token contract, not Clocktower.
+	const tokenAddress = subscription.token;
+	if (tokenAddress === ZERO_ADDRESS) {
+		return emptySubscribeReadiness(warnings, ['Subscription token is required']);
+	}
+
+	if (onChainSubscription.token !== ZERO_ADDRESS &&
+		onChainSubscription.token.toLowerCase() !== tokenAddress.toLowerCase()) {
+		errors.push('Subscription token does not match on-chain token');
 	}
 
 	if (onChainSubscription.cancelled) {
@@ -54,7 +81,7 @@ export async function checkSubscribeReadiness(
 			address: chain.contractAddress,
 			abi: CLOCKTOWER_READ_ABI,
 			functionName: 'approvedERC20',
-			args: [onChainSubscription.token],
+			args: [tokenAddress],
 		}),
 	);
 
@@ -69,13 +96,13 @@ export async function checkSubscribeReadiness(
 
 	const [allowance, balance] = await Promise.all([
 		client.readContract({
-			address: onChainSubscription.token,
+			address: tokenAddress,
 			abi: ERC20_ABI,
 			functionName: 'allowance',
 			args: [from, chain.contractAddress],
 		}),
 		client.readContract({
-			address: onChainSubscription.token,
+			address: tokenAddress,
 			abi: ERC20_ABI,
 			functionName: 'balanceOf',
 			args: [from],
