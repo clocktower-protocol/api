@@ -150,7 +150,8 @@ async function handleRequest(
 
 			const headers = new Headers(apiRequest.headers);
 			headers.set('X-Clocktower-Lane', access.lane);
-			apiRequest = new Request(apiRequest.url, { ...apiRequest, headers });
+			// Preserve method/body — spreading a Request drops POST (becomes GET → 404 on write routes).
+			apiRequest = new Request(apiRequest, { headers });
 
 			const apiResponse = await getApi(env).fetch(apiRequest, env, ctx);
 			return withSecurityHeaders(
