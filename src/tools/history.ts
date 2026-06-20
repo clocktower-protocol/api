@@ -707,7 +707,10 @@ export async function searchSubscriptionCreates(
 ) {
   const { first, skip } = normalizeHistoryOptions(options);
 
-  const where: Record<string, string> = { subScriptEvent: '0' };
+  // SubLog_filter.subScriptEvent is Int! in the subgraph schema (not a string).
+  const where: { subScriptEvent: number; provider?: string; token?: string } = {
+    subScriptEvent: 0,
+  };
   if (options.provider) {
     where.provider = options.provider.toLowerCase();
   }

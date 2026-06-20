@@ -210,6 +210,15 @@ describe('history functions (mocked subgraph)', () => {
     expect(res.events[0].formattedTimestamp).toBeDefined();
   });
 
+  it('searchSubscriptionCreates sends subScriptEvent as Int in GraphQL variables', async () => {
+    await searchSubscriptionCreates(baseEnv, 8453, { first: 10 });
+
+    const call = vi.mocked(globalThis.fetch).mock.calls[0];
+    const body = JSON.parse(call[1]?.body as string);
+    expect(body.variables.where.subScriptEvent).toBe(0);
+    expect(typeof body.variables.where.subScriptEvent).toBe('number');
+  });
+
   it('history functions return sanitized error object (graceful degradation) when GRAPH_BASE_URL missing', async () => {
     const badEnv = { ...baseEnv, GRAPH_BASE_URL: undefined } as Env;
     const res = await getSubscriptionHistory(badEnv, sampleSubLog.internal_id as `0x${string}`);
