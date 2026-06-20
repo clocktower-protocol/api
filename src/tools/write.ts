@@ -17,7 +17,11 @@ import {
 	prepareUnsubscribeByProvider,
 } from '../tx/prepare.js';
 import { getTransactionStatus } from '../tx/status.js';
-import { WRITE_PREPARE_PRICE, WRITE_READINESS_PRICE } from '../tx/constants.js';
+import {
+	API_PRICES,
+	getRemitPreparePrice,
+	getStandardPreparePrice,
+} from '../api/pricing.js';
 import {
 	createSubscriptionInputSchema,
 	editDetailsInputSchema,
@@ -32,18 +36,36 @@ import {
 } from '../validation-write.js';
 import { addressSchema, bytes32Schema } from '../validation.js';
 import { textResult } from '../utils.js';
+import { registerDynamicPaidTool } from '../mcp/paidToolDynamic.js';
 import { safeHandler } from './safeHandler.js';
-import type { X402McpServer } from './types.js';
+import type { PaidToolHandler, X402McpServer } from './types.js';
 import { normalizeSubscriptionAmount } from '../tx/amount.js';
 
 const writeAnnotations = { readOnlyHint: false };
 const destructiveAnnotations = { readOnlyHint: false, destructiveHint: true };
 
+function preparePrice(args: Record<string, unknown>): number {
+	return getStandardPreparePrice(args.readinessOnly as boolean | undefined);
+}
+
+function registerPrepareTool(
+	server: X402McpServer,
+	env: Env,
+	name: string,
+	description: string,
+	paramsSchema: Record<string, z.ZodTypeAny>,
+	annotations: Record<string, unknown>,
+	handler: PaidToolHandler,
+	priceFn: (args: Record<string, unknown>) => number = preparePrice,
+): void {
+	registerDynamicPaidTool(server, env, name, description, priceFn, paramsSchema, annotations, handler);
+}
+
 export function registerWriteTools(server: X402McpServer, env: Env) {
 	server.paidTool(
 		'check_subscribe_readiness',
 		'Check allowance, balance, and protocol rules before subscribing on Base mainnet',
-		WRITE_READINESS_PRICE,
+		API_PRICES.checkSubscribeReadiness,
 		{
 			from: addressSchema,
 			subscription: subscribeInputSchema.shape.subscription,
@@ -65,10 +87,11 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 			}),
 	);
 
-	server.paidTool(
+	registerPrepareTool(
+		server,
+		env,
 		'prepare_create_subscription',
 		'Prepare unsigned createSubscription transaction on Base mainnet',
-		WRITE_PREPARE_PRICE,
 		{
 			from: addressSchema,
 			amount: z.string().describe('Human amount in the token\'s native decimals (e.g. "100.5" for USDC)'),
@@ -107,10 +130,11 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 			}),
 	);
 
-	server.paidTool(
+	registerPrepareTool(
+		server,
+		env,
 		'prepare_subscribe',
 		'Prepare unsigned subscribe transaction(s) including ERC20 approve when needed on Base mainnet',
-		WRITE_PREPARE_PRICE,
 		{
 			from: addressSchema,
 			subscription: subscribeInputSchema.shape.subscription,
@@ -138,10 +162,11 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 			}),
 	);
 
-	server.paidTool(
+	registerPrepareTool(
+		server,
+		env,
 		'prepare_cancel_subscription',
 		'Prepare unsigned cancelSubscription for the provider on Base mainnet',
-		WRITE_PREPARE_PRICE,
 		{
 			from: addressSchema,
 			subscription: subscriptionActionInputSchema.shape.subscription,
@@ -168,10 +193,11 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 			}),
 	);
 
-	server.paidTool(
+	registerPrepareTool(
+		server,
+		env,
 		'prepare_unsubscribe',
 		'Prepare unsigned unsubscribe transaction for a subscriber on Base mainnet',
-		WRITE_PREPARE_PRICE,
 		{
 			from: addressSchema,
 			subscription: subscriptionActionInputSchema.shape.subscription,
@@ -198,10 +224,11 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 			}),
 	);
 
-	server.paidTool(
+	registerPrepareTool(
+		server,
+		env,
 		'prepare_unsubscribe_by_provider',
 		'Prepare unsigned unsubscribeByProvider transaction on Base mainnet',
-		WRITE_PREPARE_PRICE,
 		{
 			from: addressSchema,
 			subscription: unsubscribeByProviderInputSchema.shape.subscription,
@@ -230,10 +257,11 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 			}),
 	);
 
-	server.paidTool(
+	registerPrepareTool(
+		server,
+		env,
 		'prepare_edit_details',
 		'Prepare unsigned editDetails transaction on Base mainnet',
-		WRITE_PREPARE_PRICE,
 		{
 			from: addressSchema,
 			id: bytes32Schema,
@@ -263,7 +291,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 	server.paidTool(
 		'check_remit_readiness',
 		'Check whether remit() is callable on Base mainnet (nextUncheckedDay, due subscription scan, pagination hints)',
-		WRITE_READINESS_PRICE,
+		API_PRICES.checkRemitReadiness,
 		{
 			from: addressSchema,
 		},
@@ -275,10 +303,11 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 			}),
 	);
 
-	server.paidTool(
+	registerPrepareTool(
+		server,
+		env,
 		'prepare_remit',
 		'Prepare unsigned remit() transaction on Base mainnet (permissionless; earns caller fees in subscription tokens)',
-		WRITE_PREPARE_PRICE,
 		{
 			from: addressSchema,
 			readinessOnly: readinessOnlySchema,
@@ -295,12 +324,13 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 					}),
 				);
 			}),
+		(args) => getRemitPreparePrice(args.readinessOnly as boolean | undefined),
 	);
 
 	server.paidTool(
 		'get_transaction_status',
 		'Get confirmation status for a transaction hash on Base mainnet',
-		WRITE_READINESS_PRICE,
+		API_PRICES.getTransactionStatus,
 		{
 			txHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/),
 		},

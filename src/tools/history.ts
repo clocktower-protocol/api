@@ -816,34 +816,12 @@ export async function getSubscriptionDetailsHistory(
 export const HISTORY_DEFAULT_LIMIT = DEFAULT_HISTORY_LIMIT;
 export const HISTORY_MAX_LIMIT = MAX_HISTORY_LIMIT;
 
-// ============================================
-// Cost / Batch Pricing Helpers (for reference in pricing.ts)
-// ============================================
+export {
+	calculateAccountActivityPrice,
+	calculateSubscriptionDetailsHistoryPrice,
+	calculateSubscriptionHistoryPrice,
+	calculateSuggestedHistoryPrice,
+} from '../api/pricing.js';
 
-/**
- * Suggested pricing model for history queries.
- *
- * This is a helper to keep pricing logic near the history code.
- * The actual prices are defined in src/api/pricing.ts.
- *
- * Cost model rationale:
- * - Base fee covers the GraphQL round-trip + x402 overhead + small result set.
- * - Per-batch adder covers larger result sets (The Graph charges based on
- *   query complexity + data transfer on paid plans).
- * - We hard-limit server-side to prevent abuse and runaway costs.
- */
-export function calculateSuggestedHistoryPrice(recordCount: number): number {
-  const BASE_PRICE = 0.03;           // USD for first ~50 records
-  const PER_50_RECORDS = 0.01;       // USD for every additional 50 records
-
-  if (recordCount <= 50) return BASE_PRICE;
-
-  const extraBatches = Math.ceil((recordCount - 50) / 50);
-  return BASE_PRICE + (extraBatches * PER_50_RECORDS);
-}
-
-/**
- * Recommended maximum number of records to return in a single history call
- * before forcing the client to paginate.
- */
+/** Recommended maximum records per history call before pagination. */
 export const RECOMMENDED_HISTORY_BATCH_SIZE = 100;

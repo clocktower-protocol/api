@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   calculateSuggestedHistoryPrice,
+  calculateSubscriptionHistoryPrice,
   formatSubLogEvent,
   getSubscriptionHistory,
   getProviderProfile,
@@ -67,6 +68,7 @@ describe('history helpers (pure)', () => {
     expect(calculateSuggestedHistoryPrice(51)).toBe(0.04);
     expect(calculateSuggestedHistoryPrice(100)).toBe(0.04);
     expect(calculateSuggestedHistoryPrice(150)).toBe(0.05);
+    expect(calculateSubscriptionHistoryPrice(200)).toBe(0.06);
   });
 
   it('exports sane limit constants', () => {

@@ -3,8 +3,12 @@ export const INFINITE_APPROVAL = 2n ** 255n;
 /** Below this allowance (wei), prepare_subscribe includes an approve call. */
 export const ALLOWANCE_THRESHOLD = 100_000_000_000_000_000_000_000n;
 
-export const WRITE_PREPARE_PRICE = 0.02;
-export const WRITE_READINESS_PRICE = 0.01;
+export {
+	REMIT_PREPARE_PRICE,
+	REMIT_READINESS_PRICE,
+	WRITE_PREPARE_PRICE,
+	WRITE_READINESS_PRICE,
+} from '../api/pricing.js';
 
 export const DUEDAY_RANGES: Record<number, { start: number; stop: number }> = {
 	0: { start: 1, stop: 7 },

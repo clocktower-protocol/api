@@ -44,7 +44,25 @@ https://your-worker.your-subdomain.workers.dev/mcp
 
 Tools are organized into two categories:
 
-**Read Tools** (all priced at $0.01):
+**MCP x402 pricing** (USD, USDC on Base). REST `/api` is free (rate-limited). Canonical values live in `src/api/pricing.ts`.
+
+| Tool | MCP price |
+|------|-----------|
+| `get_protocol_state`, `get_subscription`, `get_account_subscriptions`, `get_subscribers`, `get_approved_token`, `list_approved_tokens`, `get_fee_balance` | $0.01 |
+| `get_subscriptions_due` | $0.02 |
+| **`get_account`** (enriched; fee balance per subscribed sub) | **$0.03** |
+| `get_subscription_details`, `get_provider_profile` | $0.02 |
+| `get_subscription_history` | **$0.03** + **$0.01 per 50 rows** (`first`, max 200 → $0.06) |
+| `get_subscription_details_history` | **$0.02** + **$0.01 per 50 rows** (max → $0.05) |
+| `get_account_activity` | **$0.04** + **$0.01 per 50 rows** (max → $0.07; two subgraph queries) |
+| `search_subscriptions` | **$0.05** + **$0.01 × `first`** (max 50) + **$0.01** if `includeDetails` |
+| `check_subscribe_readiness`, `get_transaction_status` | $0.01 |
+| `check_remit_readiness` | $0.02 |
+| `prepare_*` full (simulation + gas) | $0.02 |
+| `prepare_*` with `readinessOnly: true` | $0.01 (remit: $0.02) |
+| `prepare_remit` full | $0.03 |
+
+**Read Tools**
 - `get_protocol_state` — View current fee configuration
 - `get_subscription` — Fetch a single subscription by ID
 - `get_account_subscriptions` — List subscriptions for an account (as provider or subscriber)
@@ -56,10 +74,10 @@ Tools are organized into two categories:
 - `get_subscriptions_due` — Query subscriptions due on a given day/frequency (single-day probe; uses the same Multicall3 scan helper as remit readiness)
 
 **Discovery Tools** (subgraph + on-chain enrichment):
-- `search_subscriptions` — Browse/discover subscriptions ($0.05). Filters: `provider`, `token`, `frequency`, `cancelled`, `includeDetails`, `first`, `skip`
-- `get_subscription_details` — Current url/description for a subscription ($0.02)
+- `search_subscriptions` — Browse/discover subscriptions. Filters: `provider`, `token`, `frequency`, `cancelled`, `includeDetails`, `first`, `skip`
+- `get_subscription_details` — Current url/description for a subscription
 
-**History & Profile Tools** (subgraph-backed via The Graph, priced $0.02–$0.05 to cover query + bandwidth costs):
+**History & Profile Tools** (subgraph-backed via The Graph):
 - `get_subscription_history` — Activity history (SubLog events) for one subscription. Supports `first`/`skip` pagination. Returns properly normalized amounts (`amount`, `amountRaw`, `tokenDecimals`), `eventName`, `formattedTimestamp`, and `formattedAmount`.
 - `get_account_activity` — Merged activity across all subscriptions an account participates in (as subscriber or provider/creator). Returns breakdown stats + `hasMore`. Gracefully returns partial results if one side of the query fails.
 - `get_provider_profile` — Latest provider profile (from ProvDetailsLog) with a convenience `latestProfile` object and `updatedAt` timestamp.
@@ -67,17 +85,17 @@ Tools are organized into two categories:
 
 All history results are server-side limited (max 200 records, recommended ~100 per call) and include `hasMore` for pagination. Amounts are normalized to the token’s native decimals (consistent with the rest of the API). Subgraph failures return structured responses with an `error` field instead of failing hard.
 
-**Write Tools** (priced at $0.01–$0.02):
-- `check_subscribe_readiness` — Validate allowance, balance, and protocol rules before subscribing ($0.01)
-- `prepare_create_subscription` — Prepare unsigned `createSubscription` ($0.02)
-- `prepare_subscribe` — Prepare unsigned `subscribe` (includes ERC-20 `approve` when needed; $0.02)
-- `prepare_cancel_subscription` — Prepare provider cancel ($0.02)
-- `prepare_unsubscribe` — Prepare subscriber unsubscribe ($0.02)
-- `prepare_unsubscribe_by_provider` — Prepare provider-initiated unsubscribe ($0.02)
-- `prepare_edit_details` — Prepare provider metadata edit ($0.02)
-- `check_remit_readiness` — Multi-day scan of due subscriptions before calling `remit()` ($0.01)
-- `prepare_remit` — Prepare permissionless `remit()` (earns caller fees in subscription ERC-20 tokens; $0.02)
-- `get_transaction_status` — Poll confirmation status for a transaction hash after client-side broadcast ($0.01)
+**Write Tools**
+- `check_subscribe_readiness` — Validate allowance, balance, and protocol rules before subscribing
+- `prepare_create_subscription` — Prepare unsigned `createSubscription`
+- `prepare_subscribe` — Prepare unsigned `subscribe` (includes ERC-20 `approve` when needed)
+- `prepare_cancel_subscription` — Prepare provider cancel
+- `prepare_unsubscribe` — Prepare subscriber unsubscribe
+- `prepare_unsubscribe_by_provider` — Prepare provider-initiated unsubscribe
+- `prepare_edit_details` — Prepare provider metadata edit
+- `check_remit_readiness` — Multi-day scan of due subscriptions before calling `remit()`
+- `prepare_remit` — Prepare permissionless `remit()` (earns caller fees in subscription ERC-20 tokens)
+- `get_transaction_status` — Poll confirmation status for a transaction hash after client-side broadcast
 
 **Write workflow:** prepare (or readiness check) → sign in wallet → broadcast from wallet → optionally poll `get_transaction_status`. The server returns unsigned calldata and never relays signed transactions. Each full prepare runs on-chain simulation and gas estimation on Base (chainId 8453) before x402 payment settles; failed simulation or validation throws so you are not charged.
 
@@ -102,7 +120,7 @@ Full prepare responses (default) include:
 
 Optional request fields on any `prepare_*` call (REST body or MCP tool argument):
 
-- **`readinessOnly: true`** — run preflight/readiness checks only; no unsigned transactions, simulation, or gas estimates. Response uses `readinessOnly: true` with `ready`, `errors`, `warnings`, `details`, and `instructions`. Dedicated `check_subscribe_readiness` / `check_remit_readiness` endpoints remain available at the lower $0.01 price.
+- **`readinessOnly: true`** — run preflight/readiness checks only; no unsigned transactions, simulation, or gas estimates. Response uses `readinessOnly: true` with `ready`, `errors`, `warnings`, `details`, and `instructions`. On MCP, billed at the readiness tier ($0.01; remit readiness path $0.02) instead of full prepare.
 - **`simulateFromAddress`** — optional `0x` address passed to `eth_estimateGas` when the signing wallet differs from the account that will broadcast (defaults to `from`).
 
 Gas estimates are advisory: fees can change between prepare and broadcast. Estimation always verifies the RPC reports Base mainnet (chainId 8453). Per-transaction limits come from `eth_estimateGas` when possible; otherwise a conservative heuristic is used and a warning is added (`source: "heuristic"`).

@@ -38,7 +38,14 @@ import {
   HISTORY_DEFAULT_LIMIT,
 } from './history.js';
 import { searchSubscriptions } from './discovery.js';
-import { API_PRICES } from '../api/pricing.js';
+import {
+	API_PRICES,
+	calculateAccountActivityPrice,
+	calculateSearchSubscriptionsPrice,
+	calculateSubscriptionDetailsHistoryPrice,
+	calculateSubscriptionHistoryPrice,
+} from '../api/pricing.js';
+import { registerDynamicPaidTool } from '../mcp/paidToolDynamic.js';
 import { z } from 'zod';
 
 type ClocktowerClient = ReturnType<typeof createClocktowerClient>;
@@ -555,7 +562,7 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 	server.paidTool(
 		'get_account',
 		'Get a complete enriched view of an account: subscriptions the address pays into (as subscribedTo, with personal fee balances) and subscriptions it created as provider (as created). Includes full token metadata, human-readable amounts, labels, and subscriber counts.',
-		TOOL_PRICE,
+		API_PRICES.getAccount,
 		{
 			address: addressSchema,
 		},
@@ -569,7 +576,7 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 	server.paidTool(
 		'get_subscriptions_due',
 		'Find subscription ids due on a given day by frequency on Base mainnet (mirrors caller remit scanning)',
-		TOOL_PRICE,
+		API_PRICES.getSubscriptionsDue,
 		{
 			dayNumber: dayNumberSchema,
 			frequency: frequencySchema,
@@ -589,10 +596,15 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 	// === History & Profile tools (subgraph-backed) ===
 	// These use x402 payments with higher pricing to cover subgraph costs.
 
-	server.paidTool(
+	registerDynamicPaidTool(
+		server,
+		env,
 		'get_subscription_history',
 		'Get activity history (SubLog) for a specific subscription with formatting and pagination',
-		API_PRICES.subscriptionHistory,
+		(args) =>
+			calculateSubscriptionHistoryPrice(
+				(args.first as number | undefined) ?? HISTORY_DEFAULT_LIMIT,
+			),
 		{
 			id: bytes32Schema,
 			first: z.coerce.number().int().min(1).max(200).optional(),
@@ -610,10 +622,15 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 			),
 	);
 
-	server.paidTool(
+	registerDynamicPaidTool(
+		server,
+		env,
 		'get_account_activity',
 		'Get combined activity history across all subscriptions an account participates in (as subscriber or provider)',
-		API_PRICES.accountActivity,
+		(args) =>
+			calculateAccountActivityPrice(
+				(args.first as number | undefined) ?? HISTORY_DEFAULT_LIMIT,
+			),
 		{
 			address: addressSchema,
 			first: z.coerce.number().int().min(1).max(200).optional(),
@@ -659,10 +676,16 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 			),
 	);
 
-	server.paidTool(
+	registerDynamicPaidTool(
+		server,
+		env,
 		'search_subscriptions',
 		'Search and discover subscriptions (Create events + on-chain enrichment)',
-		API_PRICES.searchSubscriptions,
+		(args) =>
+			calculateSearchSubscriptionsPrice({
+				first: args.first as number | undefined,
+				includeDetails: args.includeDetails as boolean | undefined,
+			}),
 		{
 			provider: addressSchema.optional(),
 			token: addressSchema.optional(),
@@ -689,10 +712,15 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 			),
 	);
 
-	server.paidTool(
+	registerDynamicPaidTool(
+		server,
+		env,
 		'get_subscription_details_history',
 		'Get history of description/URL changes for a subscription (DetailsLog)',
-		API_PRICES.subscriptionDetailsHistory,
+		(args) =>
+			calculateSubscriptionDetailsHistoryPrice(
+				(args.first as number | undefined) ?? HISTORY_DEFAULT_LIMIT,
+			),
 		{
 			id: bytes32Schema,
 			first: z.coerce.number().int().min(1).max(200).optional(),

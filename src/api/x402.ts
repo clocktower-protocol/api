@@ -26,7 +26,7 @@ export const API_ROUTE_MANIFEST: RouteManifestEntry[] = [
   { method: 'GET', path: '/api/subscriptions/:id', priceKey: 'getSubscription', description: 'Get subscription by ID' },
   { method: 'GET', path: '/api/subscriptions/:id/subscribers', priceKey: 'getSubscribers', description: 'Get subscribers for subscription' },
   { method: 'GET', path: '/api/accounts/:address/subscriptions', priceKey: 'getAccountSubscriptions', description: 'Get subscriptions for account' },
-  { method: 'GET', path: '/api/accounts/:address', priceKey: 'getAccountSubscriptions', description: 'Get full account overview' },
+  { method: 'GET', path: '/api/accounts/:address', priceKey: 'getAccount', description: 'Get full account overview' },
   { method: 'GET', path: '/api/approved-tokens', priceKey: 'getApprovedToken', description: 'List approved tokens' },
   { method: 'GET', path: '/api/approved-tokens/:token', priceKey: 'getApprovedToken', description: 'Get approved token config' },
   { method: 'GET', path: '/api/subscriptions/:id/fee-balance', priceKey: 'feeBalance', description: 'Get fee balance' },
