@@ -11,6 +11,9 @@ export const PRICING_BATCH_SIZE = 50;
 export const PRICING_PER_BATCH_USD = 0.01;
 export const PRICING_MAX_HISTORY_RECORDS = 200;
 
+/** Recommended maximum records per history call before pagination. */
+export const RECOMMENDED_HISTORY_BATCH_SIZE = 100;
+
 export const SEARCH_BASE_USD = 0.05;
 export const SEARCH_PER_RESULT_USD = 0.01;
 export const SEARCH_INCLUDE_DETAILS_SURCHARGE_USD = 0.01;

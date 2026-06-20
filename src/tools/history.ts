@@ -821,7 +821,5 @@ export {
 	calculateSubscriptionDetailsHistoryPrice,
 	calculateSubscriptionHistoryPrice,
 	calculateSuggestedHistoryPrice,
+	RECOMMENDED_HISTORY_BATCH_SIZE,
 } from '../api/pricing.js';
-
-/** Recommended maximum records per history call before pagination. */
-export const RECOMMENDED_HISTORY_BATCH_SIZE = 100;
