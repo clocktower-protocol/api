@@ -19,6 +19,7 @@ import { checkRemitReadiness } from '../src/tx/remit-preflight.js';
 import * as remitScan from '../src/tx/remit-scan.js';
 import * as utils from '../src/utils.js';
 import { clearActiveLane, setActiveLane } from '../src/requestLane.js';
+import * as rateLimit from '../src/rateLimit.js';
 import { createGasAwareFetch } from './rpc-mocks.js';
 const testEnv = {
 	...env,
@@ -158,6 +159,31 @@ describe('prepareCreateSubscription', () => {
 
 		await prepareCreateSubscription(...args);
 		await expect(prepareCreateSubscription(...args)).rejects.toThrow(/Write rate limit exceeded/);
+		setActiveLane('mcp');
+	});
+
+	it('honors explicit lane option over module active lane', async () => {
+		setActiveLane('free');
+		const from = '0x00000000000000000000000000000000000000bb';
+		const spy = vi.spyOn(rateLimit, 'enforceWriteRateLimitForAddress').mockResolvedValue();
+
+		try {
+			await prepareCreateSubscription(
+				testEnv,
+				from,
+				10n ** 18n,
+				'0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+				{ url: 'https://example.com', description: 'test' },
+				1,
+				15,
+				{ lane: 'mcp' },
+			);
+		} catch {
+			// RPC mocks may fail after rate limit; lane is what we assert.
+		}
+
+		expect(spy).toHaveBeenCalledWith(testEnv, from, 'mcp');
+		spy.mockRestore();
 		setActiveLane('mcp');
 	});
 

@@ -5,6 +5,7 @@
  * by the user.
  */
 import { z } from 'zod';
+import type { AccessLane } from '../config/rateLimits.js';
 import {
 	checkSubscribeReadiness,
 	checkRemitReadiness,
@@ -43,6 +44,9 @@ import { normalizeSubscriptionAmount } from '../tx/amount.js';
 
 const writeAnnotations = { readOnlyHint: false };
 const destructiveAnnotations = { readOnlyHint: false, destructiveHint: true };
+
+/** MCP DO isolate does not inherit Worker requestLane; pass explicitly on every prepare. */
+const MCP_PREPARE_LANE = { lane: 'mcp' as AccessLane };
 
 function preparePrice(args: Record<string, unknown>): number {
 	return getStandardPreparePrice(args.readinessOnly as boolean | undefined);
@@ -122,6 +126,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						parsed.frequency,
 						parsed.dueDay,
 						{
+							...MCP_PREPARE_LANE,
 							readinessOnly: parsed.readinessOnly,
 							simulateFromAddress: parsed.simulateFromAddress,
 						},
@@ -154,6 +159,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						parsed.from,
 						toWriteSubscription(normalizedSubscription),
 						{
+							...MCP_PREPARE_LANE,
 							readinessOnly: parsed.readinessOnly,
 							simulateFromAddress: parsed.simulateFromAddress,
 						},
@@ -185,6 +191,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						parsed.from,
 						toWriteSubscription(normalizedSubscription),
 						{
+							...MCP_PREPARE_LANE,
 							readinessOnly: parsed.readinessOnly,
 							simulateFromAddress: parsed.simulateFromAddress,
 						},
@@ -216,6 +223,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						parsed.from,
 						toWriteSubscription(normalizedSubscription),
 						{
+							...MCP_PREPARE_LANE,
 							readinessOnly: parsed.readinessOnly,
 							simulateFromAddress: parsed.simulateFromAddress,
 						},
@@ -249,6 +257,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						toWriteSubscription(normalizedSubscription),
 						parsed.subscriber,
 						{
+							...MCP_PREPARE_LANE,
 							readinessOnly: parsed.readinessOnly,
 							simulateFromAddress: parsed.simulateFromAddress,
 						},
@@ -280,6 +289,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						parsed.id,
 						toWriteDetails(parsed.details),
 						{
+							...MCP_PREPARE_LANE,
 							readinessOnly: parsed.readinessOnly,
 							simulateFromAddress: parsed.simulateFromAddress,
 						},
@@ -319,6 +329,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 				const parsed = remitInputSchema.parse(args);
 				return textResult(
 					await prepareRemit(env, parsed.from, {
+						...MCP_PREPARE_LANE,
 						readinessOnly: parsed.readinessOnly,
 						simulateFromAddress: parsed.simulateFromAddress,
 					}),

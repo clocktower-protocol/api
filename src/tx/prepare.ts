@@ -267,7 +267,7 @@ export async function prepareCreateSubscription(
 			},
 			options,
 		);
-	});
+	}, options?.lane);
 }
 
 export async function prepareSubscribe(
@@ -328,7 +328,7 @@ export async function prepareSubscribe(
 			},
 			options,
 		);
-	});
+	}, options?.lane);
 }
 
 export { checkSubscribeReadiness, checkRemitReadiness };
@@ -364,7 +364,7 @@ export async function prepareCancelSubscription(
 		const data = encodeCancelSubscription(canonical);
 		const unsigned = [buildUnsigned(from, chain.contractAddress, data)];
 		return buildPrepareResult(env, from, unsigned, requestId, { id: canonical.id }, options);
-	});
+	}, options?.lane);
 }
 
 export async function prepareUnsubscribe(
@@ -419,7 +419,7 @@ export async function prepareUnsubscribe(
 			},
 			options,
 		);
-	});
+	}, options?.lane);
 }
 
 export async function prepareUnsubscribeByProvider(
@@ -461,7 +461,7 @@ export async function prepareUnsubscribeByProvider(
 			{ id: canonical.id, subscriber },
 			options,
 		);
-	});
+	}, options?.lane);
 }
 
 export async function prepareEditDetails(
@@ -509,7 +509,7 @@ export async function prepareEditDetails(
 			},
 			options,
 		);
-	});
+	}, options?.lane);
 }
 
 export async function prepareRemit(
@@ -560,5 +560,5 @@ export async function prepareRemit(
 			},
 			options,
 		);
-	});
+	}, options?.lane);
 }
