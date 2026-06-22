@@ -1,6 +1,10 @@
-# Clocktower MCP
+# Clocktower API
 
-Clocktower MCP is a Cloudflare Workers-based server that provides access to the Clocktower Protocol (a subscription management system on Base) through both the Model Context Protocol (MCP) and a REST API.
+**Repository:** [github.com/clocktower-protocol/api](https://github.com/clocktower-protocol/api)
+
+> **Status:** Pre-release. There is no public production API yet. The documentation below describes the intended interface; endpoints, limits, and auth flows may change before launch.
+
+Clocktower API is a Cloudflare Workers-based server that provides access to the Clocktower Protocol (a subscription management system on Base) through a REST API and the Model Context Protocol (MCP). The planned Worker name is `clocktower-mcp` (see `wrangler.jsonc`).
 
 Access uses three lanes: **free REST** (rate-limited), **Builder REST** (SIWE session + on-chain entitlement subscription), and **MCP** (x402 for agents).
 
@@ -34,7 +38,7 @@ The MCP server exposes tools that AI agents can call to interact with the Clockt
 
 ### Connection
 
-Connect using any MCP-compatible client by pointing it at the `/mcp` endpoint of your deployed worker:
+Connect using any MCP-compatible client by pointing it at the `/mcp` endpoint. When a public deployment is available, the base URL will be announced here. Until then, use a local or private deployment:
 
 ```
 https://your-worker.your-subdomain.workers.dev/mcp
@@ -169,7 +173,7 @@ All MCP tools are paid using the x402 protocol. Your MCP client must support sen
 
 The REST API provides the same capabilities as the MCP tools over standard HTTP. **No x402 payment is required** — access is controlled by tiered rate limits and optional Builder sessions.
 
-**Base URL**: `https://your-worker.your-subdomain.workers.dev/api`
+**Base URL** (when deployed): `https://your-worker.your-subdomain.workers.dev/api` — no public URL is available yet.
 
 ### Authentication
 
@@ -317,12 +321,21 @@ Optional:
 - `GRAPH_BASE_URL` / `GRAPH_BASE_SEPOLIA_URL` / `GRAPH_API_KEY` — The Graph subgraph endpoints + auth (required for history/profile/discovery endpoints)
 - `SESSIONS_KV` / `RPC_CACHE_KV` — KV bindings for Builder sessions and RPC cache (see `wrangler.jsonc`)
 
-### Deployment
-
-This project is designed for Cloudflare Workers:
+### Local development
 
 ```bash
+git clone git@github.com:clocktower-protocol/api.git
+cd api
 npm install
+cp .dev.vars.example .dev.vars   # fill in secrets locally
+npm run dev                      # wrangler dev
+```
+
+### Deployment
+
+Production deployment is not live yet. When ready, deploy to Cloudflare Workers:
+
+```bash
 wrangler deploy
 ```
 
@@ -332,7 +345,7 @@ Configure secrets using `wrangler secret put`.
 
 Only the **MCP server** requires x402 payments in USDC on Base. The REST API is free with rate limits. See the [x402 specification](https://github.com/coinbase/x402) for MCP client integration.
 
-### Launch checklist
+### Pre-launch checklist
 
 1. Create KV namespaces: `wrangler kv namespace create SESSIONS_KV` and `RPC_CACHE_KV`; update IDs in `wrangler.jsonc`
 2. Publish the Builder entitlement subscription on Base (Clocktower LLC as provider)
@@ -347,6 +360,7 @@ The project includes a comprehensive test suite using Vitest + Cloudflare's test
 
 ```bash
 npm test
+npm run dev    # local Worker via wrangler
 ```
 
 Tests cover free-tier policy, entitlement config, and MCP x402 invariants.
