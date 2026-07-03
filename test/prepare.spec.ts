@@ -20,7 +20,23 @@ import * as remitScan from '../src/tx/remit-scan.js';
 import * as utils from '../src/utils.js';
 import { clearActiveLane, setActiveLane } from '../src/requestLane.js';
 import * as rateLimit from '../src/rateLimit.js';
+import type { PrepareResponse, PrepareResult, ReadinessOnlyResult } from '../src/tx/types.js';
 import { createGasAwareFetch } from './rpc-mocks.js';
+
+function expectFullPrepare(result: PrepareResponse): PrepareResult {
+	if ('readinessOnly' in result && result.readinessOnly) {
+		throw new Error('expected full prepare result');
+	}
+	return result;
+}
+
+function expectReadinessOnly(result: PrepareResponse): ReadinessOnlyResult {
+	if (!('readinessOnly' in result) || !result.readinessOnly) {
+		throw new Error('expected readiness-only result');
+	}
+	return result;
+}
+
 const testEnv = {
 	...env,
 	ALCHEMY_API_KEY: 'test-alchemy-key',
@@ -92,14 +108,16 @@ describe('prepareCreateSubscription', () => {
 
 	it('returns unsigned transactions and EIP-5792 descriptor', async () => {
 		const from = '0x0000000000000000000000000000000000000001';
-		const result = await prepareCreateSubscription(
-			testEnv,
-			from,
-			10n ** 18n,
-			'0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
-			{ url: 'https://example.com', description: 'test' },
-			1,
-			15,
+		const result = expectFullPrepare(
+			await prepareCreateSubscription(
+				testEnv,
+				from,
+				10n ** 18n,
+				'0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+				{ url: 'https://example.com', description: 'test' },
+				1,
+				15,
+			),
 		);
 
 		expect(result.requestId).toMatch(
@@ -459,7 +477,9 @@ describe('prepareUnsubscribe is-subscriber preflight (L13)', () => {
 			'0x',
 		]);
 
-		const result = await prepareUnsubscribe(testEnv, FROM, subscriptionInput);
+		const result = expectFullPrepare(
+			await prepareUnsubscribe(testEnv, FROM, subscriptionInput),
+		);
 		expect(result.unsignedTransactions).toHaveLength(1);
 		expect(result.preflight).toMatchObject({ id: ID });
 	});
@@ -564,14 +584,15 @@ describe('remit prepare + readiness', () => {
 			});
 		}) as typeof fetch;
 
-		const result = await prepareRemit(testEnv, FROM, { readinessOnly: true });
+		const result = expectReadinessOnly(
+			await prepareRemit(testEnv, FROM, { readinessOnly: true }),
+		);
 		expect(result.readinessOnly).toBe(true);
 		expect(result.requestId).toMatch(
 			/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
 		);
 		expect(result.ready).toBe(true);
 		expect(result.instructions.length).toBeGreaterThan(0);
-		expect('unsignedTransactions' in result).toBe(false);
 	});
 
 	it('prepareRemit includes gasSummary and backlog warning for multi-tx queues', async () => {
@@ -580,7 +601,7 @@ describe('remit prepare + readiness', () => {
 
 		globalThis.fetch = createGasAwareFetch([encodeUint(999), encodeUint(10), '0x']);
 
-		const result = await prepareRemit(testEnv, FROM);
+		const result = expectFullPrepare(await prepareRemit(testEnv, FROM));
 		expect(result.gasSummary?.backlogMultiplier).toBe(3);
 		expect(result.gasSummary?.transactionCount).toBe(1);
 		expect(result.warnings.some((w) => w.includes('3 broadcasts'))).toBe(true);
@@ -596,7 +617,7 @@ describe('remit prepare + readiness', () => {
 			'0x',
 		]);
 
-		const result = await prepareRemit(testEnv, FROM);
+		const result = expectFullPrepare(await prepareRemit(testEnv, FROM));
 		expect(result.requestId).toBeDefined();
 		expect(result.instructions.length).toBeGreaterThan(0);
 		expect(result.unsignedTransactions).toHaveLength(1);
