@@ -272,7 +272,7 @@ All errors return a consistent JSON shape:
 ```json
 {
   "error": "Human readable message",
-  "code": "VALIDATION_ERROR" | "NOT_FOUND" | "UPSTREAM_ERROR" | "RATE_LIMITED",
+  "code": "VALIDATION_ERROR" | "NOT_FOUND" | "UPSTREAM_ERROR" | "RATE_LIMITED" | "API_DISABLED",
   "requestId": "optional-uuid-for-prepare-failures"
 }
 ```
@@ -282,7 +282,7 @@ Validation errors on write endpoints may also include an `issues` array with fie
 ### Status Endpoints
 
 - `GET /` — Basic worker information (not x402-protected)
-- `GET /api/status` — Lightweight health/status check (free)
+- `GET /api/status` — Lightweight health/status check (free). Still available when `API_ENABLED=false`; returns `status: "disabled"` and `apiEnabled: false`
 
 ### Browser CORS (optional)
 
@@ -317,6 +317,7 @@ Optional:
 - `BUILDER_RATE_LIMIT_RPM` / `BUILDER_SUBGRAPH_DAILY_LIMIT` / `BUILDER_WRITE_RATE_LIMIT_RPM` — Builder tier caps
 - `FREE_EXPENSIVE_RATE_LIMIT_RPM` / `FREE_SUBGRAPH_DAILY_LIMIT` / `FREE_WRITE_RATE_LIMIT_RPM` — Free tier caps
 - `API_REQUIRE_BASIC_AUTH` — Default `false`. Set to `true` to add Basic Auth on `/api` for local development only
+- `API_ENABLED` — Default `true`. Set to `false` to disable REST `/api/*` (incident response or staged launch). MCP `/mcp` stays up. `GET /api/status` remains available and reports `apiEnabled: false`
 - `API_CORS_ALLOWED_ORIGINS` — Comma-separated browser origins allowed to call `/api` with CORS. Unset = CORS disabled
 - `GRAPH_BASE_URL` / `GRAPH_BASE_SEPOLIA_URL` / `GRAPH_API_KEY` — The Graph subgraph endpoints + auth (required for history/profile/discovery endpoints)
 - `SESSIONS_KV` / `RPC_CACHE_KV` — KV bindings for Builder sessions and RPC cache (see `wrangler.jsonc`)
@@ -351,6 +352,7 @@ Only the **MCP server** requires x402 payments in USDC on Base. The REST API is 
 2. Publish the Builder entitlement subscription on Base (Clocktower LLC as provider)
 3. Set `BUILDER_SUB_ID` via `wrangler secret put` or vars
 4. Configure Cloudflare edge rules (see below)
+5. Keep `API_ENABLED=true` for launch; set to `false` in the dashboard to disable REST quickly without taking down MCP
 
 ---
 
@@ -369,6 +371,7 @@ Tests cover free-tier policy, entitlement config, and MCP x402 invariants.
 
 ## Security & Rate Limiting
 
+- **REST kill switch** — set `API_ENABLED=false` to block `/api/*` without redeploying (MCP unaffected)
 - **Tier-aware rate limits** — separate buckets for free, builder, and MCP lanes
 - **Expensive route bucket** — subgraph-heavy endpoints (history, discovery, cross-account reads)
 - **Subgraph daily caps** — per-IP (free) or per-address (builder)

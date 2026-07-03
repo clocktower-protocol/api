@@ -44,6 +44,8 @@ declare namespace Cloudflare {
 		BUILDER_SUB_ID?: string;
 		ENABLE_AUTH?: string;
 		API_REQUIRE_BASIC_AUTH?: string;   // Controls whether Basic Auth is required for /api routes (x402 is always required)
+		/** Set to 'false' to disable REST /api routes (MCP /mcp stays up). GET /api/status remains available. */
+		API_ENABLED?: string;
 		CFP_USERNAME?: string;
 		CFP_PASSWORD?: string;
 		CFP_ALLOWED_ORIGINS?: string;

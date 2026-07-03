@@ -12,6 +12,8 @@ import { getRateLimitIdentity, resolveApiAccess } from './middleware/accessLane.
 import { enforceBuilderPolicy, rewriteMePath } from './middleware/entitlementPolicy.js';
 import { enforceFreeTierPolicy } from './middleware/freeTierPolicy.js';
 import { clearActiveLane, setActiveLane } from './requestLane.js';
+import { isApiEnabled, isApiHealthCheckPath } from './config/apiAccess.js';
+import { Errors } from './api/responses.js';
 import type { AccessLane } from './config/rateLimits.js';
 
 /** Once per isolate, same idea as validateEnv in the MCP durable object on first init. */
@@ -105,6 +107,12 @@ async function handleRequest(
 			return withSecurityHeaders(corsPreflight);
 		}
 
+		if (!isApiEnabled(env) && !isApiHealthCheckPath(request.method, url.pathname)) {
+			return withSecurityHeaders(
+				withApiCorsHeaders(request, Errors.apiDisabled(), env),
+			);
+		}
+
 		const configError = ensureApiEnvValidated(env);
 		if (configError) {
 			return withSecurityHeaders(withApiCorsHeaders(request, configError, env));
@@ -167,6 +175,7 @@ async function handleRequest(
 		name: 'clocktower-mcp',
 		mcp: '/mcp',
 		rest: '/api',
+		apiEnabled: isApiEnabled(env),
 		note: 'REST API is free with tiered rate limits. MCP requires x402.',
 		access: {
 			rest: 'free (rate-limited) or builder session',

@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { isApiEnabled } from '../config/apiAccess.js';
 import { Errors, jsonResponse } from './responses.js';
 import {
   handleGetProtocolState,
@@ -194,9 +195,11 @@ export function createApiApp(_options: ApiAppOptions = {}) {
   app.post('/api/transactions/status', async (c: any) => writeHandlers.handleGetTransactionStatus(c));
 
   app.get('/api/status', (c) => {
+    const apiEnabled = isApiEnabled(c.env);
     return jsonResponse({
-      status: 'ok',
+      status: apiEnabled ? 'ok' : 'disabled',
       service: 'clocktower-rest-api',
+      apiEnabled,
       lane: c.req.header('X-Clocktower-Lane') ?? 'free',
     });
   });

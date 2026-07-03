@@ -1,4 +1,5 @@
 import { DEFAULT_TIER_LIMITS } from '../config/rateLimits.js';
+import { isApiEnabled } from '../config/apiAccess.js';
 import { isEntitlementAuthEnabled } from '../config/entitlementBuilder.js';
 import { jsonResponse } from './responses.js';
 import { API_ROUTE_MANIFEST } from './x402.js';
@@ -26,6 +27,7 @@ export function handleGetCatalog(env: Env) {
 				limits: DEFAULT_TIER_LIMITS.mcp,
 			},
 		},
+		apiEnabled: isApiEnabled(env),
 		builderAuthEnabled: isEntitlementAuthEnabled(env),
 		routes: API_ROUTE_MANIFEST.map(({ method, path, description }) => ({
 			method,

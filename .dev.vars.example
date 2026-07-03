@@ -55,6 +55,10 @@ X402_RECIPIENT=0xYourWalletAddress
 # Production default in wrangler.jsonc is false (x402-only). Set true only for local dev.
 # API_REQUIRE_BASIC_AUTH=false
 
+# Kill switch for the REST API. Set to false to disable /api/* (MCP /mcp stays up).
+# GET /api/status remains available for health checks. Default: true (enabled).
+# API_ENABLED=true
+
 # Optional CORS for browser SPAs calling /api directly (x402 still required).
 # Comma-separated full origins. Unset = CORS disabled (default).
 # API_CORS_ALLOWED_ORIGINS=https://app.example.com,http://localhost:5173

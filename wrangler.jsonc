@@ -49,6 +49,7 @@
 		"MCP_RATE_LIMIT_RPM": "300",
 		"MCP_WRITE_RATE_LIMIT_RPM": "60",
 		"API_REQUIRE_BASIC_AUTH": "false",
+		"API_ENABLED": "true",
 		"BUILDER_SUB_ID": ""
 		// GRAPH_* vars are NOT declared here (they contain secrets).
 		// They are supplied via `wrangler secret put` (production) or .dev.vars (local).

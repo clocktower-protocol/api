@@ -11,7 +11,8 @@ export type ApiErrorCode =
   | 'VALIDATION_ERROR'
   | 'NOT_FOUND'
   | 'UPSTREAM_ERROR'
-  | 'RATE_LIMITED';
+  | 'RATE_LIMITED'
+  | 'API_DISABLED';
 
 export type ApiError = {
   error: string;
@@ -37,4 +38,6 @@ export const Errors = {
   notFound: (message: string) => errorResponse(message, 'NOT_FOUND', 404),
   upstream: (message: string) => errorResponse(message, 'UPSTREAM_ERROR', 500),
   rateLimited: (message: string) => errorResponse(message, 'RATE_LIMITED', 429),
+  apiDisabled: () =>
+    errorResponse('REST API is temporarily unavailable', 'API_DISABLED', 503),
 };
