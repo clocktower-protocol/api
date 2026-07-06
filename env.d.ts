@@ -41,7 +41,10 @@ declare namespace Cloudflare {
 		BUILDER_WRITE_RATE_LIMIT_RPM?: string;
 		MCP_RATE_LIMIT_RPM?: string;
 		MCP_WRITE_RATE_LIMIT_RPM?: string;
+		/** Legacy single Builder entitlement subscription ID. */
 		BUILDER_SUB_ID?: string;
+		/** Comma-separated Builder entitlement subscription IDs (multiple plans, same API access). */
+		BUILDER_SUB_IDS?: string;
 		ENABLE_AUTH?: string;
 		API_REQUIRE_BASIC_AUTH?: string;   // Controls whether Basic Auth is required for /api routes (x402 is always required)
 		/** Set to 'false' to disable REST /api routes (MCP /mcp stays up). GET /api/status remains available. */

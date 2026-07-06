@@ -87,22 +87,23 @@ export async function handleAuthVerify(request: Request, env: Env): Promise<Resp
 		return jsonResponse({ error: 'Invalid signature', code: 'AUTH_FAILED' }, 401);
 	}
 
-	const entitled = await verifyEntitlementForAddress(env, address);
-	if (!entitled) {
+	const entitlementSubscriptionId = await verifyEntitlementForAddress(env, address);
+	if (!entitlementSubscriptionId) {
 		return jsonResponse(
 			{
-				error: 'Wallet is not an active subscriber to the Builder entitlement subscription',
+				error: 'Wallet is not an active subscriber to a Builder entitlement subscription',
 				code: 'ENTITLEMENT_REQUIRED',
 			},
 			403,
 		);
 	}
 
-	const session = await createSession(env, address);
+	const session = await createSession(env, address, entitlementSubscriptionId);
 	return jsonResponse({
 		token: session.token,
 		expiresAt: session.expiresAt,
 		address,
 		lane: 'builder',
+		entitlementSubscriptionId,
 	});
 }

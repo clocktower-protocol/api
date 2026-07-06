@@ -4,7 +4,7 @@ import { CLOCKTOWER_READ_ABI } from '../abi/clocktower.js';
 import {
 	extractSubscriptionId,
 	findEntitlementRoute,
-	getEntitlementSubscriptionId,
+	isConfiguredEntitlementSubscriptionId,
 } from '../config/entitlementBuilder.js';
 import { parseAccountSubscriptionRecord, parseSubscriptionRecord } from '../validation.js';
 import type { SessionRecord } from '../auth/session.js';
@@ -47,8 +47,7 @@ async function isProviderOfContent(
 }
 
 function isEntitlementSubId(env: Env, subscriptionId: string): boolean {
-	const entitlementId = getEntitlementSubscriptionId(env);
-	return entitlementId?.toLowerCase() === subscriptionId.toLowerCase();
+	return isConfiguredEntitlementSubscriptionId(env, subscriptionId);
 }
 
 async function evaluateContentAccess(

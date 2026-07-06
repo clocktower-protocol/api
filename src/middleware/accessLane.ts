@@ -34,8 +34,8 @@ export async function resolveApiAccess(request: Request, env: Env): Promise<Reso
 		return { lane: 'free', session: null, token: null };
 	}
 
-	const entitled = await verifyEntitlementForAddress(env, refreshed.address);
-	if (!entitled) {
+	const entitledId = await verifyEntitlementForAddress(env, refreshed.address);
+	if (!entitledId) {
 		return { lane: 'free', session: null, token: null };
 	}
 

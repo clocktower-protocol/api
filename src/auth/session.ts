@@ -1,4 +1,7 @@
-import { getEntitlementSubscriptionId, isEntitlementAuthEnabled } from '../config/entitlementBuilder.js';
+import {
+	getEntitlementSubscriptionIds,
+	isEntitlementAuthEnabled,
+} from '../config/entitlementBuilder.js';
 import { getAccountSubscriptions } from '../tools/read.js';
 import { STATUS_TYPES } from '../utils.js';
 
@@ -7,6 +10,8 @@ export type SessionRecord = {
 	createdAt: number;
 	expiresAt: number;
 	lastEntitlementCheck: number;
+	/** Builder entitlement subscription the session was issued against. */
+	entitlementSubscriptionId?: `0x${string}`;
 };
 
 const SESSION_PREFIX = 'session:';
@@ -66,6 +71,7 @@ export function generateNonce(): string {
 export async function createSession(
 	env: Env,
 	address: `0x${string}`,
+	entitlementSubscriptionId?: `0x${string}`,
 ): Promise<{ token: string; expiresAt: number }> {
 	if (!env.SESSIONS_KV) {
 		throw new Error('SESSIONS_KV binding is not configured');
@@ -79,6 +85,7 @@ export async function createSession(
 		createdAt: now,
 		expiresAt: now + DEFAULT_SESSION_TTL_MS,
 		lastEntitlementCheck: now,
+		...(entitlementSubscriptionId ? { entitlementSubscriptionId } : {}),
 	};
 
 	await env.SESSIONS_KV.put(sessionKey(tokenHash), JSON.stringify(record), {
@@ -104,53 +111,77 @@ export async function loadSession(env: Env, token: string): Promise<SessionRecor
 	}
 }
 
+/**
+ * Returns the first ACTIVE configured Builder entitlement subscription for
+ * `address`, or null. Order follows BUILDER_SUB_IDS / BUILDER_SUB_ID config.
+ */
+export async function findActiveEntitlementSubscription(
+	env: Env,
+	address: `0x${string}`,
+): Promise<`0x${string}` | null> {
+	const entitlementIds = getEntitlementSubscriptionIds(env);
+	if (entitlementIds.length === 0) {
+		return null;
+	}
+
+	const result = await getAccountSubscriptions(env, true, address);
+	for (const entitlementId of entitlementIds) {
+		const target = entitlementId.toLowerCase();
+		const active = result.subscriptions.some(
+			(entry) =>
+				entry.subscription.id.toLowerCase() === target &&
+				entry.status === STATUS_TYPES.ACTIVE,
+		);
+		if (active) {
+			return entitlementId;
+		}
+	}
+
+	return null;
+}
+
 export async function refreshSessionEntitlement(
 	env: Env,
 	session: SessionRecord,
 	token: string,
 ): Promise<SessionRecord | null> {
-	const entitlementId = getEntitlementSubscriptionId(env);
-	if (!entitlementId) {
-		return null;
-	}
-
 	const now = Date.now();
 	if (now - session.lastEntitlementCheck < ENTITLEMENT_RECHECK_MS) {
 		return session;
 	}
 
-	const entitled = await isAddressEntitled(env, session.address, entitlementId);
-	if (!entitled) {
+	const matchedId = await findActiveEntitlementSubscription(env, session.address);
+	if (!matchedId) {
 		return null;
 	}
 
-	const updated: SessionRecord = { ...session, lastEntitlementCheck: now };
+	const updated: SessionRecord = {
+		...session,
+		lastEntitlementCheck: now,
+		entitlementSubscriptionId: matchedId,
+	};
 	await updateSessionRecord(env, token, updated);
 	return updated;
 }
 
+/** @deprecated Use findActiveEntitlementSubscription for multi-plan support. */
 export async function isAddressEntitled(
 	env: Env,
 	address: `0x${string}`,
 	entitlementId: `0x${string}`,
 ): Promise<boolean> {
-	const result = await getAccountSubscriptions(env, true, address);
-	return result.subscriptions.some(
-		(entry) =>
-			entry.subscription.id.toLowerCase() === entitlementId.toLowerCase() &&
-			entry.status === STATUS_TYPES.ACTIVE,
-	);
+	const matched = await findActiveEntitlementSubscription(env, address);
+	return matched?.toLowerCase() === entitlementId.toLowerCase();
 }
 
 export async function verifyEntitlementForAddress(
 	env: Env,
 	address: `0x${string}`,
-): Promise<boolean> {
+): Promise<`0x${string}` | null> {
 	if (!isEntitlementAuthEnabled(env)) {
-		return false;
+		return null;
 	}
-	const entitlementId = getEntitlementSubscriptionId(env)!;
-	return isAddressEntitled(env, address, entitlementId);
+	return findActiveEntitlementSubscription(env, address);
 }
 
 export function parseBearerToken(request: Request): string | null {

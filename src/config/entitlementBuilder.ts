@@ -50,16 +50,66 @@ export const BUILDER_ENTITLEMENT_ROUTES: EntitlementRoute[] = [
 	{ method: 'POST', pathPattern: /^\/api\/prepare\/edit_details$/, rule: { kind: 'subscriber_write' } },
 ];
 
-export function isEntitlementAuthEnabled(env: Env): boolean {
-	const id = env.BUILDER_SUB_ID?.trim();
-	return Boolean(id && /^0x[a-fA-F0-9]{64}$/.test(id));
-}
+const ENTITLEMENT_ID_PATTERN = /^0x[a-fA-F0-9]{64}$/;
 
-export function getEntitlementSubscriptionId(env: Env): `0x${string}` | null {
-	if (!isEntitlementAuthEnabled(env)) {
+function normalizeEntitlementId(id: string): `0x${string}` | null {
+	const trimmed = id.trim();
+	if (!ENTITLEMENT_ID_PATTERN.test(trimmed)) {
 		return null;
 	}
-	return env.BUILDER_SUB_ID!.trim() as `0x${string}`;
+	return trimmed.toLowerCase() as `0x${string}`;
+}
+
+/**
+ * All configured Builder entitlement subscription IDs. A wallet ACTIVE on any
+ * ID receives the same Builder lane (Option A — identical API access).
+ *
+ * Sources (merged, de-duplicated):
+ *   - BUILDER_SUB_IDS — comma-separated list (preferred for multiple plans)
+ *   - BUILDER_SUB_ID — legacy single ID (still supported)
+ */
+export function getEntitlementSubscriptionIds(env: Env): `0x${string}`[] {
+	const raw: string[] = [];
+
+	const list = env.BUILDER_SUB_IDS?.trim();
+	if (list) {
+		raw.push(...list.split(',').map((entry) => entry.trim()).filter(Boolean));
+	}
+
+	const single = env.BUILDER_SUB_ID?.trim();
+	if (single) {
+		raw.push(single);
+	}
+
+	const seen = new Set<string>();
+	const ids: `0x${string}`[] = [];
+	for (const entry of raw) {
+		const normalized = normalizeEntitlementId(entry);
+		if (!normalized || seen.has(normalized)) {
+			continue;
+		}
+		seen.add(normalized);
+		ids.push(normalized);
+	}
+
+	return ids;
+}
+
+export function isEntitlementAuthEnabled(env: Env): boolean {
+	return getEntitlementSubscriptionIds(env).length > 0;
+}
+
+/** @deprecated Prefer getEntitlementSubscriptionIds — returns the first configured ID. */
+export function getEntitlementSubscriptionId(env: Env): `0x${string}` | null {
+	return getEntitlementSubscriptionIds(env)[0] ?? null;
+}
+
+export function isConfiguredEntitlementSubscriptionId(
+	env: Env,
+	subscriptionId: string,
+): boolean {
+	const target = subscriptionId.toLowerCase();
+	return getEntitlementSubscriptionIds(env).some((id) => id.toLowerCase() === target);
 }
 
 export function findEntitlementRoute(method: string, pathname: string): EntitlementRoute | null {

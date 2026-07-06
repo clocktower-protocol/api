@@ -1,6 +1,9 @@
 import { DEFAULT_TIER_LIMITS } from '../config/rateLimits.js';
 import { isApiEnabled } from '../config/apiAccess.js';
-import { isEntitlementAuthEnabled } from '../config/entitlementBuilder.js';
+import {
+	getEntitlementSubscriptionIds,
+	isEntitlementAuthEnabled,
+} from '../config/entitlementBuilder.js';
 import {
 	getPublicApiOrigin,
 	getPublicMcpOrigin,
@@ -30,7 +33,9 @@ export function handleGetCatalog(env: Env) {
 				},
 				builder: {
 					auth: 'SIWE session (Bearer token)',
-					enabled: 'BUILDER_SUB_ID configured',
+					enabled: isEntitlementAuthEnabled(env),
+					entitlementSubscriptionIds: getEntitlementSubscriptionIds(env),
+					note: 'Any ACTIVE subscription to a configured entitlement ID grants the same Builder access',
 					limits: DEFAULT_TIER_LIMITS.builder,
 					authEndpoints: [`${apiOrigin}/auth/challenge`, `${apiOrigin}/auth/verify`],
 				},
