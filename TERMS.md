@@ -205,9 +205,10 @@ termination.
 
 ## 15. Governing law
 
-These Terms are governed by the laws of the State of Delaware, USA, without regard
-to conflict-of-law principles, except where mandatory consumer protections in your
-jurisdiction apply.
+These Terms are governed by the laws of the jurisdiction in which Clocktower LLC
+is organized, without regard to conflict-of-law principles, except where mandatory
+consumer or data-protection rules in your country of residence apply and cannot be
+waived by contract.
 
 ---
 
