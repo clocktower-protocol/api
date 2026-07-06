@@ -51,6 +51,9 @@
 		"API_REQUIRE_BASIC_AUTH": "false",
 		"API_ENABLED": "true",
 		"BUILDER_SUB_ID": "",
+		// Comma-separated Builder entitlement subscription IDs (e.g. founding + standard).
+		// BUILDER_SUB_ID is still supported for a single ID. Any ACTIVE match → Builder lane.
+		"BUILDER_SUB_IDS": "",
 		"API_HOST": "api.clocktower.finance",
 		"MCP_HOST": "mcp.clocktower.finance",
 		"SIWE_DOMAIN": "api.clocktower.finance"
@@ -113,7 +116,8 @@
 				"RATE_LIMIT_REQUESTS_PER_MINUTE": "2",
 				"FREE_RATE_LIMIT_RPM": "2",
 				"API_REQUIRE_BASIC_AUTH": "false",
-				"BUILDER_SUB_ID": ""
+				"BUILDER_SUB_ID": "",
+				"BUILDER_SUB_IDS": ""
 				// Test GRAPH_* values are injected via vitest.config.mts (miniflare.bindings)
 				// so that this file never carries real or placeholder secret-shaped values.
 				// Example structure used in tests (see src/api/history.ts implementation):

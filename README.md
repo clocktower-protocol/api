@@ -337,7 +337,8 @@ Required for both MCP and REST:
 
 Optional:
 
-- `BUILDER_SUB_ID` — On-chain Builder entitlement subscription ID (enables SIWE auth when set)
+- `BUILDER_SUB_ID` — Single Builder entitlement subscription ID (legacy; enables SIWE when set)
+- `BUILDER_SUB_IDS` — Comma-separated entitlement IDs (e.g. founding + standard plans). Any ACTIVE match grants the same Builder access. Merged with `BUILDER_SUB_ID` if both are set.
 - `API_HOST` / `MCP_HOST` / `SIWE_DOMAIN` — Production hostnames (defaults: `api.clocktower.finance`, `mcp.clocktower.finance`, `api.clocktower.finance`)
 - `BUILDER_RATE_LIMIT_RPM` / `BUILDER_SUBGRAPH_DAILY_LIMIT` / `BUILDER_WRITE_RATE_LIMIT_RPM` — Builder tier caps
 - `FREE_EXPENSIVE_RATE_LIMIT_RPM` / `FREE_SUBGRAPH_DAILY_LIMIT` / `FREE_WRITE_RATE_LIMIT_RPM` — Free tier caps
