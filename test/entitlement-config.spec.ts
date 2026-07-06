@@ -2,11 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
 	BUILDER_ENTITLEMENT_ROUTES,
 	findEntitlementRoute,
+	getEntitlementSubscriptionIds,
+	isConfiguredEntitlementSubscriptionId,
 	isEntitlementAuthEnabled,
 } from '../src/config/entitlementBuilder.js';
 import { API_ROUTE_MANIFEST } from '../src/api/x402.js';
 
 const VALID_SUB_ID = `0x${'ab'.repeat(32)}` as const;
+const VALID_SUB_ID_B = `0x${'cd'.repeat(32)}` as const;
 
 describe('entitlement config', () => {
 	it('is disabled when BUILDER_SUB_ID is unset', () => {
@@ -16,6 +19,35 @@ describe('entitlement config', () => {
 
 	it('is enabled for valid subscription id', () => {
 		expect(isEntitlementAuthEnabled({ BUILDER_SUB_ID: VALID_SUB_ID } as Env)).toBe(true);
+	});
+
+	it('supports multiple entitlement ids via BUILDER_SUB_IDS', () => {
+		const env = {
+			BUILDER_SUB_IDS: `${VALID_SUB_ID},${VALID_SUB_ID_B}`,
+		} as Env;
+		expect(isEntitlementAuthEnabled(env)).toBe(true);
+		expect(getEntitlementSubscriptionIds(env)).toEqual([VALID_SUB_ID, VALID_SUB_ID_B]);
+	});
+
+	it('merges BUILDER_SUB_ID with BUILDER_SUB_IDS and de-duplicates', () => {
+		const env = {
+			BUILDER_SUB_ID: VALID_SUB_ID,
+			BUILDER_SUB_IDS: `${VALID_SUB_ID},${VALID_SUB_ID_B}`,
+		} as Env;
+		expect(getEntitlementSubscriptionIds(env)).toEqual([VALID_SUB_ID, VALID_SUB_ID_B]);
+	});
+
+	it('ignores malformed ids in BUILDER_SUB_IDS', () => {
+		const env = {
+			BUILDER_SUB_IDS: `not-an-id,${VALID_SUB_ID},0x123`,
+		} as Env;
+		expect(getEntitlementSubscriptionIds(env)).toEqual([VALID_SUB_ID]);
+	});
+
+	it('matches any configured entitlement subscription id', () => {
+		const env = { BUILDER_SUB_IDS: `${VALID_SUB_ID},${VALID_SUB_ID_B}` } as Env;
+		expect(isConfiguredEntitlementSubscriptionId(env, VALID_SUB_ID_B)).toBe(true);
+		expect(isConfiguredEntitlementSubscriptionId(env, `0x${'ee'.repeat(32)}`)).toBe(false);
 	});
 
 	it('maps catalog and me routes', () => {
