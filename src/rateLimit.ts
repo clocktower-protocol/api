@@ -5,6 +5,7 @@ import {
 	getTierLimits,
 	getUpgradeHint,
 	isSubgraphRoute,
+	usesWriteRateBucket,
 	type RouteClass,
 	type TierLimitConfig,
 } from './config/rateLimits.js';
@@ -117,7 +118,7 @@ export async function enforceTierRateLimits(
 		}
 	}
 
-	if (routeClass === 'write') {
+	if (usesWriteRateBucket(routeClass)) {
 		const write = await checkBucket(
 			env,
 			`${lane}:${identityKey}:write`,

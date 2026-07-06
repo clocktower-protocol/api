@@ -3,6 +3,7 @@ import {
 	classifyRoute,
 	DEFAULT_TIER_LIMITS,
 	getTierLimits,
+	usesWriteRateBucket,
 } from '../src/config/rateLimits.js';
 
 describe('tier rate limits config', () => {
@@ -26,6 +27,13 @@ describe('tier rate limits config', () => {
 
 	it('classifies readiness checks', () => {
 		expect(classifyRoute('POST', '/api/check_subscribe_readiness')).toBe('readiness');
+	});
+
+	it('applies the write rate bucket to readiness routes', () => {
+		expect(usesWriteRateBucket('readiness')).toBe(true);
+		expect(usesWriteRateBucket('write')).toBe(true);
+		expect(usesWriteRateBucket('cheap')).toBe(false);
+		expect(usesWriteRateBucket('expensive')).toBe(false);
 	});
 
 	it('returns tier defaults and env overrides', () => {

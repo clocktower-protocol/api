@@ -10,6 +10,7 @@ import {
 	normalizeHex,
 	parseApprovedTokenRecord,
 	parseSubscriptionRecord,
+	validateApiPostRequest,
 	validateEnv,
 	validateJsonDepth,
 	validateMcpRequest,
@@ -65,6 +66,39 @@ describe('validateEnv', () => {
 		expect(() =>
 			validateEnv({ ...validEnv, ALCHEMY_URL: 'https://base-mainnet.g.alchemy.com/v2' }),
 		).toThrow(/trailing/);
+	});
+});
+
+describe('validateApiPostRequest', () => {
+	it('passes through non-POST methods', async () => {
+		const request = new Request('http://example.com/api/catalog', { method: 'GET' });
+		expect(await validateApiPostRequest(request)).toBeNull();
+	});
+
+	it('rejects oversized streamed POST bodies without content-length', async () => {
+		const chunkSize = 64 * 1024;
+		const oversize = MAX_REQUEST_BYTES + chunkSize;
+		const stream = new ReadableStream<Uint8Array>({
+			start(controller) {
+				const chunk = new Uint8Array(chunkSize).fill(0x78);
+				let sent = 0;
+				while (sent < oversize) {
+					controller.enqueue(chunk);
+					sent += chunkSize;
+				}
+				controller.close();
+			},
+		});
+
+		const request = new Request('http://example.com/api/check_subscribe_readiness', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: stream,
+			duplex: 'half',
+		} as RequestInit & { duplex: 'half' });
+
+		const response = await validateApiPostRequest(request);
+		expect(response?.status).toBe(413);
 	});
 });
 

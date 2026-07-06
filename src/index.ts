@@ -5,7 +5,7 @@ import { ClocktowerMCP } from './mcp.js';
 import { RateLimiter } from './RateLimiter.js';
 import { enforceMcpRateLimit, enforceTierRateLimits } from './rateLimit.js';
 import { withSecurityHeaders } from './securityHeaders.js';
-import { validateEnv, validateMcpRequest } from './validation.js';
+import { validateApiPostRequest, validateEnv, validateMcpRequest } from './validation.js';
 import { createApiApp, createApiAppForEnv } from './api/app.js';
 import { handleApiCorsPreflight, withApiCorsHeaders } from './cors.js';
 import { getRateLimitIdentity, resolveApiAccess } from './middleware/accessLane.js';
@@ -105,6 +105,13 @@ async function handleRequest(
 		const corsPreflight = handleApiCorsPreflight(request, env);
 		if (corsPreflight) {
 			return withSecurityHeaders(corsPreflight);
+		}
+
+		if (request.method === 'POST') {
+			const invalidPost = await validateApiPostRequest(request);
+			if (invalidPost) {
+				return withSecurityHeaders(withApiCorsHeaders(request, invalidPost, env));
+			}
 		}
 
 		if (!isApiEnabled(env) && !isApiHealthCheckPath(request.method, url.pathname)) {

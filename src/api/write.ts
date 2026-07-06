@@ -30,6 +30,9 @@ import {
 } from '../tx/prepare.js';
 import { getRequestId } from '../tx/prepare-response.js';
 import { getTransactionStatus } from '../tx/status.js';
+import { enforceWriteRateLimitForAddress } from '../rateLimit.js';
+import { getActiveLane } from '../requestLane.js';
+import { clientSafeMessage } from '../sanitizeUpstream.js';
 
 // Import validation schemas
 import {
@@ -58,6 +61,12 @@ export async function handleCheckSubscribeReadiness(c: Context) {
       subscription: subscribeInputSchema.shape.subscription,
     });
     const parsed = schema.parse(body);
+
+    await enforceWriteRateLimitForAddress(
+      c.env,
+      parsed.from as `0x${string}`,
+      getActiveLane(),
+    );
 
     const chain = resolveChain(c.env);
     const result = await checkSubscribeReadiness(
@@ -245,6 +254,8 @@ export async function handleCheckRemitReadiness(c: Context) {
     const body = await c.req.json();
     const parsed = remitInputSchema.parse(body);
 
+    await enforceWriteRateLimitForAddress(c.env, parsed.from, getActiveLane());
+
     const result = await checkRemitReadiness(c.env, parsed.from);
 
     return jsonResponse(result);
@@ -331,25 +342,35 @@ function handleWriteError(err: any, operation: string) {
     );
   }
   if (message.includes('Amount below token minimum')) {
-    return withRequestId({ error: message, code: 'VALIDATION_ERROR' }, 400);
+    return withRequestId(
+      {
+        error: clientSafeMessage(message, 'Amount below token minimum'),
+        code: 'VALIDATION_ERROR',
+      },
+      400,
+    );
   }
   if (message.includes('Write rate limit exceeded')) {
     return withRequestId({ error: message, code: 'VALIDATION_ERROR' }, 400);
   }
   if (message.includes('Remit not due') || message.includes('No due subscriptions')) {
-    return withRequestId({ error: message, code: 'VALIDATION_ERROR' }, 400);
+    return withRequestId(
+      {
+        error: clientSafeMessage(message, 'Remit readiness check failed'),
+        code: 'VALIDATION_ERROR',
+      },
+      400,
+    );
   }
   if (message.includes('Simulation failed')) {
-    return withRequestId({ error: message, code: 'VALIDATION_ERROR' }, 400);
+    return withRequestId(
+      { error: clientSafeMessage(message, 'Simulation failed'), code: 'VALIDATION_ERROR' },
+      400,
+    );
   }
 
-  // @x402/hono skips settlement when the handler returns status >= 400 (see README REST
-  // section and test/api-x402-hono-settlement.spec.ts). Returning JSON here is correct.
   console.error(`[write] ${operation} failed`, { requestId, err });
 
-  return withRequestId(
-    { error: message || `Failed to ${operation}`, code: 'UPSTREAM_ERROR' },
-    500,
-  );
+  return withRequestId({ error: 'Upstream error', code: 'UPSTREAM_ERROR' }, 500);
 }
 

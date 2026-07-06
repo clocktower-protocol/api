@@ -113,6 +113,69 @@ async function readClonedBodyWithCap(
 	}
 }
 
+async function validateJsonPostBody(request: Request): Promise<Response | null> {
+	const contentType = request.headers.get('content-type');
+	if (!contentType?.includes('application/json')) {
+		return Response.json({ error: 'Content-Type must be application/json' }, { status: 415 });
+	}
+
+	// Fast-path: reject obviously oversized bodies before reading anything.
+	const contentLength = request.headers.get('content-length');
+	if (contentLength) {
+		const size = Number.parseInt(contentLength, 10);
+		if (!Number.isFinite(size) || size > MAX_REQUEST_BYTES) {
+			return Response.json(
+				{ error: `Request too large. Maximum size: ${MAX_REQUEST_BYTES / (1024 * 1024)}MB` },
+				{ status: 413 },
+			);
+		}
+	}
+
+	// Streaming size check on a clone, so the original body is left intact
+	// for downstream consumers. Aborts as soon as the cap is exceeded
+	// — required for chunked / missing-content-length requests (M6).
+	const bodyResult = await readClonedBodyWithCap(request, MAX_REQUEST_BYTES);
+	if (!bodyResult.ok) {
+		return Response.json(
+			{ error: `Request too large. Maximum size: ${MAX_REQUEST_BYTES / (1024 * 1024)}MB` },
+			{ status: 413 },
+		);
+	}
+	const bodyText = bodyResult.text;
+	if (bodyText.length === 0) {
+		return null;
+	}
+
+	let body: unknown;
+	try {
+		body = JSON.parse(bodyText);
+	} catch {
+		return Response.json({ error: 'Invalid JSON in request body' }, { status: 400 });
+	}
+
+	if (typeof body !== 'object' || body === null) {
+		return Response.json({ error: 'Request body must be a JSON object' }, { status: 400 });
+	}
+
+	if (!validateJsonDepth(body)) {
+		return Response.json(
+			{ error: `Request body too deeply nested (max ${MAX_JSON_DEPTH} levels)` },
+			{ status: 400 },
+		);
+	}
+
+	return null;
+}
+
+/** Size/depth guard for REST `/api` POST bodies (same limits as MCP). */
+export async function validateApiPostRequest(request: Request): Promise<Response | null> {
+	if (request.method !== 'POST') {
+		return null;
+	}
+
+	return validateJsonPostBody(request);
+}
+
 export async function validateMcpRequest(request: Request): Promise<Response | null> {
 	if (!MCP_METHODS.has(request.method)) {
 		return Response.json({ error: 'Method not allowed' }, { status: 405 });
@@ -123,55 +186,7 @@ export async function validateMcpRequest(request: Request): Promise<Response | n
 	}
 
 	if (request.method === 'POST') {
-		const contentType = request.headers.get('content-type');
-		if (!contentType?.includes('application/json')) {
-			return Response.json({ error: 'Content-Type must be application/json' }, { status: 415 });
-		}
-
-		// Fast-path: reject obviously oversized bodies before reading anything.
-		const contentLength = request.headers.get('content-length');
-		if (contentLength) {
-			const size = Number.parseInt(contentLength, 10);
-			if (!Number.isFinite(size) || size > MAX_REQUEST_BYTES) {
-				return Response.json(
-					{ error: `Request too large. Maximum size: ${MAX_REQUEST_BYTES / (1024 * 1024)}MB` },
-					{ status: 413 },
-				);
-			}
-		}
-
-		// Streaming size check on a clone, so the original body is left intact
-		// for the MCP server downstream. Aborts as soon as the cap is exceeded
-		// — required for chunked / missing-content-length requests (M6).
-		const bodyResult = await readClonedBodyWithCap(request, MAX_REQUEST_BYTES);
-		if (!bodyResult.ok) {
-			return Response.json(
-				{ error: `Request too large. Maximum size: ${MAX_REQUEST_BYTES / (1024 * 1024)}MB` },
-				{ status: 413 },
-			);
-		}
-		const bodyText = bodyResult.text;
-		if (bodyText.length === 0) {
-			return null;
-		}
-
-		let body: unknown;
-		try {
-			body = JSON.parse(bodyText);
-		} catch {
-			return Response.json({ error: 'Invalid JSON in request body' }, { status: 400 });
-		}
-
-		if (typeof body !== 'object' || body === null) {
-			return Response.json({ error: 'Request body must be a JSON object' }, { status: 400 });
-		}
-
-		if (!validateJsonDepth(body)) {
-			return Response.json(
-				{ error: `Request body too deeply nested (max ${MAX_JSON_DEPTH} levels)` },
-				{ status: 400 },
-			);
-		}
+		return validateJsonPostBody(request);
 	}
 
 	return null;

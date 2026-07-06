@@ -87,6 +87,11 @@ export function getTierLimits(env: Env, lane: AccessLane): TierLimitConfig {
 	};
 }
 
+/** Routes that consume the per-tier write RPM bucket (prepare + readiness checks). */
+export function usesWriteRateBucket(routeClass: RouteClass): boolean {
+	return routeClass === 'write' || routeClass === 'readiness';
+}
+
 export function classifyRoute(method: string, pathname: string): RouteClass {
 	const path = pathname.split('?')[0];
 
