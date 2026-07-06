@@ -324,7 +324,7 @@ CORS is **not** authentication and is **not** granted by a Builder subscription.
 
 ## Source and hosting
 
-This repository is open source ([MIT License](LICENSE)) for audit and transparency. The hosted API at `api.clocktower.finance` and MCP at `mcp.clocktower.finance` are operated by Clocktower and governed by [Terms of Use](TERMS.md). Operational deployment is maintained by the Clocktower team — this README documents how to **use** the API, not how to self-host it.
+This repository is open source ([MIT License](LICENSE)) for audit and transparency. The hosted API at `api.clocktower.finance` and MCP at `mcp.clocktower.finance` are operated by Clocktower and governed by [Terms of Use](TERMS.md). Operational deployment is maintained by the Clocktower team.
 
 ---
 
