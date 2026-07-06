@@ -8,13 +8,26 @@ Clocktower API is a Cloudflare Workers-based server that provides access to the 
 
 Access uses three lanes: **free REST** (rate-limited), **Builder REST** (SIWE session + on-chain entitlement subscription), and **MCP** (x402 for agents).
 
+## Production hosts
+
+One Cloudflare Worker serves both surfaces on dedicated subdomains:
+
+| Host | Surface | Example |
+|------|---------|---------|
+| `https://api.clocktower.finance` | REST API | `GET /catalog`, `GET /protocol/state` |
+| `https://mcp.clocktower.finance` | MCP (x402) | `GET /` or `GET /mcp` |
+
+On the API host, paths **omit** the `/api` prefix (e.g. `GET /catalog` instead of `GET /api/catalog`). Legacy `*.workers.dev` URLs keep the `/api` and `/mcp` path prefixes for local dev and staging.
+
+Builder SIWE auth uses domain `api.clocktower.finance` (configurable via `SIWE_DOMAIN`).
+
 ## Overview
 
 - **Protocol**: Clocktower on Base mainnet (eip155:8453)
 - **Hosting**: Cloudflare Workers + Durable Objects
 - **Interfaces**:
-  - MCP Server (for AI agents — x402 USDC micropayments)
-  - REST API (free with rate limits, or Builder session for higher limits)
+  - MCP Server at `mcp.clocktower.finance` (for AI agents — x402 USDC micropayments)
+  - REST API at `api.clocktower.finance` (free with rate limits, or Builder session for higher limits)
 
 ## Access tiers
 
@@ -38,7 +51,13 @@ The MCP server exposes tools that AI agents can call to interact with the Clockt
 
 ### Connection
 
-Connect using any MCP-compatible client by pointing it at the `/mcp` endpoint. When a public deployment is available, the base URL will be announced here. Until then, use a local or private deployment:
+Connect using any MCP-compatible client:
+
+```
+https://mcp.clocktower.finance/
+```
+
+Staging / local dev (path-based):
 
 ```
 https://your-worker.your-subdomain.workers.dev/mcp
@@ -173,7 +192,9 @@ All MCP tools are paid using the x402 protocol. Your MCP client must support sen
 
 The REST API provides the same capabilities as the MCP tools over standard HTTP. **No x402 payment is required** — access is controlled by tiered rate limits and optional Builder sessions.
 
-**Base URL** (when deployed): `https://your-worker.your-subdomain.workers.dev/api` — no public URL is available yet.
+**Base URL**: `https://api.clocktower.finance` (paths omit `/api`; e.g. `GET /catalog`, `POST /auth/challenge`).
+
+Staging / local dev: `https://your-worker.workers.dev/api/...`
 
 ### Authentication
 
@@ -185,10 +206,10 @@ The REST API provides the same capabilities as the MCP tools over standard HTTP.
 
 **Builder auth quickstart** (requires `BUILDER_SUB_ID` configured):
 
-1. `POST /api/auth/challenge` with `{ "address": "0x…" }` → receive `message` + `nonce`
-2. Wallet `personal_sign` on the message
-3. `POST /api/auth/verify` with `{ "message", "signature" }` → receive `token`
-4. Send `Authorization: Bearer <token>` on subsequent `/api` calls
+1. `POST https://api.clocktower.finance/auth/challenge` with `{ "address": "0x…" }` → receive `message` + `nonce`
+2. Wallet `personal_sign` on the message (domain must be `api.clocktower.finance`)
+3. `POST https://api.clocktower.finance/auth/verify` with `{ "message", "signature" }` → receive `token`
+4. Send `Authorization: Bearer <token>` on subsequent API calls
 
 Builder scope: own account (`/api/accounts/me`, …), content subs you subscribe to or created, discovery, subscriber writes for your wallet. Provider management and cross-account reads are **not** included in Builder scope (use the free tier for public cross-account reads).
 
@@ -198,26 +219,28 @@ Optional HTTP Basic Auth on `/api` is controlled by `API_REQUIRE_BASIC_AUTH` (de
 
 #### Read Endpoints (GET)
 
+Paths below use the production API host form (no `/api` prefix). On `*.workers.dev`, prefix each path with `/api`.
+
 | Endpoint | Description |
 |----------|-------------|
-| `GET /api/catalog` | Machine-readable route catalog and tier limits |
-| `GET /api/protocol/state` | Current protocol fee configuration |
-| `GET /api/subscriptions/due` | Subscriptions due on a given day/frequency (single-day; same scan helper as remit) |
-| `GET /api/subscriptions` | Search/discover subscriptions (see Discovery below) |
-| `GET /api/subscriptions/:id` | Single subscription by ID |
-| `GET /api/subscriptions/:id/subscribers` | Subscribers for a subscription |
-| `GET /api/subscriptions/:id/fee-balance?address=0x…` | Fee balance for a subscriber on a subscription |
-| `GET /api/accounts/:address/subscriptions` | Subscriptions for an account (rich) |
-| `GET /api/accounts/:address` | Full enriched account overview. Returns `subscribedTo` (what you pay into) and `created` (what you created as provider) |
-| `GET /api/approved-tokens` | List of approved tokens (includes on-chain `minimum` and `paused`) |
-| `GET /api/approved-tokens/:token` | Approved token configuration |
+| `GET /catalog` | Machine-readable route catalog and tier limits |
+| `GET /protocol/state` | Current protocol fee configuration |
+| `GET /subscriptions/due` | Subscriptions due on a given day/frequency (single-day; same scan helper as remit) |
+| `GET /subscriptions` | Search/discover subscriptions (see Discovery below) |
+| `GET /subscriptions/:id` | Single subscription by ID |
+| `GET /subscriptions/:id/subscribers` | Subscribers for a subscription |
+| `GET /subscriptions/:id/fee-balance?address=0x…` | Fee balance for a subscriber on a subscription |
+| `GET /accounts/:address/subscriptions` | Subscriptions for an account (rich) |
+| `GET /accounts/:address` | Full enriched account overview. Returns `subscribedTo` (what you pay into) and `created` (what you created as provider) |
+| `GET /approved-tokens` | List of approved tokens (includes on-chain `minimum` and `paused`) |
+| `GET /approved-tokens/:token` | Approved token configuration |
 
 #### Discovery Endpoints (GET, subgraph + on-chain — expensive bucket)
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /api/subscriptions` | Search active subscriptions. Query params: `provider`, `token`, `frequency`, `cancelled` (default `false`), `includeDetails`, `first` (max 50), `skip` |
-| `GET /api/subscriptions/:id/details` | Current url/description (latest DetailsLog) |
+| `GET /subscriptions` | Search active subscriptions. Query params: `provider`, `token`, `frequency`, `cancelled` (default `false`), `includeDetails`, `first` (max 50), `skip` |
+| `GET /subscriptions/:id/details` | Current url/description (latest DetailsLog) |
 
 #### History & Profile Endpoints (GET, subgraph-backed)
 These query The Graph for rich event history. Priced higher to cover external query costs. All support optional `?first=N&skip=M` pagination.
@@ -229,10 +252,10 @@ Returned SubLog events include:
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /api/subscriptions/:id/history` | Activity history for a subscription (formatted SubLog events) |
-| `GET /api/accounts/:address/activity` | Combined activity for an account (subscriber + provider views) with breakdown |
-| `GET /api/providers/:address` | Latest provider profile (ProvDetailsLog) |
-| `GET /api/subscriptions/:id/details-history` | URL/description change history for a subscription (DetailsLog) |
+| `GET /subscriptions/:id/history` | Activity history for a subscription (formatted SubLog events) |
+| `GET /accounts/:address/activity` | Combined activity for an account (subscriber + provider views) with breakdown |
+| `GET /providers/:address` | Latest provider profile (ProvDetailsLog) |
+| `GET /subscriptions/:id/details-history` | URL/description change history for a subscription (DetailsLog) |
 
 Subgraph errors return a graceful response containing an `error` field rather than failing the entire request.
 
@@ -252,16 +275,16 @@ All `prepare_*` endpoints accept optional `readinessOnly: true` and `simulateFro
 
 | Endpoint | Free tier | Description |
 |----------|-----------|-------------|
-| `POST /api/check_subscribe_readiness` | Allowed | Validate whether an account can subscribe |
-| `POST /api/prepare/create_subscription` | 2/min/IP | Prepare a new subscription |
-| `POST /api/prepare/subscribe` | 2/min/IP | Prepare subscribing to an existing subscription |
-| `POST /api/prepare/cancel_subscription` | 2/min/IP | Prepare cancelling a subscription (provider must match `from`) |
-| `POST /api/prepare/unsubscribe` | 2/min/IP | Prepare unsubscribing from a subscription |
-| `POST /api/prepare/unsubscribe_by_provider` | 2/min/IP | Provider-initiated unsubscribe |
-| `POST /api/prepare/edit_details` | 2/min/IP | Provider metadata edit |
-| `POST /api/check_remit_readiness` | Allowed | Check whether `remit()` is callable |
-| `POST /api/prepare/remit` | 2/min/IP | Prepare permissionless `remit()` transaction |
-| `POST /api/transactions/status` | Allowed | Check status of a broadcast transaction |
+| `POST /check_subscribe_readiness` | Allowed | Validate whether an account can subscribe |
+| `POST /prepare/create_subscription` | 2/min/IP | Prepare a new subscription |
+| `POST /prepare/subscribe` | 2/min/IP | Prepare subscribing to an existing subscription |
+| `POST /prepare/cancel_subscription` | 2/min/IP | Prepare cancelling a subscription (provider must match `from`) |
+| `POST /prepare/unsubscribe` | 2/min/IP | Prepare unsubscribing from a subscription |
+| `POST /prepare/unsubscribe_by_provider` | 2/min/IP | Provider-initiated unsubscribe |
+| `POST /prepare/edit_details` | 2/min/IP | Provider metadata edit |
+| `POST /check_remit_readiness` | Allowed | Check whether `remit()` is callable |
+| `POST /prepare/remit` | 2/min/IP | Prepare permissionless `remit()` transaction |
+| `POST /transactions/status` | Allowed | Check status of a broadcast transaction |
 
 Full prepare responses include simulation, `gasEstimates`, and `gasSummary` (see Prepare response format in the MCP section above).
 
@@ -281,8 +304,9 @@ Validation errors on write endpoints may also include an `issues` array with fie
 
 ### Status Endpoints
 
-- `GET /` — Basic worker information (not x402-protected)
-- `GET /api/status` — Lightweight health/status check (free). Still available when `API_ENABLED=false`; returns `status: "disabled"` and `apiEnabled: false`
+- `GET https://api.clocktower.finance/` — API discovery JSON
+- `GET /status` — Lightweight health/status check (free). Still available when `API_ENABLED=false`; returns `status: "disabled"` and `apiEnabled: false`
+- `GET https://example.workers.dev/` — Legacy combined worker discovery (staging)
 
 ### Browser CORS (optional)
 
@@ -314,6 +338,7 @@ Required for both MCP and REST:
 Optional:
 
 - `BUILDER_SUB_ID` — On-chain Builder entitlement subscription ID (enables SIWE auth when set)
+- `API_HOST` / `MCP_HOST` / `SIWE_DOMAIN` — Production hostnames (defaults: `api.clocktower.finance`, `mcp.clocktower.finance`, `api.clocktower.finance`)
 - `BUILDER_RATE_LIMIT_RPM` / `BUILDER_SUBGRAPH_DAILY_LIMIT` / `BUILDER_WRITE_RATE_LIMIT_RPM` — Builder tier caps
 - `FREE_EXPENSIVE_RATE_LIMIT_RPM` / `FREE_SUBGRAPH_DAILY_LIMIT` / `FREE_WRITE_RATE_LIMIT_RPM` — Free tier caps
 - `API_REQUIRE_BASIC_AUTH` — Default `false`. Set to `true` to add Basic Auth on `/api` for local development only
