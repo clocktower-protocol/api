@@ -50,7 +50,14 @@
 		"MCP_WRITE_RATE_LIMIT_RPM": "60",
 		"API_REQUIRE_BASIC_AUTH": "false",
 		"API_ENABLED": "true",
-		"BUILDER_SUB_ID": ""
+		"BUILDER_SUB_ID": "",
+		"API_HOST": "api.clocktower.finance",
+		"MCP_HOST": "mcp.clocktower.finance",
+		"SIWE_DOMAIN": "api.clocktower.finance"
+		// Custom domains: route both hosts to this Worker in the Cloudflare dashboard
+		// (Workers & Pages → clocktower-mcp → Settings → Domains & Routes), or via:
+		//   wrangler deploy --route "api.clocktower.finance/*"
+		//   wrangler deploy --route "mcp.clocktower.finance/*"
 		// GRAPH_* vars are NOT declared here (they contain secrets).
 		// They are supplied via `wrangler secret put` (production) or .dev.vars (local).
 		// See env.d.ts and the implementation plan for the exact names:

@@ -13,6 +13,14 @@ import { enforceBuilderPolicy, rewriteMePath } from './middleware/entitlementPol
 import { enforceFreeTierPolicy } from './middleware/freeTierPolicy.js';
 import { clearActiveLane, setActiveLane } from './requestLane.js';
 import { isApiEnabled, isApiHealthCheckPath } from './config/apiAccess.js';
+import {
+	getPublicApiOrigin,
+	getPublicMcpOrigin,
+	rewriteRequestForSurface,
+	shouldHandleApiRoute,
+	surfaceMismatchResponse,
+	type RequestSurface,
+} from './config/hostnames.js';
 import { Errors } from './api/responses.js';
 import type { AccessLane } from './config/rateLimits.js';
 
@@ -69,98 +77,102 @@ async function handleRequest(
 		return geoBlocked;
 	}
 
-	const url = new URL(request.url);
+	const { request: routedRequest, surface, pathname } = rewriteRequestForSurface(request, env);
+	const mismatch = surfaceMismatchResponse(surface, pathname, env);
+	if (mismatch) {
+		return mismatch;
+	}
 
-	if (url.pathname === '/mcp') {
-		const invalidRequest = await validateMcpRequest(request);
+	if (pathname === '/mcp') {
+		const invalidRequest = await validateMcpRequest(routedRequest);
 		if (invalidRequest) {
 			return invalidRequest;
 		}
 
-		const forbiddenOrigin = enforceOriginAllowlist(request, env);
+		const forbiddenOrigin = enforceOriginAllowlist(routedRequest, env);
 		if (forbiddenOrigin) {
 			return forbiddenOrigin;
 		}
 
-		const unauthorized = enforceBasicAuth(request, env);
+		const unauthorized = enforceBasicAuth(routedRequest, env);
 		if (unauthorized) {
 			return unauthorized;
 		}
 
 		setActiveLane('mcp');
 		try {
-			const rateLimited = await enforceMcpRateLimit(request, env);
+			const rateLimited = await enforceMcpRateLimit(routedRequest, env);
 			if (rateLimited) {
 				return rateLimited;
 			}
 
 			const mcpHandler = ClocktowerMCP.serve('/mcp');
-			return await mcpHandler.fetch(request, env, ctx);
+			return await mcpHandler.fetch(routedRequest, env, ctx);
 		} finally {
 			clearActiveLane();
 		}
 	}
 
-	if (url.pathname.startsWith('/api')) {
-		const corsPreflight = handleApiCorsPreflight(request, env);
+	if (shouldHandleApiRoute(pathname, surface)) {
+		const corsPreflight = handleApiCorsPreflight(routedRequest, env);
 		if (corsPreflight) {
 			return withSecurityHeaders(corsPreflight);
 		}
 
-		if (request.method === 'POST') {
-			const invalidPost = await validateApiPostRequest(request);
+		if (routedRequest.method === 'POST') {
+			const invalidPost = await validateApiPostRequest(routedRequest);
 			if (invalidPost) {
-				return withSecurityHeaders(withApiCorsHeaders(request, invalidPost, env));
+				return withSecurityHeaders(withApiCorsHeaders(routedRequest, invalidPost, env));
 			}
 		}
 
-		if (!isApiEnabled(env) && !isApiHealthCheckPath(request.method, url.pathname)) {
+		if (!isApiEnabled(env) && !isApiHealthCheckPath(routedRequest.method, pathname)) {
 			return withSecurityHeaders(
-				withApiCorsHeaders(request, Errors.apiDisabled(), env),
+				withApiCorsHeaders(routedRequest, Errors.apiDisabled(), env),
 			);
 		}
 
 		const configError = ensureApiEnvValidated(env);
 		if (configError) {
-			return withSecurityHeaders(withApiCorsHeaders(request, configError, env));
+			return withSecurityHeaders(withApiCorsHeaders(routedRequest, configError, env));
 		}
 
 		const requireBasicAuth = env.API_REQUIRE_BASIC_AUTH !== 'false';
 
 		if (requireBasicAuth) {
-			const unauthorized = enforceBasicAuth(request, env);
+			const unauthorized = enforceBasicAuth(routedRequest, env);
 			if (unauthorized) {
-				return withSecurityHeaders(withApiCorsHeaders(request, unauthorized, env));
+				return withSecurityHeaders(withApiCorsHeaders(routedRequest, unauthorized, env));
 			}
 		}
 
-		const access = await resolveApiAccess(request, env);
+		const access = await resolveApiAccess(routedRequest, env);
 		setActiveLane(access.lane);
 
 		try {
 			if (access.lane === 'free') {
-				const policyBlocked = enforceFreeTierPolicy(request.method, url.pathname);
+				const policyBlocked = enforceFreeTierPolicy(routedRequest.method, pathname);
 				if (policyBlocked) {
-					return withSecurityHeaders(withApiCorsHeaders(request, policyBlocked, env));
+					return withSecurityHeaders(withApiCorsHeaders(routedRequest, policyBlocked, env));
 				}
 			} else if (access.session) {
-				const policyBlocked = await enforceBuilderPolicy(request, env, access.session);
+				const policyBlocked = await enforceBuilderPolicy(routedRequest, env, access.session);
 				if (policyBlocked) {
-					return withSecurityHeaders(withApiCorsHeaders(request, policyBlocked, env));
+					return withSecurityHeaders(withApiCorsHeaders(routedRequest, policyBlocked, env));
 				}
 			}
 
-			const identity = getRateLimitIdentity(access, request);
-			const rateLimited = await enforceTierRateLimits(request, env, access.lane, identity);
+			const identity = getRateLimitIdentity(access, routedRequest);
+			const rateLimited = await enforceTierRateLimits(routedRequest, env, access.lane, identity);
 			if (rateLimited) {
-				return withSecurityHeaders(withApiCorsHeaders(request, rateLimited, env));
+				return withSecurityHeaders(withApiCorsHeaders(routedRequest, rateLimited, env));
 			}
 
-			let apiRequest = request;
-			if (access.lane === 'builder' && access.session && url.pathname.includes('/me')) {
-				const rewritten = new URL(request.url);
-				rewritten.pathname = rewriteMePath(url.pathname, access.session);
-				apiRequest = new Request(rewritten.toString(), request);
+			let apiRequest = routedRequest;
+			if (access.lane === 'builder' && access.session && pathname.includes('/me')) {
+				const rewritten = new URL(routedRequest.url);
+				rewritten.pathname = rewriteMePath(pathname, access.session);
+				apiRequest = new Request(rewritten.toString(), routedRequest);
 			}
 
 			const headers = new Headers(apiRequest.headers);
@@ -170,25 +182,40 @@ async function handleRequest(
 
 			const apiResponse = await getApi(env).fetch(apiRequest, env, ctx);
 			return withSecurityHeaders(
-				withApiCorsHeaders(request, withLaneHeaders(apiResponse, access.lane), env),
+				withApiCorsHeaders(routedRequest, withLaneHeaders(apiResponse, access.lane), env),
 			);
 		} finally {
 			clearActiveLane();
 		}
 	}
 
-	return Response.json({
+	return Response.json(buildDiscoveryPayload(env, surface));
+}
+
+function buildDiscoveryPayload(env: Env, surface: RequestSurface) {
+	const payload: Record<string, unknown> = {
 		status: 'ok',
 		name: 'clocktower-mcp',
-		mcp: '/mcp',
-		rest: '/api',
+		hosts: {
+			api: getPublicApiOrigin(env),
+			mcp: getPublicMcpOrigin(env),
+		},
+		mcp: `${getPublicMcpOrigin(env)}/`,
+		rest: getPublicApiOrigin(env),
 		apiEnabled: isApiEnabled(env),
+		surface,
 		note: 'REST API is free with tiered rate limits. MCP requires x402.',
 		access: {
 			rest: 'free (rate-limited) or builder session',
 			mcp: 'x402 required',
 		},
-	});
+	};
+
+	if (surface === 'legacy') {
+		payload.legacyPaths = { rest: '/api', mcp: '/mcp' };
+	}
+
+	return payload;
 }
 
 export default {

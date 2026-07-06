@@ -51,6 +51,12 @@ declare namespace Cloudflare {
 		CFP_ALLOWED_ORIGINS?: string;
 		/** Comma-separated browser origins allowed to call /api with CORS. Unset = CORS disabled. */
 		API_CORS_ALLOWED_ORIGINS?: string;
+		/** Public REST hostname (default api.clocktower.finance). */
+		API_HOST?: string;
+		/** Public MCP hostname (default mcp.clocktower.finance). */
+		MCP_HOST?: string;
+		/** SIWE message domain for Builder auth (default api.clocktower.finance). */
+		SIWE_DOMAIN?: string;
 	}
 }
 

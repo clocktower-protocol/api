@@ -19,8 +19,13 @@ describe('clocktower-mcp worker', () => {
 		expect(body).toMatchObject({
 			status: 'ok',
 			name: 'clocktower-mcp',
-			mcp: '/mcp',
-			rest: '/api',
+			mcp: 'https://mcp.clocktower.finance/',
+			rest: 'https://api.clocktower.finance',
+			hosts: {
+				api: 'https://api.clocktower.finance',
+				mcp: 'https://mcp.clocktower.finance',
+			},
+			surface: 'legacy',
 		});
 		// The note can change over time during the x402 transition
 		expect(typeof body.note).toBe('string');
@@ -32,7 +37,7 @@ describe('clocktower-mcp worker', () => {
 
 		const body = (await res.json()) as { status: string; mcp: string };
 		expect(body.status).toBe('ok');
-		expect(body.mcp).toBe('/mcp');
+		expect(body.mcp).toBe('https://mcp.clocktower.finance/');
 	});
 
 	it('applies defensive security headers to root JSON', async () => {

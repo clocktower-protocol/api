@@ -7,9 +7,9 @@ import {
 	verifyEntitlementForAddress,
 } from '../auth/session.js';
 import { isEntitlementAuthEnabled } from '../config/entitlementBuilder.js';
+import { getSiweDomain } from '../config/hostnames.js';
 import { jsonResponse } from './responses.js';
 
-const SIWE_DOMAIN = 'clocktower.workers.dev';
 const SIWE_CHAIN_ID = 8453;
 
 function authDisabledResponse(): Response {
@@ -34,8 +34,9 @@ export async function handleAuthChallenge(request: Request, env: Env): Promise<R
 	await storeNonce(env, nonce);
 
 	const issuedAt = new Date().toISOString();
+	const siweDomain = getSiweDomain(env);
 	const message = buildSiweMessage({
-		domain: SIWE_DOMAIN,
+		domain: siweDomain,
 		address: address as `0x${string}`,
 		uri: new URL(request.url).origin,
 		chainId: SIWE_CHAIN_ID,
@@ -75,8 +76,9 @@ export async function handleAuthVerify(request: Request, env: Env): Promise<Resp
 		return jsonResponse({ error: 'Invalid or expired nonce', code: 'AUTH_FAILED' }, 401);
 	}
 
+	const siweDomain = getSiweDomain(env);
 	const address = await verifySiweSignature(body.message, body.signature as `0x${string}`, {
-		domain: SIWE_DOMAIN,
+		domain: siweDomain,
 		chainId: SIWE_CHAIN_ID,
 		nonce,
 	});

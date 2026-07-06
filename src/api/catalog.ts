@@ -1,13 +1,26 @@
 import { DEFAULT_TIER_LIMITS } from '../config/rateLimits.js';
 import { isApiEnabled } from '../config/apiAccess.js';
 import { isEntitlementAuthEnabled } from '../config/entitlementBuilder.js';
+import {
+	getPublicApiOrigin,
+	getPublicMcpOrigin,
+	getSiweDomain,
+} from '../config/hostnames.js';
 import { jsonResponse } from './responses.js';
 import { API_ROUTE_MANIFEST } from './x402.js';
 
 export function handleGetCatalog(env: Env) {
+	const apiOrigin = getPublicApiOrigin(env);
 	return jsonResponse({
 		version: '2',
 		chainId: 8453,
+		hosts: {
+			api: apiOrigin,
+			mcp: getPublicMcpOrigin(env),
+		},
+		siweDomain: getSiweDomain(env),
+		pathNote:
+			'On api host, omit the /api prefix (e.g. GET /catalog). Legacy workers.dev URLs keep /api.',
 		access: {
 			rest: {
 				free: {
@@ -19,7 +32,7 @@ export function handleGetCatalog(env: Env) {
 					auth: 'SIWE session (Bearer token)',
 					enabled: 'BUILDER_SUB_ID configured',
 					limits: DEFAULT_TIER_LIMITS.builder,
-					authEndpoints: ['/api/auth/challenge', '/api/auth/verify'],
+					authEndpoints: [`${apiOrigin}/auth/challenge`, `${apiOrigin}/auth/verify`],
 				},
 			},
 			mcp: {
