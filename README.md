@@ -8,6 +8,8 @@ Clocktower API is a Cloudflare Workers-based server that provides access to the 
 
 Access uses three lanes: **free REST** (rate-limited), **Builder REST** (SIWE session + on-chain entitlement subscription), and **MCP** (x402 for agents).
 
+**Jump to:** [MCP Server](#mcp-server) · [REST API](#rest-api)
+
 ## Production hosts
 
 One Cloudflare Worker serves both surfaces on dedicated subdomains:
