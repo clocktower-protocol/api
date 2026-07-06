@@ -2,6 +2,7 @@
   "name": "clocktower-mcp",
   "version": "1.0.0",
   "description": "MCP Server for the Clocktower Protocol",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "scripts": {

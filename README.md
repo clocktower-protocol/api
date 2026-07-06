@@ -418,6 +418,13 @@ For security-related notes, see `SECURITY_FOLLOWUPS.md`.
 
 ---
 
-## License
+## License and terms
 
-Private project.
+| Document | Applies to |
+|----------|------------|
+| [MIT License](LICENSE) | Source code in this repository (audit, fork, self-host permitted under MIT) |
+| [Terms of Use](TERMS.md) | Hosted production API at `api.clocktower.finance` and MCP at `mcp.clocktower.finance` |
+
+The **official** production API is operated by **Clocktower LLC**. This public
+repo is the reference implementation. Use of the hosted endpoints is subject to
+[TERMS.md](TERMS.md); self-hosted deployments are not supported or endorsed.
