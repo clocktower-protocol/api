@@ -46,9 +46,9 @@ export async function checkSubscribeReadiness(
 		});
 		onChainSubscription = parseSubscriptionRecord(raw);
 	} catch (error) {
-		return emptySubscribeReadiness(warnings, [
-			error instanceof Error ? error.message : 'Subscription not found',
-		]);
+		// Do not surface viem/RPC messages (may embed Alchemy URL + API key).
+		console.error('[checkSubscribeReadiness] idSubMap failed', error);
+		return emptySubscribeReadiness(warnings, ['Failed to load subscription from chain']);
 	}
 
 	if (

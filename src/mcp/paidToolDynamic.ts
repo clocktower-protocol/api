@@ -2,6 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { HTTPFacilitatorClient, x402ResourceServer } from '@x402/core/server';
 import { registerExactEvmScheme } from '@x402/evm/exact/server';
 import type { ZodTypeAny } from 'zod';
+import { clientSafeMessage } from '../sanitizeUpstream.js';
 import { buildX402Config } from '../x402.js';
 
 const LEGACY_NETWORK_MAP: Record<string, string> = {
@@ -168,12 +169,17 @@ export function registerDynamicPaidTool(
 				}
 			} catch (e) {
 				failed = true;
+				const raw = e instanceof Error ? e.message : String(e);
+				console.error(`[paidToolDynamic] ${name} threw`, e);
 				result = {
 					isError: true,
 					content: [
 						{
 							type: 'text',
-							text: `Tool execution failed: ${String(e)}`,
+							text: clientSafeMessage(
+								`Tool execution failed: ${raw}`,
+								'Tool execution failed',
+							),
 						},
 					],
 				};

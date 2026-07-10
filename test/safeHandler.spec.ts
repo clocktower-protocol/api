@@ -226,6 +226,26 @@ describe('safeHandler', () => {
 		expect(payload.requestId).toBe('abc-request-id');
 	});
 
+	it('redacts Alchemy URL/key from PREPARE_FAILURE messages (L7 complete)', async () => {
+		const apiKey = 'super-secret-alchemy-key-12345';
+		const rpcUrl = `https://base-mainnet.g.alchemy.com/v2/${apiKey}`;
+		const result = await safeHandler('prepare_subscribe', async () => {
+			throw attachRequestId(
+				new Error(`Simulation failed: HTTP request failed.\nURL: ${rpcUrl}`),
+				'prep-request-id',
+			);
+		});
+
+		const text = result.content[0].text;
+		expect(text).not.toContain(apiKey);
+		expect(text).not.toContain('alchemy.com');
+
+		const payload = parseResult(result);
+		expect(payload.code).toBe('PREPARE_FAILURE');
+		expect(payload.error).toBe('Prepare failed');
+		expect(payload.requestId).toBe('prep-request-id');
+	});
+
 	it('wraps history tools (get_provider_profile example) without leaking internals', async () => {
 		// History tools use the same safeHandler path as all other MCP tools
 		const result = await safeHandler('get_provider_profile', async () => {

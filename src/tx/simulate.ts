@@ -1,4 +1,5 @@
 import type { Address, Hex } from 'viem';
+import { clientSafeMessage } from '../sanitizeUpstream.js';
 import type { SimulationResult, UnsignedTransaction } from './types.js';
 
 /**
@@ -36,9 +37,11 @@ export async function simulateUnsignedTransactions(
 				});
 				return { success: true };
 			} catch (error) {
+				const raw = error instanceof Error ? error.message : String(error);
 				return {
 					success: false,
-					error: error instanceof Error ? error.message : String(error),
+					// Viem HttpRequestError embeds the full RPC URL (incl. API key).
+					error: clientSafeMessage(raw, 'Simulation call failed'),
 				};
 			}
 		}),

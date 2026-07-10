@@ -32,6 +32,7 @@
 
 import { BaseError, ContractFunctionRevertedError } from 'viem';
 import { ZodError } from 'zod';
+import { clientSafeMessage } from '../sanitizeUpstream.js';
 import { getRequestId } from '../tx/prepare-response.js';
 import { serializeJson } from '../utils.js';
 
@@ -99,9 +100,12 @@ export async function safeHandler<T extends SafeToolResult>(
 
 		const attachedRequestId = getRequestId(err);
 		if (attachedRequestId && err instanceof Error) {
+			// Prepare attaches requestId before rethrowing. Messages may still embed
+			// viem transport URLs (Alchemy key) from simulation failures — never
+			// surface those verbatim (L7 completion).
 			console.error(`[safeHandler] ${name} failed`, { requestId: attachedRequestId, error: err });
 			return asResult({
-				error: err.message,
+				error: clientSafeMessage(err.message, 'Prepare failed'),
 				code: 'PREPARE_FAILURE',
 				requestId: attachedRequestId,
 			});
