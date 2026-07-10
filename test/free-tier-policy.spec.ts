@@ -34,6 +34,23 @@ describe('free tier policy', () => {
 		expect(res).toBeNull();
 	});
 
+	it('rejects free-tier search with first > 10', () => {
+		const req = new Request('http://example.com/api/subscriptions?first=25');
+		const res = enforceFreeTierPolicy('GET', '/api/subscriptions', req);
+		expect(res?.status).toBe(400);
+	});
+
+	it('rejects free-tier search with includeDetails=true', () => {
+		const req = new Request('http://example.com/api/subscriptions?includeDetails=true');
+		const res = enforceFreeTierPolicy('GET', '/api/subscriptions', req);
+		expect(res?.status).toBe(400);
+	});
+
+	it('allows free-tier search with first <= 10', () => {
+		const req = new Request('http://example.com/api/subscriptions?first=10');
+		expect(enforceFreeTierPolicy('GET', '/api/subscriptions', req)).toBeNull();
+	});
+
 	it('does not require x402 on REST protocol state', async () => {
 		const res = await fetchWorker('/api/protocol/state', {
 			headers: { 'CF-Connecting-IP': '203.0.113.50' },

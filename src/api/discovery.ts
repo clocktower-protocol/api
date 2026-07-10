@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { Errors, jsonResponse } from './responses.js';
 import { addressSchema } from './read.js';
+import { FREE_SEARCH_MAX_FIRST } from '../middleware/freeTierPolicy.js';
+import { parseAccessLane } from '../requestLane.js';
 import { searchSubscriptions } from '../tools/discovery.js';
 
 const frequencySchema = z.coerce.number().int().min(0).max(3).optional();
@@ -10,7 +12,13 @@ const booleanQuerySchema = z
 	.transform((val) => val === 'true')
 	.optional();
 
-export async function handleSearchSubscriptions(env: Env, query: Record<string, string | undefined>) {
+export async function handleSearchSubscriptions(
+	env: Env,
+	query: Record<string, string | undefined>,
+	laneHeader?: string | null,
+) {
+	const lane = parseAccessLane(laneHeader);
+
 	const providerParse = query.provider
 		? addressSchema.safeParse(query.provider)
 		: { success: true as const, data: undefined };
@@ -46,14 +54,26 @@ export async function handleSearchSubscriptions(env: Env, query: Record<string, 
 		return Errors.validation('Invalid includeDetails parameter (must be true or false)');
 	}
 
-	const first = query.first ? Number(query.first) : undefined;
+	let first = query.first ? Number(query.first) : undefined;
 	const skip = query.skip ? Number(query.skip) : undefined;
 
-	if (first !== undefined && (!Number.isInteger(first) || first < 1 || first > 50)) {
-		return Errors.validation('Invalid first parameter (must be 1-50)');
+	const maxFirst = lane === 'free' ? FREE_SEARCH_MAX_FIRST : 50;
+	if (first !== undefined && (!Number.isInteger(first) || first < 1 || first > maxFirst)) {
+		return Errors.validation(
+			lane === 'free'
+				? `Invalid first parameter (free tier: 1–${FREE_SEARCH_MAX_FIRST})`
+				: 'Invalid first parameter (must be 1-50)',
+		);
 	}
 	if (skip !== undefined && (!Number.isInteger(skip) || skip < 0)) {
 		return Errors.validation('Invalid skip parameter (must be >= 0)');
+	}
+
+	let includeDetails = includeDetailsParse.data ?? false;
+	if (lane === 'free' && includeDetails) {
+		return Errors.validation(
+			'Free tier does not support includeDetails=true; omit it or authenticate as Builder',
+		);
 	}
 
 	try {
@@ -62,7 +82,7 @@ export async function handleSearchSubscriptions(env: Env, query: Record<string, 
 			token: tokenParse.data as `0x${string}` | undefined,
 			frequency: frequencyParse.data,
 			cancelled: cancelledParse.data ?? false,
-			includeDetails: includeDetailsParse.data ?? false,
+			includeDetails,
 			first,
 			skip,
 		});

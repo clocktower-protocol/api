@@ -77,10 +77,13 @@ export async function handleAuthVerify(request: Request, env: Env): Promise<Resp
 	}
 
 	const siweDomain = getSiweDomain(env);
+	const requestOrigin = new URL(request.url).origin;
 	const address = await verifySiweSignature(body.message, body.signature as `0x${string}`, {
 		domain: siweDomain,
 		chainId: SIWE_CHAIN_ID,
 		nonce,
+		// Challenge embeds request origin as URI; pin on verify to limit message reuse across hosts.
+		uri: requestOrigin,
 	});
 
 	if (!address) {

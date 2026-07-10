@@ -50,8 +50,10 @@ describe('entitlement config', () => {
 		expect(isConfiguredEntitlementSubscriptionId(env, `0x${'ee'.repeat(32)}`)).toBe(false);
 	});
 
-	it('maps catalog and me routes', () => {
+	it('maps catalog, auth, and me routes', () => {
 		expect(findEntitlementRoute('GET', '/api/catalog')?.rule.kind).toBe('always');
+		expect(findEntitlementRoute('POST', '/api/auth/challenge')?.rule.kind).toBe('always');
+		expect(findEntitlementRoute('POST', '/api/auth/verify')?.rule.kind).toBe('always');
 		expect(findEntitlementRoute('GET', '/api/accounts/me')?.rule.kind).toBe('me_only');
 		expect(findEntitlementRoute('GET', '/api/accounts/0x1')?.rule.kind).toBe('denied');
 	});

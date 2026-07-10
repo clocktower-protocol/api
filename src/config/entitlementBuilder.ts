@@ -21,6 +21,8 @@ export const BUILDER_ENTITLEMENT_ROUTES: EntitlementRoute[] = [
 	{ method: 'GET', pathPattern: /^\/api\/catalog$/, rule: { kind: 'always' } },
 	{ method: 'GET', pathPattern: /^\/api\/protocol\/state$/, rule: { kind: 'always' } },
 	{ method: 'GET', pathPattern: /^\/api\/status$/, rule: { kind: 'always' } },
+	{ method: 'POST', pathPattern: /^\/api\/auth\/challenge$/, rule: { kind: 'always' } },
+	{ method: 'POST', pathPattern: /^\/api\/auth\/verify$/, rule: { kind: 'always' } },
 	{ method: 'GET', pathPattern: /^\/api\/approved-tokens$/, rule: { kind: 'always' } },
 	{ method: 'GET', pathPattern: /^\/api\/approved-tokens\/[^/]+$/, rule: { kind: 'always' } },
 	{ method: 'GET', pathPattern: /^\/api\/subscriptions$/, rule: { kind: 'always' } },

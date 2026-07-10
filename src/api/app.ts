@@ -37,7 +37,9 @@ export type ApiAppOptions = Record<string, never>;
  * Builder subscribers authenticate via SIWE session (Bearer token).
  * MCP `/mcp` remains x402-gated for agents.
  *
- * === Current Endpoints (all x402-protected unless noted) ===
+ * === Current Endpoints ===
+ * REST is free with tiered rate limits (or Builder SIWE session). MCP uses x402.
+ *
  * Read:
  *   - GET /api/catalog
  *   - GET /api/protocol/state
@@ -57,7 +59,7 @@ export type ApiAppOptions = Record<string, never>;
  *   - GET /api/subscriptions/:id/details-history
  *   - GET /api/status
  *
- * Write:
+ * Write (prepare-only; client wallet signs and broadcasts):
  *   - POST /api/check_subscribe_readiness
  *   - POST /api/prepare/create_subscription
  *   - POST /api/prepare/subscribe
@@ -69,7 +71,7 @@ export type ApiAppOptions = Record<string, never>;
  *   - POST /api/prepare/remit
  *   - POST /api/transactions/status
  *
- * Not x402-protected: GET / (API discovery only)
+ * Auth: POST /api/auth/challenge, POST /api/auth/verify
  *
  * Related modules:
  *   - src/api/pricing.ts   → Centralized pricing
@@ -119,7 +121,11 @@ export function createApiApp(_options: ApiAppOptions = {}) {
   });
 
   app.get('/api/subscriptions', async (c: any) => {
-    return await handleSearchSubscriptions(c.env, c.req.query());
+    return await handleSearchSubscriptions(
+      c.env,
+      c.req.query(),
+      c.req.header('X-Clocktower-Lane'),
+    );
   });
 
   app.get('/api/subscriptions/:id/details', async (c: any) => {
