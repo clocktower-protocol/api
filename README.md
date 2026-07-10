@@ -39,8 +39,8 @@ Builder SIWE auth uses domain `api.clocktower.finance` (configurable via `SIWE_D
 | **Builder** | REST `/api/*` | SIWE session (`Authorization: Bearer cts_…`) | 120 rpm/address; subgraph 10k/day; writes 30/min; scoped to your wallet |
 | **Agent** | MCP `/mcp` | x402 (USDC on Base) | 300 rpm/IP; writes 60/min/address |
 
-- **Free tier**: No API key. Same REST endpoints as Builder; lower rate limits (20 rpm global, 2 prepare/min/IP, etc.). Cross-account reads allowed (expensive bucket). Provider writes (`cancel`, `unsubscribe_by_provider`, `edit_details`) use the write bucket; on-chain authorization still applies in prepare handlers.
-- **Builder tier**: Subscribe to the Clocktower Builder entitlement subscription on-chain, then `POST /api/auth/challenge` → sign SIWE message → `POST /api/auth/verify` for a session token. Use `:me` routes for your own account. Requires `BUILDER_SUB_ID` in Worker config.
+- **Free tier**: No API key. Same REST endpoints as Builder; lower rate limits (20 rpm global, 2 prepare/min/IP, etc.). Cross-account reads allowed (expensive bucket). Provider writes (`cancel`, `unsubscribe_by_provider`, `edit_details`) use the write bucket; on-chain authorization still applies in prepare handlers. Discovery search is capped: `first` max **10**, and `includeDetails=true` is rejected (Builder may use up to 50 and `includeDetails`).
+- **Builder tier**: Subscribe to the Clocktower Builder entitlement subscription on-chain, then `POST /api/auth/challenge` → sign SIWE message → `POST /api/auth/verify` for a session token. Use `:me` routes for your own account. Requires `BUILDER_SUB_ID` (or `BUILDER_SUB_IDS`) in Worker config.
 - **MCP**: Unchanged x402 flow; higher rate limits than the legacy flat 60 rpm cap.
 
 See `GET /api/catalog` for the machine-readable tier manifest.
@@ -206,14 +206,16 @@ Staging / local dev: `https://your-worker.workers.dev/api/...`
 | `Authorization: Bearer <session>` | Builder tier — after SIWE verify |
 | x402 | **Not used on REST** (MCP only) |
 
-**Builder auth quickstart** (requires `BUILDER_SUB_ID` configured):
+**Builder auth quickstart** (requires `BUILDER_SUB_ID` or `BUILDER_SUB_IDS` configured):
 
 1. `POST https://api.clocktower.finance/auth/challenge` with `{ "address": "0x…" }` → receive `message` + `nonce`
 2. Wallet `personal_sign` on the message (domain must be `api.clocktower.finance`)
 3. `POST https://api.clocktower.finance/auth/verify` with `{ "message", "signature" }` → receive `token`
 4. Send `Authorization: Bearer <token>` on subsequent API calls
 
-Builder scope: own account (`/api/accounts/me`, …), content subs you subscribe to or created, discovery, subscriber writes for your wallet. Provider management and cross-account reads are **not** included in Builder scope (use the free tier for public cross-account reads).
+Sign and verify promptly: SIWE **Issued At** must be fresh (~10 minutes). The message **URI** must match the challenge origin (same host you called for challenge). Reusing an old message or verifying against a different origin fails.
+
+Builder scope: own account (`/api/accounts/me`, …), content subs you subscribe to or created, discovery, subscriber writes for your wallet. Provider management and cross-account reads are **not** included in Builder scope (use the free tier for public cross-account reads). Auth challenge/verify remain available while holding a Builder session.
 
 Optional HTTP Basic Auth on `/api` is controlled by `API_REQUIRE_BASIC_AUTH` (default **`false`**).
 
@@ -241,7 +243,7 @@ Paths below use the production API host form (no `/api` prefix). On `*.workers.d
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /subscriptions` | Search active subscriptions. Query params: `provider`, `token`, `frequency`, `cancelled` (default `false`), `includeDetails`, `first` (max 50), `skip` |
+| `GET /subscriptions` | Search active subscriptions. Query params: `provider`, `token`, `frequency`, `cancelled` (default `false`), `includeDetails`, `first`, `skip`. **Free:** `first` max 10, no `includeDetails`. **Builder:** `first` max 50, `includeDetails` allowed. |
 | `GET /subscriptions/:id/details` | Current url/description (latest DetailsLog) |
 
 #### History & Profile Endpoints (GET, subgraph-backed)
