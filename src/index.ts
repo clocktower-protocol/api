@@ -11,7 +11,6 @@ import { handleApiCorsPreflight, withApiCorsHeaders } from './cors.js';
 import { getRateLimitIdentity, resolveApiAccess } from './middleware/accessLane.js';
 import { enforceBuilderPolicy, rewriteMePath } from './middleware/entitlementPolicy.js';
 import { enforceFreeTierPolicy } from './middleware/freeTierPolicy.js';
-import { clearActiveLane, setActiveLane } from './requestLane.js';
 import { isApiEnabled, isApiHealthCheckPath } from './config/apiAccess.js';
 import {
 	getPublicApiOrigin,
@@ -99,18 +98,13 @@ async function handleRequest(
 			return unauthorized;
 		}
 
-		setActiveLane('mcp');
-		try {
-			const rateLimited = await enforceMcpRateLimit(routedRequest, env);
-			if (rateLimited) {
-				return rateLimited;
-			}
-
-			const mcpHandler = ClocktowerMCP.serve('/mcp');
-			return await mcpHandler.fetch(routedRequest, env, ctx);
-		} finally {
-			clearActiveLane();
+		const rateLimited = await enforceMcpRateLimit(routedRequest, env);
+		if (rateLimited) {
+			return rateLimited;
 		}
+
+		const mcpHandler = ClocktowerMCP.serve('/mcp');
+		return await mcpHandler.fetch(routedRequest, env, ctx);
 	}
 
 	if (shouldHandleApiRoute(pathname, surface)) {
@@ -147,46 +141,42 @@ async function handleRequest(
 		}
 
 		const access = await resolveApiAccess(routedRequest, env);
-		setActiveLane(access.lane);
 
-		try {
-			if (access.lane === 'free') {
-				const policyBlocked = enforceFreeTierPolicy(routedRequest.method, pathname);
-				if (policyBlocked) {
-					return withSecurityHeaders(withApiCorsHeaders(routedRequest, policyBlocked, env));
-				}
-			} else if (access.session) {
-				const policyBlocked = await enforceBuilderPolicy(routedRequest, env, access.session);
-				if (policyBlocked) {
-					return withSecurityHeaders(withApiCorsHeaders(routedRequest, policyBlocked, env));
-				}
+		if (access.lane === 'free') {
+			const policyBlocked = enforceFreeTierPolicy(routedRequest.method, pathname, routedRequest);
+			if (policyBlocked) {
+				return withSecurityHeaders(withApiCorsHeaders(routedRequest, policyBlocked, env));
 			}
-
-			const identity = getRateLimitIdentity(access, routedRequest);
-			const rateLimited = await enforceTierRateLimits(routedRequest, env, access.lane, identity);
-			if (rateLimited) {
-				return withSecurityHeaders(withApiCorsHeaders(routedRequest, rateLimited, env));
+		} else if (access.session) {
+			const policyBlocked = await enforceBuilderPolicy(routedRequest, env, access.session);
+			if (policyBlocked) {
+				return withSecurityHeaders(withApiCorsHeaders(routedRequest, policyBlocked, env));
 			}
-
-			let apiRequest = routedRequest;
-			if (access.lane === 'builder' && access.session && pathname.includes('/me')) {
-				const rewritten = new URL(routedRequest.url);
-				rewritten.pathname = rewriteMePath(pathname, access.session);
-				apiRequest = new Request(rewritten.toString(), routedRequest);
-			}
-
-			const headers = new Headers(apiRequest.headers);
-			headers.set('X-Clocktower-Lane', access.lane);
-			// Preserve method/body — spreading a Request drops POST (becomes GET → 404 on write routes).
-			apiRequest = new Request(apiRequest, { headers });
-
-			const apiResponse = await getApi(env).fetch(apiRequest, env, ctx);
-			return withSecurityHeaders(
-				withApiCorsHeaders(routedRequest, withLaneHeaders(apiResponse, access.lane), env),
-			);
-		} finally {
-			clearActiveLane();
 		}
+
+		const identity = getRateLimitIdentity(access, routedRequest);
+		const rateLimited = await enforceTierRateLimits(routedRequest, env, access.lane, identity);
+		if (rateLimited) {
+			return withSecurityHeaders(withApiCorsHeaders(routedRequest, rateLimited, env));
+		}
+
+		let apiRequest = routedRequest;
+		if (access.lane === 'builder' && access.session && pathname.includes('/me')) {
+			const rewritten = new URL(routedRequest.url);
+			rewritten.pathname = rewriteMePath(pathname, access.session);
+			apiRequest = new Request(rewritten.toString(), routedRequest);
+		}
+
+		const headers = new Headers(apiRequest.headers);
+		// Server-authoritative lane for handlers (write RPM, free-tier search caps).
+		headers.set('X-Clocktower-Lane', access.lane);
+		// Preserve method/body — spreading a Request drops POST (becomes GET → 404 on write routes).
+		apiRequest = new Request(apiRequest, { headers });
+
+		const apiResponse = await getApi(env).fetch(apiRequest, env, ctx);
+		return withSecurityHeaders(
+			withApiCorsHeaders(routedRequest, withLaneHeaders(apiResponse, access.lane), env),
+		);
 	}
 
 	return Response.json(buildDiscoveryPayload(env, surface));

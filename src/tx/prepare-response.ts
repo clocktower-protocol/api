@@ -1,6 +1,5 @@
 import { BASE_CHAIN_ID } from '../chain.js';
 import type { AccessLane } from '../config/rateLimits.js';
-import { getActiveLane } from '../requestLane.js';
 import { enforceWriteRateLimitForAddress } from '../rateLimit.js';
 import type { PrepareResult, ReadinessOnlyResult, PrepareResponse } from './types.js';
 
@@ -8,7 +7,12 @@ export type PrepareOptions = {
 	readinessOnly?: boolean;
 	/** Account passed to eth_estimateGas; defaults to `from`. */
 	simulateFromAddress?: `0x${string}`;
-	/** Rate-limit bucket lane (API builder/free or MCP). */
+	/**
+	 * Rate-limit bucket lane (API builder/free or MCP).
+	 * Must be passed explicitly — do not use isolate-global state (concurrent
+	 * requests on one Worker isolate would cross-contaminate buckets).
+	 * Defaults to `free` (strictest API write RPM) when omitted.
+	 */
 	lane?: AccessLane;
 };
 
@@ -149,7 +153,8 @@ export async function runPrepare<T extends PrepareResponse>(
 	fn: (ctx: { requestId: string }) => Promise<T>,
 	lane?: AccessLane,
 ): Promise<T> {
-	await enforceWriteRateLimitForAddress(env, from, lane ?? getActiveLane());
+	// Default free is intentional: missing lane must not inherit builder/mcp RPM.
+	await enforceWriteRateLimitForAddress(env, from, lane ?? 'free');
 	const requestId = createRequestId();
 
 	try {

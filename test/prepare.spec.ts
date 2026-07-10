@@ -18,10 +18,12 @@ import {
 import { checkRemitReadiness } from '../src/tx/remit-preflight.js';
 import * as remitScan from '../src/tx/remit-scan.js';
 import * as utils from '../src/utils.js';
-import { clearActiveLane, setActiveLane } from '../src/requestLane.js';
 import * as rateLimit from '../src/rateLimit.js';
 import type { PrepareResponse, PrepareResult, ReadinessOnlyResult } from '../src/tx/types.js';
 import { createGasAwareFetch } from './rpc-mocks.js';
+
+/** Explicit MCP lane so write RPM uses MCP_WRITE_RATE_LIMIT_RPM (no isolate global). */
+const mcpLane = { lane: 'mcp' as const };
 
 function expectFullPrepare(result: PrepareResponse): PrepareResult {
 	if ('readinessOnly' in result && result.readinessOnly) {
@@ -45,8 +47,6 @@ const testEnv = {
 	MCP_WRITE_RATE_LIMIT_RPM: '1000',
 } as Env;
 
-beforeEach(() => setActiveLane('mcp'));
-afterEach(() => clearActiveLane());
 
 function encodeUint(value: bigint | number): string {
 	return `0x${BigInt(value).toString(16).padStart(64, '0')}`;
@@ -117,6 +117,7 @@ describe('prepareCreateSubscription', () => {
 				{ url: 'https://example.com', description: 'test' },
 				1,
 				15,
+			mcpLane,
 			),
 		);
 
@@ -146,7 +147,7 @@ describe('prepareCreateSubscription', () => {
 			{ url: 'https://example.com', description: 'test' },
 			1,
 			15,
-			{ simulateFromAddress: simulateFrom },
+			{ ...mcpLane, simulateFromAddress: simulateFrom },
 		);
 
 		expect(estimateSpy).toHaveBeenCalledWith(
@@ -158,14 +159,15 @@ describe('prepareCreateSubscription', () => {
 	});
 
 	it('enforces per-address write rate limit on prepare', async () => {
-		setActiveLane('free');
 		const from = '0x00000000000000000000000000000000000000aa';
 		const limitedEnv = {
 			...testEnv,
 			FREE_WRITE_RATE_LIMIT_RPM: '1',
 		} as Env;
 
-		const args = [
+		const freeOpts = { lane: 'free' as const };
+
+		await prepareCreateSubscription(
 			limitedEnv,
 			from,
 			10n ** 18n,
@@ -173,15 +175,23 @@ describe('prepareCreateSubscription', () => {
 			{ url: 'https://example.com', description: 'test' },
 			1,
 			15,
-		] as const;
-
-		await prepareCreateSubscription(...args);
-		await expect(prepareCreateSubscription(...args)).rejects.toThrow(/Write rate limit exceeded/);
-		setActiveLane('mcp');
+			freeOpts,
+		);
+		await expect(
+			prepareCreateSubscription(
+				limitedEnv,
+				from,
+				10n ** 18n,
+				'0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+				{ url: 'https://example.com', description: 'test' },
+				1,
+				15,
+				freeOpts,
+			),
+		).rejects.toThrow(/Write rate limit exceeded/);
 	});
 
-	it('honors explicit lane option over module active lane', async () => {
-		setActiveLane('free');
+	it('honors explicit lane option for write rate limit bucket', async () => {
 		const from = '0x00000000000000000000000000000000000000bb';
 		const spy = vi.spyOn(rateLimit, 'enforceWriteRateLimitForAddress').mockResolvedValue();
 
@@ -202,7 +212,6 @@ describe('prepareCreateSubscription', () => {
 
 		expect(spy).toHaveBeenCalledWith(testEnv, from, 'mcp');
 		spy.mockRestore();
-		setActiveLane('mcp');
 	});
 
 	// M1 — these failure modes must throw rather than return successfully.
@@ -225,6 +234,7 @@ describe('prepareCreateSubscription', () => {
 				{ url: 'https://example.com', description: 'test' },
 				1,
 				15,
+			mcpLane,
 			),
 		).rejects.toThrow(/paused/);
 	});
@@ -248,6 +258,7 @@ describe('prepareCreateSubscription', () => {
 				{ url: 'https://example.com', description: 'test' },
 				1,
 				15,
+			mcpLane,
 			),
 		).rejects.toThrow(/Simulation failed/);
 	});
@@ -303,6 +314,7 @@ describe('prepare* canonicalization (H5)', () => {
 					frequency: 1,
 					dueDay: 15,
 				},
+				mcpLane,
 			),
 		).rejects.toThrow(/Only the subscription provider can cancel/);
 	});
@@ -331,6 +343,7 @@ describe('prepare* canonicalization (H5)', () => {
 					frequency: 1,
 					dueDay: 15,
 				},
+				mcpLane,
 			),
 		).rejects.toThrow(/Subscription not found/);
 	});
@@ -347,6 +360,7 @@ describe('prepare* canonicalization (H5)', () => {
 				'0x0000000000000000000000000000000000000001',
 				`0x${'11'.repeat(32)}`,
 				{ url: 'https://example.com', description: 'updated' },
+				mcpLane,
 			),
 		).rejects.toThrow(/Only the subscription provider can edit/);
 	});
@@ -451,7 +465,7 @@ describe('prepareUnsubscribe is-subscriber preflight (L13)', () => {
 			mockGetAccountSubscriptionsResult([]),
 		]);
 
-		await expect(prepareUnsubscribe(testEnv, FROM, subscriptionInput)).rejects.toThrow(
+		await expect(prepareUnsubscribe(testEnv, FROM, subscriptionInput, mcpLane)).rejects.toThrow(
 			/not currently subscribed/,
 		);
 	});
@@ -463,7 +477,7 @@ describe('prepareUnsubscribe is-subscriber preflight (L13)', () => {
 			mockGetAccountSubscriptionsResult([otherId]),
 		]);
 
-		await expect(prepareUnsubscribe(testEnv, FROM, subscriptionInput)).rejects.toThrow(
+		await expect(prepareUnsubscribe(testEnv, FROM, subscriptionInput, mcpLane)).rejects.toThrow(
 			/not currently subscribed/,
 		);
 	});
@@ -478,7 +492,7 @@ describe('prepareUnsubscribe is-subscriber preflight (L13)', () => {
 		]);
 
 		const result = expectFullPrepare(
-			await prepareUnsubscribe(testEnv, FROM, subscriptionInput),
+			await prepareUnsubscribe(testEnv, FROM, subscriptionInput, mcpLane),
 		);
 		expect(result.unsignedTransactions).toHaveLength(1);
 		expect(result.preflight).toMatchObject({ id: ID });
@@ -567,7 +581,7 @@ describe('remit prepare + readiness', () => {
 			}),
 		) as typeof fetch;
 
-		await expect(prepareRemit(testEnv, FROM)).rejects.toThrow(/before next unchecked day/);
+		await expect(prepareRemit(testEnv, FROM, mcpLane)).rejects.toThrow(/before next unchecked day/);
 	});
 
 	it('prepareRemit with readinessOnly skips unsigned transactions', async () => {
@@ -585,7 +599,7 @@ describe('remit prepare + readiness', () => {
 		}) as typeof fetch;
 
 		const result = expectReadinessOnly(
-			await prepareRemit(testEnv, FROM, { readinessOnly: true }),
+			await prepareRemit(testEnv, FROM, { ...mcpLane, readinessOnly: true }),
 		);
 		expect(result.readinessOnly).toBe(true);
 		expect(result.requestId).toMatch(
@@ -601,7 +615,7 @@ describe('remit prepare + readiness', () => {
 
 		globalThis.fetch = createGasAwareFetch([encodeUint(999), encodeUint(10), '0x']);
 
-		const result = expectFullPrepare(await prepareRemit(testEnv, FROM));
+		const result = expectFullPrepare(await prepareRemit(testEnv, FROM, mcpLane));
 		expect(result.gasSummary?.backlogMultiplier).toBe(3);
 		expect(result.gasSummary?.transactionCount).toBe(1);
 		expect(result.warnings.some((w) => w.includes('3 broadcasts'))).toBe(true);
@@ -617,7 +631,7 @@ describe('remit prepare + readiness', () => {
 			'0x',
 		]);
 
-		const result = expectFullPrepare(await prepareRemit(testEnv, FROM));
+		const result = expectFullPrepare(await prepareRemit(testEnv, FROM, mcpLane));
 		expect(result.requestId).toBeDefined();
 		expect(result.instructions.length).toBeGreaterThan(0);
 		expect(result.unsignedTransactions).toHaveLength(1);

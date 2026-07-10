@@ -15,7 +15,7 @@ async function isSubscribedToContent(
 	subscriptionId: string,
 ): Promise<boolean> {
 	const chain = resolveChain(env);
-	const client = createClocktowerClient(env, chain);
+	const client = createClocktowerClient(chain);
 	const raw = await client.readContract({
 		address: chain.contractAddress,
 		abi: CLOCKTOWER_READ_ABI,
@@ -35,7 +35,7 @@ async function isProviderOfContent(
 	subscriptionId: string,
 ): Promise<boolean> {
 	const chain = resolveChain(env);
-	const client = createClocktowerClient(env, chain);
+	const client = createClocktowerClient(chain);
 	const raw = await client.readContract({
 		address: chain.contractAddress,
 		abi: CLOCKTOWER_READ_ABI,

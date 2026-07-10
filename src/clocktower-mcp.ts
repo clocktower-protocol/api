@@ -1,6 +1,5 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { withX402 } from 'agents/x402';
-import { setActiveLane } from './requestLane.js';
 import { registerPaidTools } from './tools/read.js';
 import { registerWriteTools } from './tools/write.js';
 import { validateEnv } from './validation.js';
@@ -20,9 +19,7 @@ import type { McpAgent } from 'agents/mcp';
 export async function initializeClocktowerMCP(agent: McpAgent<Env>) {
   validateEnv(agent.env);
 
-  // Durable Object runs in a separate isolate from the Worker fetch handler;
-  // set MCP lane here so prepare/* tools use MCP write limits (60/min), not free (2/min).
-  setActiveLane('mcp');
+  // Prepare tools pass `lane: 'mcp'` explicitly (see tools/write.ts); no isolate-global lane.
 
   // Wrap the plain McpServer with x402 micropayment support
   const wrappedServer = withX402(

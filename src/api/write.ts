@@ -1,7 +1,8 @@
 /**
  * Write Endpoints
  *
- * These handlers are called after x402 payment verification (via the official @x402/hono middleware).
+ * REST prepare/readiness handlers. Access is free with tiered rate limits, or
+ * Builder SIWE session (see src/index.ts). MCP remains x402-gated.
  * They delegate to the existing transaction preparation logic in src/tx/.
  */
 
@@ -12,6 +13,7 @@ import { parseUnits } from 'viem';
 import { CLOCKTOWER_READ_ABI } from '../abi/clocktower.js';
 import { resolveChain } from '../chain.js';
 import { createClocktowerClient } from '../client.js';
+import type { AccessLane } from '../config/rateLimits.js';
 import { normalizeSubscriptionAmount } from '../tx/amount.js';
 import { parseApprovedTokenRecord } from '../validation.js';
 import { convertTokenNativeToProtocolAmount } from '../utils.js';
@@ -28,11 +30,27 @@ import {
   prepareEditDetails,
   prepareRemit,
 } from '../tx/prepare.js';
-import { getRequestId } from '../tx/prepare-response.js';
+import { getRequestId, type PrepareOptions } from '../tx/prepare-response.js';
 import { getTransactionStatus } from '../tx/status.js';
 import { enforceWriteRateLimitForAddress } from '../rateLimit.js';
-import { getActiveLane } from '../requestLane.js';
+import { parseAccessLane } from '../requestLane.js';
 import { clientSafeMessage } from '../sanitizeUpstream.js';
+
+/** Server-set lane from Worker middleware (never trust client-supplied elevation). */
+function requestLane(c: Context): AccessLane {
+  return parseAccessLane(c.req.header('X-Clocktower-Lane'));
+}
+
+function prepareOpts(c: Context, parsed: {
+  readinessOnly?: boolean;
+  simulateFromAddress?: `0x${string}`;
+}): PrepareOptions {
+  return {
+    readinessOnly: parsed.readinessOnly,
+    simulateFromAddress: parsed.simulateFromAddress,
+    lane: requestLane(c),
+  };
+}
 
 // Import validation schemas
 import {
@@ -48,8 +66,6 @@ import {
 
 /* =====================================================
    Write Handlers
-   All handlers assume the caller has already passed x402
-   payment verification via the official @x402/hono middleware.
    ===================================================== */
 
 // 1. Check subscribe readiness
@@ -65,7 +81,7 @@ export async function handleCheckSubscribeReadiness(c: Context) {
     await enforceWriteRateLimitForAddress(
       c.env,
       parsed.from as `0x${string}`,
-      getActiveLane(),
+      requestLane(c),
     );
 
     const chain = resolveChain(c.env);
@@ -114,10 +130,7 @@ export async function handlePrepareCreateSubscription(c: Context) {
       toWriteDetails(parsed.details),
       parsed.frequency,
       parsed.dueDay,
-      {
-        readinessOnly: parsed.readinessOnly,
-        simulateFromAddress: parsed.simulateFromAddress,
-      },
+      prepareOpts(c, parsed),
     );
 
     return jsonResponse(result);
@@ -140,10 +153,7 @@ export async function handlePrepareSubscribe(c: Context) {
       c.env,
       parsed.from,
       toWriteSubscription(normalizedSubscription),
-      {
-        readinessOnly: parsed.readinessOnly,
-        simulateFromAddress: parsed.simulateFromAddress,
-      },
+      prepareOpts(c, parsed),
     );
 
     return jsonResponse(result);
@@ -164,10 +174,7 @@ export async function handlePrepareCancelSubscription(c: Context) {
       c.env,
       parsed.from,
       toWriteSubscription(normalizedSubscription),
-      {
-        readinessOnly: parsed.readinessOnly,
-        simulateFromAddress: parsed.simulateFromAddress,
-      },
+      prepareOpts(c, parsed),
     );
 
     return jsonResponse(result);
@@ -188,10 +195,7 @@ export async function handlePrepareUnsubscribe(c: Context) {
       c.env,
       parsed.from,
       toWriteSubscription(normalizedSubscription),
-      {
-        readinessOnly: parsed.readinessOnly,
-        simulateFromAddress: parsed.simulateFromAddress,
-      },
+      prepareOpts(c, parsed),
     );
 
     return jsonResponse(result);
@@ -213,10 +217,7 @@ export async function handlePrepareUnsubscribeByProvider(c: Context) {
       parsed.from,
       toWriteSubscription(normalizedSubscription),
       parsed.subscriber,
-      {
-        readinessOnly: parsed.readinessOnly,
-        simulateFromAddress: parsed.simulateFromAddress,
-      },
+      prepareOpts(c, parsed),
     );
 
     return jsonResponse(result);
@@ -236,10 +237,7 @@ export async function handlePrepareEditDetails(c: Context) {
       parsed.from,
       parsed.id,
       toWriteDetails(parsed.details),
-      {
-        readinessOnly: parsed.readinessOnly,
-        simulateFromAddress: parsed.simulateFromAddress,
-      },
+      prepareOpts(c, parsed),
     );
 
     return jsonResponse(result);
@@ -254,7 +252,7 @@ export async function handleCheckRemitReadiness(c: Context) {
     const body = await c.req.json();
     const parsed = remitInputSchema.parse(body);
 
-    await enforceWriteRateLimitForAddress(c.env, parsed.from, getActiveLane());
+    await enforceWriteRateLimitForAddress(c.env, parsed.from, requestLane(c));
 
     const result = await checkRemitReadiness(c.env, parsed.from);
 
@@ -270,10 +268,7 @@ export async function handlePrepareRemit(c: Context) {
     const body = await c.req.json();
     const parsed = remitInputSchema.parse(body);
 
-    const result = await prepareRemit(c.env, parsed.from, {
-      readinessOnly: parsed.readinessOnly,
-      simulateFromAddress: parsed.simulateFromAddress,
-    });
+    const result = await prepareRemit(c.env, parsed.from, prepareOpts(c, parsed));
 
     return jsonResponse(result);
   } catch (err: any) {

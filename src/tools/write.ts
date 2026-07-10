@@ -45,7 +45,7 @@ import { normalizeSubscriptionAmount } from '../tx/amount.js';
 const writeAnnotations = { readOnlyHint: false };
 const destructiveAnnotations = { readOnlyHint: false, destructiveHint: true };
 
-/** MCP DO isolate does not inherit Worker requestLane; pass explicitly on every prepare. */
+/** Explicit MCP lane for write RPM (no isolate-global request lane). */
 const MCP_PREPARE_LANE = { lane: 'mcp' as AccessLane };
 
 function preparePrice(args: Record<string, unknown>): number {
