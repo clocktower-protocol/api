@@ -8,34 +8,40 @@ import { convertTokenNativeToProtocolAmount } from '../utils.js';
 type Env = any;
 
 /**
- * If a subscription object has a human-readable amount string (e.g. "100.5"),
- * this converts it to the correct internal protocol units (always 18 decimals)
- * using the token's actual decimals from the protocol.
+ * Converts a subscription object's human-readable `amount` string (e.g. "100.5")
+ * into protocol internal units (always 18 decimals) using the token's decimals
+ * from `approvedERC20`.
  *
- * If `amount` is already a bigint, it is returned unchanged.
+ * `amount` must be a human token-unit string — not protocol wei and not
+ * token-native raw integers. Mirrors the SDK create path (human → native → protocol).
  */
 export async function normalizeSubscriptionAmount(env: Env, subscription: any) {
-  if (typeof subscription.amount === 'string') {
-    const chain = resolveChain(env);
-    const client = createClocktowerClient(chain);
-
-    const approvedToken = parseApprovedTokenRecord(
-      await client.readContract({
-        address: chain.contractAddress,
-        abi: CLOCKTOWER_READ_ABI,
-        functionName: 'approvedERC20',
-        args: [subscription.token],
-      }),
+  if (typeof subscription.amount !== 'string') {
+    throw new Error(
+      'subscription.amount must be a human-readable decimal string (e.g. "10" or "100.5")',
     );
-
-    const nativeAmount = parseUnits(subscription.amount, approvedToken.decimals);
-    const protocolAmount = convertTokenNativeToProtocolAmount(nativeAmount, approvedToken.decimals);
-
-    return {
-      ...subscription,
-      amount: protocolAmount,
-    };
   }
 
-  return subscription;
+  const chain = resolveChain(env);
+  const client = createClocktowerClient(chain);
+
+  const approvedToken = parseApprovedTokenRecord(
+    await client.readContract({
+      address: chain.contractAddress,
+      abi: CLOCKTOWER_READ_ABI,
+      functionName: 'approvedERC20',
+      args: [subscription.token],
+    }),
+  );
+
+  const nativeAmount = parseUnits(subscription.amount, approvedToken.decimals);
+  const protocolAmount = convertTokenNativeToProtocolAmount(
+    nativeAmount,
+    approvedToken.decimals,
+  );
+
+  return {
+    ...subscription,
+    amount: protocolAmount,
+  };
 }

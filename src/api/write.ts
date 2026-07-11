@@ -44,10 +44,12 @@ function requestLane(c: Context): AccessLane {
 function prepareOpts(c: Context, parsed: {
   readinessOnly?: boolean;
   simulateFromAddress?: `0x${string}`;
+  infiniteApproval?: boolean;
 }): PrepareOptions {
   return {
     readinessOnly: parsed.readinessOnly,
     simulateFromAddress: parsed.simulateFromAddress,
+    infiniteApproval: parsed.infiniteApproval,
     lane: requestLane(c),
   };
 }
@@ -85,11 +87,15 @@ export async function handleCheckSubscribeReadiness(c: Context) {
     );
 
     const chain = resolveChain(c.env);
+    const normalizedSubscription = await normalizeSubscriptionAmount(
+      c.env,
+      parsed.subscription,
+    );
     const result = await checkSubscribeReadiness(
       c.env,
       chain,
       parsed.from as `0x${string}`,
-      toWriteSubscription(parsed.subscription)
+      toWriteSubscription(normalizedSubscription),
     );
 
     return jsonResponse(result);

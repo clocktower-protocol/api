@@ -4,6 +4,7 @@ import {
 	detailsSchema,
 	humanAmountSchema,
 	remitInputSchema,
+	subscriptionInputSchema,
 	validateDueDayForFrequency,
 } from '../src/validation-write.js';
 
@@ -11,6 +12,23 @@ describe('validation-write', () => {
 	it('accepts human-readable decimal amount strings', () => {
 		expect(humanAmountSchema.parse('1.5')).toBe('1.5');
 		expect(humanAmountSchema.parse('10')).toBe('10');
+	});
+
+	it('subscription.amount accepts human strings only (not protocol bigint / numbers)', () => {
+		const base = {
+			id: `0x${'11'.repeat(32)}`,
+			provider: '0x0000000000000000000000000000000000000001',
+			token: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+			cancelled: false,
+			frequency: 1,
+			dueDay: 15,
+		};
+
+		expect(subscriptionInputSchema.safeParse({ ...base, amount: '10' }).success).toBe(true);
+		expect(subscriptionInputSchema.safeParse({ ...base, amount: '100.5' }).success).toBe(true);
+		// JSON numbers and bare protocol wei are no longer accepted on subscription.amount
+		expect(subscriptionInputSchema.safeParse({ ...base, amount: 10 }).success).toBe(false);
+		expect(subscriptionInputSchema.safeParse({ ...base, amount: 10n }).success).toBe(false);
 	});
 
 	it('validates due day ranges per frequency', () => {

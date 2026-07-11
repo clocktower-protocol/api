@@ -1,8 +1,6 @@
-import { parseUnits } from 'viem';
 import { z } from 'zod';
 import type { WriteDetails, WriteSubscription } from './abi/clocktower-write.js';
 import { DUEDAY_RANGES } from './tx/constants.js';
-import { PROTOCOL_DECIMALS } from './utils.js';
 import { addressSchema, bytes32Schema } from './validation.js';
 
 /**
@@ -33,17 +31,6 @@ function isSafeHttpsUrl(value: string): boolean {
 		return false;
 	}
 }
-
-const bigintStringSchema = z
-	.union([z.string(), z.number()])
-	.transform((value, ctx) => {
-		try {
-			return BigInt(value);
-		} catch {
-			ctx.addIssue({ code: 'custom', message: 'Invalid bigint value' });
-			return z.NEVER;
-		}
-	});
 
 export const fromAddressSchema = addressSchema.describe('Address that will sign and send the transaction(s)');
 
@@ -98,11 +85,15 @@ export function validateDueDayForFrequency(frequency: number, dueDay: number): s
 
 export const humanAmountSchema = z
 	.string()
-	.regex(/^\d+(\.\d+)?$/, 'Amount must be a decimal string');
+	.regex(/^\d+(\.\d+)?$/, 'Amount must be a decimal string')
+	.describe(
+		'Human-readable token amount (e.g. "10" or "100.5"), not protocol 18-dec wei and not amountRaw',
+	);
 
+/** Client-facing subscription object: amount is human token units only. */
 export const subscriptionInputSchema = z.object({
 	id: bytes32Schema,
-	amount: z.union([humanAmountSchema, bigintStringSchema]),
+	amount: humanAmountSchema,
 	provider: addressSchema,
 	token: addressSchema,
 	cancelled: z.boolean(),
@@ -110,7 +101,15 @@ export const subscriptionInputSchema = z.object({
 	dueDay: dueDaySchema,
 });
 
-export function toWriteSubscription(input: z.infer<typeof subscriptionInputSchema>): WriteSubscription {
+/** After normalizeSubscriptionAmount: amount is protocol 18-dec bigint. */
+export type NormalizedSubscriptionInput = Omit<
+	z.infer<typeof subscriptionInputSchema>,
+	'amount'
+> & {
+	amount: bigint;
+};
+
+export function toWriteSubscription(input: NormalizedSubscriptionInput): WriteSubscription {
 	return {
 		id: input.id,
 		amount: input.amount,
@@ -121,6 +120,13 @@ export function toWriteSubscription(input: z.infer<typeof subscriptionInputSchem
 		dueDay: input.dueDay,
 	};
 }
+
+export const infiniteApprovalSchema = z
+	.boolean()
+	.optional()
+	.describe(
+		'If true, prepare_subscribe approves max allowance; default approves the subscription amount only',
+	);
 
 export const createSubscriptionInputSchema = z
 	.object({
@@ -145,6 +151,7 @@ export const subscribeInputSchema = z.object({
 	subscription: subscriptionInputSchema,
 	readinessOnly: readinessOnlySchema,
 	simulateFromAddress: simulateFromAddressSchema,
+	infiniteApproval: infiniteApprovalSchema,
 });
 
 export const subscriptionActionInputSchema = z.object({

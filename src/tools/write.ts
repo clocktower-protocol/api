@@ -78,9 +78,8 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 		async ({ from, subscription }) =>
 			safeHandler('check_subscribe_readiness', async () => {
 				const { resolveChain } = await import('../chain.js');
-				const sub = toWriteSubscription(
-					subscription as Parameters<typeof toWriteSubscription>[0],
-				);
+				const normalized = await normalizeSubscriptionAmount(env, subscription);
+				const sub = toWriteSubscription(normalized);
 				const result = await checkSubscribeReadiness(
 					env,
 					resolveChain(env),
@@ -139,12 +138,13 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 		server,
 		env,
 		'prepare_subscribe',
-		'Prepare unsigned subscribe transaction(s) including ERC20 approve when needed on Base mainnet',
+		'Prepare unsigned subscribe transaction(s) including ERC20 approve when needed on Base mainnet. Approves the subscription amount by default; set infiniteApproval for max allowance.',
 		{
 			from: addressSchema,
 			subscription: subscribeInputSchema.shape.subscription,
 			readinessOnly: readinessOnlySchema,
 			simulateFromAddress: simulateFromAddressSchema,
+			infiniteApproval: subscribeInputSchema.shape.infiniteApproval,
 		},
 		writeAnnotations,
 		async (args) =>
@@ -162,6 +162,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 							...MCP_PREPARE_LANE,
 							readinessOnly: parsed.readinessOnly,
 							simulateFromAddress: parsed.simulateFromAddress,
+							infiniteApproval: parsed.infiniteApproval,
 						},
 					),
 				);

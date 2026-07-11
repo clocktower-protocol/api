@@ -113,7 +113,7 @@ All history results are server-side limited (max 200 records, recommended ~100 p
 **Write Tools**
 - `check_subscribe_readiness` — Validate allowance, balance, and protocol rules before subscribing
 - `prepare_create_subscription` — Prepare unsigned `createSubscription`
-- `prepare_subscribe` — Prepare unsigned `subscribe` (includes ERC-20 `approve` when needed)
+- `prepare_subscribe` — Prepare unsigned `subscribe` (includes ERC-20 `approve` when needed). Approve defaults to the token-native subscription amount; pass `infiniteApproval: true` for max allowance. `subscription.amount` must be a human-readable token string (e.g. `"10"`), not protocol wei.
 - `prepare_cancel_subscription` — Prepare provider cancel
 - `prepare_unsubscribe` — Prepare subscriber unsubscribe
 - `prepare_unsubscribe_by_provider` — Prepare provider-initiated unsubscribe
