@@ -24,11 +24,13 @@ import {
   checkRemitReadiness,
   prepareCreateSubscription,
   prepareSubscribe,
+  prepareSubscribeById,
   prepareCancelSubscription,
   prepareUnsubscribe,
   prepareUnsubscribeByProvider,
   prepareEditDetails,
   prepareRemit,
+  loadWriteSubscriptionById,
 } from '../tx/prepare.js';
 import { getRequestId, type PrepareOptions } from '../tx/prepare-response.js';
 import { getTransactionStatus } from '../tx/status.js';
@@ -57,6 +59,8 @@ function prepareOpts(c: Context, parsed: {
 // Import validation schemas
 import {
   subscribeInputSchema,
+  subscribeByIdInputSchema,
+  checkSubscribeReadinessByIdInputSchema,
   subscriptionActionInputSchema,
   unsubscribeByProviderInputSchema,
   editDetailsInputSchema,
@@ -101,6 +105,33 @@ export async function handleCheckSubscribeReadiness(c: Context) {
     return jsonResponse(result);
   } catch (err: any) {
     return handleWriteError(err, 'check_subscribe_readiness');
+  }
+}
+
+// 1b. Check subscribe readiness by id only
+export async function handleCheckSubscribeReadinessById(c: Context) {
+  try {
+    const body = await c.req.json();
+    const parsed = checkSubscribeReadinessByIdInputSchema.parse(body);
+
+    await enforceWriteRateLimitForAddress(
+      c.env,
+      parsed.from as `0x${string}`,
+      requestLane(c),
+    );
+
+    const chain = resolveChain(c.env);
+    const subscription = await loadWriteSubscriptionById(c.env, parsed.id);
+    const result = await checkSubscribeReadiness(
+      c.env,
+      chain,
+      parsed.from as `0x${string}`,
+      subscription,
+    );
+
+    return jsonResponse(result);
+  } catch (err: any) {
+    return handleWriteError(err, 'check_subscribe_readiness_by_id');
   }
 }
 
@@ -165,6 +196,25 @@ export async function handlePrepareSubscribe(c: Context) {
     return jsonResponse(result);
   } catch (err: any) {
     return handleWriteError(err, 'prepare_subscribe');
+  }
+}
+
+// 3b. Prepare subscribe by id only
+export async function handlePrepareSubscribeById(c: Context) {
+  try {
+    const body = await c.req.json();
+    const parsed = subscribeByIdInputSchema.parse(body);
+
+    const result = await prepareSubscribeById(
+      c.env,
+      parsed.from,
+      parsed.id,
+      prepareOpts(c, parsed),
+    );
+
+    return jsonResponse(result);
+  } catch (err: any) {
+    return handleWriteError(err, 'prepare_subscribe_by_id');
   }
 }
 

@@ -61,8 +61,10 @@ export type ApiAppOptions = Record<string, never>;
  *
  * Write (prepare-only; client wallet signs and broadcasts):
  *   - POST /api/check_subscribe_readiness
+ *   - POST /api/check_subscribe_readiness_by_id
  *   - POST /api/prepare/create_subscription
  *   - POST /api/prepare/subscribe
+ *   - POST /api/prepare/subscribe_by_id
  *   - POST /api/prepare/cancel_subscription
  *   - POST /api/prepare/unsubscribe
  *   - POST /api/prepare/unsubscribe_by_provider
@@ -190,8 +192,10 @@ export function createApiApp(_options: ApiAppOptions = {}) {
   // === Write endpoints ===
 
   app.post('/api/check_subscribe_readiness', async (c: any) => writeHandlers.handleCheckSubscribeReadiness(c));
+  app.post('/api/check_subscribe_readiness_by_id', async (c: any) => writeHandlers.handleCheckSubscribeReadinessById(c));
   app.post('/api/prepare/create_subscription', async (c: any) => writeHandlers.handlePrepareCreateSubscription(c));
   app.post('/api/prepare/subscribe', async (c: any) => writeHandlers.handlePrepareSubscribe(c));
+  app.post('/api/prepare/subscribe_by_id', async (c: any) => writeHandlers.handlePrepareSubscribeById(c));
   app.post('/api/prepare/cancel_subscription', async (c: any) => writeHandlers.handlePrepareCancelSubscription(c));
   app.post('/api/prepare/unsubscribe', async (c: any) => writeHandlers.handlePrepareUnsubscribe(c));
   app.post('/api/prepare/unsubscribe_by_provider', async (c: any) => writeHandlers.handlePrepareUnsubscribeByProvider(c));

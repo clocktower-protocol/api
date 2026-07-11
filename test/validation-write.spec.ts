@@ -4,6 +4,7 @@ import {
 	detailsSchema,
 	humanAmountSchema,
 	remitInputSchema,
+	subscribeByIdInputSchema,
 	subscriptionInputSchema,
 	validateDueDayForFrequency,
 } from '../src/validation-write.js';
@@ -98,6 +99,21 @@ describe('validation-write', () => {
 			dueDay: 15,
 		});
 		expect(result.success).toBe(true);
+	});
+
+	it('accepts subscribe-by-id with from + id only', () => {
+		const result = subscribeByIdInputSchema.safeParse({
+			from: '0x0000000000000000000000000000000000000001',
+			id: `0x${'11'.repeat(32)}`,
+		});
+		expect(result.success).toBe(true);
+	});
+
+	it('rejects subscribe-by-id without id', () => {
+		const result = subscribeByIdInputSchema.safeParse({
+			from: '0x0000000000000000000000000000000000000001',
+		});
+		expect(result.success).toBe(false);
 	});
 });
 

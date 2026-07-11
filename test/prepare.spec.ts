@@ -13,6 +13,7 @@ import {
 	prepareCreateSubscription,
 	prepareEditDetails,
 	prepareRemit,
+	prepareSubscribeById,
 	prepareUnsubscribe,
 } from '../src/tx/prepare.js';
 import { checkRemitReadiness } from '../src/tx/remit-preflight.js';
@@ -261,6 +262,35 @@ describe('prepareCreateSubscription', () => {
 			mcpLane,
 			),
 		).rejects.toThrow(/Simulation failed/);
+	});
+});
+
+describe('prepareSubscribeById', () => {
+	const originalFetch = globalThis.fetch;
+
+	afterEach(() => {
+		globalThis.fetch = originalFetch;
+		vi.restoreAllMocks();
+	});
+
+	it('throws when subscription id is unknown on chain', async () => {
+		const zeroes = '0'.repeat(64);
+		globalThis.fetch = vi.fn(async () =>
+			Response.json({
+				jsonrpc: '2.0',
+				id: 1,
+				result: `0x${zeroes}${zeroes}${zeroes}${zeroes}${zeroes}${zeroes}${zeroes}`,
+			}),
+		) as typeof fetch;
+
+		await expect(
+			prepareSubscribeById(
+				testEnv,
+				'0x0000000000000000000000000000000000000001',
+				`0x${'11'.repeat(32)}`,
+				mcpLane,
+			),
+		).rejects.toThrow(/Subscription not found/);
 	});
 });
 

@@ -154,6 +154,20 @@ export const subscribeInputSchema = z.object({
 	infiniteApproval: infiniteApprovalSchema,
 });
 
+/** Subscribe using only on-chain id (server loads amount/token/provider). */
+export const subscribeByIdInputSchema = z.object({
+	from: fromAddressSchema,
+	id: bytes32Schema.describe('Subscription id (bytes32); amount and token are loaded from chain'),
+	readinessOnly: readinessOnlySchema,
+	simulateFromAddress: simulateFromAddressSchema,
+	infiniteApproval: infiniteApprovalSchema,
+});
+
+export const checkSubscribeReadinessByIdInputSchema = z.object({
+	from: fromAddressSchema,
+	id: bytes32Schema.describe('Subscription id (bytes32); amount and token are loaded from chain'),
+});
+
 export const subscriptionActionInputSchema = z.object({
 	from: fromAddressSchema,
 	subscription: subscriptionInputSchema,

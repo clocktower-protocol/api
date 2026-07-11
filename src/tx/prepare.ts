@@ -79,7 +79,7 @@ async function isAccountSubscribedTo(
 	});
 }
 
-async function fetchCanonicalSubscription(
+export async function fetchCanonicalSubscription(
 	client: ReturnType<typeof createClocktowerClient>,
 	chain: ChainConfig,
 	id: `0x${string}`,
@@ -104,6 +104,16 @@ async function fetchCanonicalSubscription(
 		frequency: parsed.frequency,
 		dueDay: parsed.dueDay,
 	};
+}
+
+/** Load a write subscription struct by id (protocol amount from chain). */
+export async function loadWriteSubscriptionById(
+	env: Env,
+	id: `0x${string}`,
+): Promise<WriteSubscription> {
+	const chain = resolveChain(env);
+	const client = createClocktowerClient(chain);
+	return fetchCanonicalSubscription(client, chain, id);
 }
 
 function buildUnsigned(
@@ -268,6 +278,20 @@ export async function prepareCreateSubscription(
 			options,
 		);
 	}, options?.lane);
+}
+
+/**
+ * Prepare subscribe using only a subscription id. Loads the on-chain struct
+ * (amount is protocol units from storage) then runs {@link prepareSubscribe}.
+ */
+export async function prepareSubscribeById(
+	env: Env,
+	from: `0x${string}`,
+	id: `0x${string}`,
+	options?: PrepareOptions,
+): Promise<PrepareResponse> {
+	const subscription = await loadWriteSubscriptionById(env, id);
+	return prepareSubscribe(env, from, subscription, options);
 }
 
 export async function prepareSubscribe(

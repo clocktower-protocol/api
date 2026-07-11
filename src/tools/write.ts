@@ -14,6 +14,8 @@ import {
 	prepareEditDetails,
 	prepareRemit,
 	prepareSubscribe,
+	prepareSubscribeById,
+	loadWriteSubscriptionById,
 	prepareUnsubscribe,
 	prepareUnsubscribeByProvider,
 } from '../tx/prepare.js';
@@ -30,6 +32,7 @@ import {
 	simulateFromAddressSchema,
 	remitInputSchema,
 	subscribeInputSchema,
+	subscribeByIdInputSchema,
 	subscriptionActionInputSchema,
 	toWriteDetails,
 	toWriteSubscription,
@@ -80,6 +83,29 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 				const { resolveChain } = await import('../chain.js');
 				const normalized = await normalizeSubscriptionAmount(env, subscription);
 				const sub = toWriteSubscription(normalized);
+				const result = await checkSubscribeReadiness(
+					env,
+					resolveChain(env),
+					from as `0x${string}`,
+					sub,
+				);
+				return textResult(result);
+			}),
+	);
+
+	server.paidTool(
+		'check_subscribe_readiness_by_id',
+		'Check subscribe readiness using only a subscription id (loads amount/token from chain on Base mainnet)',
+		API_PRICES.checkSubscribeReadiness,
+		{
+			from: addressSchema,
+			id: bytes32Schema.describe('Subscription id; amount and token are loaded from chain'),
+		},
+		{ readOnlyHint: true },
+		async ({ from, id }) =>
+			safeHandler('check_subscribe_readiness_by_id', async () => {
+				const { resolveChain } = await import('../chain.js');
+				const sub = await loadWriteSubscriptionById(env, id as `0x${string}`);
 				const result = await checkSubscribeReadiness(
 					env,
 					resolveChain(env),
@@ -158,6 +184,39 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						env,
 						parsed.from,
 						toWriteSubscription(normalizedSubscription),
+						{
+							...MCP_PREPARE_LANE,
+							readinessOnly: parsed.readinessOnly,
+							simulateFromAddress: parsed.simulateFromAddress,
+							infiniteApproval: parsed.infiniteApproval,
+						},
+					),
+				);
+			}),
+	);
+
+	registerPrepareTool(
+		server,
+		env,
+		'prepare_subscribe_by_id',
+		'Prepare unsigned subscribe by subscription id only (loads amount/token from chain). Approves the subscription amount by default; set infiniteApproval for max allowance.',
+		{
+			from: addressSchema,
+			id: bytes32Schema.describe('Subscription id; amount and token are loaded from chain'),
+			readinessOnly: readinessOnlySchema,
+			simulateFromAddress: simulateFromAddressSchema,
+			infiniteApproval: subscribeByIdInputSchema.shape.infiniteApproval,
+		},
+		writeAnnotations,
+		async (args) =>
+			safeHandler('prepare_subscribe_by_id', async () => {
+				const parsed = subscribeByIdInputSchema.parse(args);
+
+				return textResult(
+					await prepareSubscribeById(
+						env,
+						parsed.from,
+						parsed.id,
 						{
 							...MCP_PREPARE_LANE,
 							readinessOnly: parsed.readinessOnly,
