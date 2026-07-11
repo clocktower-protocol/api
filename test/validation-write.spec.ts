@@ -5,7 +5,9 @@ import {
 	humanAmountSchema,
 	remitInputSchema,
 	subscribeByIdInputSchema,
+	subscriptionActionByIdInputSchema,
 	subscriptionInputSchema,
+	unsubscribeByProviderByIdInputSchema,
 	validateDueDayForFrequency,
 } from '../src/validation-write.js';
 
@@ -114,6 +116,23 @@ describe('validation-write', () => {
 			from: '0x0000000000000000000000000000000000000001',
 		});
 		expect(result.success).toBe(false);
+	});
+
+	it('accepts cancel/unsubscribe-by-id with from + id only', () => {
+		const result = subscriptionActionByIdInputSchema.safeParse({
+			from: '0x0000000000000000000000000000000000000001',
+			id: `0x${'11'.repeat(32)}`,
+		});
+		expect(result.success).toBe(true);
+	});
+
+	it('accepts unsubscribe-by-provider-by-id with from + id + subscriber', () => {
+		const result = unsubscribeByProviderByIdInputSchema.safeParse({
+			from: '0x0000000000000000000000000000000000000001',
+			id: `0x${'11'.repeat(32)}`,
+			subscriber: '0x0000000000000000000000000000000000000002',
+		});
+		expect(result.success).toBe(true);
 	});
 });
 

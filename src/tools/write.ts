@@ -10,6 +10,7 @@ import {
 	checkSubscribeReadiness,
 	checkRemitReadiness,
 	prepareCancelSubscription,
+	prepareCancelSubscriptionById,
 	prepareCreateSubscription,
 	prepareEditDetails,
 	prepareRemit,
@@ -17,7 +18,9 @@ import {
 	prepareSubscribeById,
 	loadWriteSubscriptionById,
 	prepareUnsubscribe,
+	prepareUnsubscribeById,
 	prepareUnsubscribeByProvider,
+	prepareUnsubscribeByProviderById,
 } from '../tx/prepare.js';
 import { getTransactionStatus } from '../tx/status.js';
 import {
@@ -34,9 +37,11 @@ import {
 	subscribeInputSchema,
 	subscribeByIdInputSchema,
 	subscriptionActionInputSchema,
+	subscriptionActionByIdInputSchema,
 	toWriteDetails,
 	toWriteSubscription,
 	unsubscribeByProviderInputSchema,
+	unsubscribeByProviderByIdInputSchema,
 } from '../validation-write.js';
 import { addressSchema, bytes32Schema } from '../validation.js';
 import { textResult } from '../utils.js';
@@ -263,6 +268,36 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 	registerPrepareTool(
 		server,
 		env,
+		'prepare_cancel_subscription_by_id',
+		'Prepare unsigned cancelSubscription using only subscription id (preferred)',
+		{
+			from: addressSchema,
+			id: bytes32Schema.describe('Subscription id; remaining fields loaded from chain'),
+			readinessOnly: readinessOnlySchema,
+			simulateFromAddress: simulateFromAddressSchema,
+		},
+		destructiveAnnotations,
+		async (args) =>
+			safeHandler('prepare_cancel_subscription_by_id', async () => {
+				const parsed = subscriptionActionByIdInputSchema.parse(args);
+				return textResult(
+					await prepareCancelSubscriptionById(
+						env,
+						parsed.from,
+						parsed.id,
+						{
+							...MCP_PREPARE_LANE,
+							readinessOnly: parsed.readinessOnly,
+							simulateFromAddress: parsed.simulateFromAddress,
+						},
+					),
+				);
+			}),
+	);
+
+	registerPrepareTool(
+		server,
+		env,
 		'prepare_unsubscribe',
 		'Prepare unsigned unsubscribe transaction for a subscriber on Base mainnet',
 		{
@@ -282,6 +317,36 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						env,
 						parsed.from,
 						toWriteSubscription(normalizedSubscription),
+						{
+							...MCP_PREPARE_LANE,
+							readinessOnly: parsed.readinessOnly,
+							simulateFromAddress: parsed.simulateFromAddress,
+						},
+					),
+				);
+			}),
+	);
+
+	registerPrepareTool(
+		server,
+		env,
+		'prepare_unsubscribe_by_id',
+		'Prepare unsigned unsubscribe using only subscription id (preferred)',
+		{
+			from: addressSchema,
+			id: bytes32Schema.describe('Subscription id; remaining fields loaded from chain'),
+			readinessOnly: readinessOnlySchema,
+			simulateFromAddress: simulateFromAddressSchema,
+		},
+		destructiveAnnotations,
+		async (args) =>
+			safeHandler('prepare_unsubscribe_by_id', async () => {
+				const parsed = subscriptionActionByIdInputSchema.parse(args);
+				return textResult(
+					await prepareUnsubscribeById(
+						env,
+						parsed.from,
+						parsed.id,
 						{
 							...MCP_PREPARE_LANE,
 							readinessOnly: parsed.readinessOnly,
@@ -315,6 +380,38 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						env,
 						parsed.from,
 						toWriteSubscription(normalizedSubscription),
+						parsed.subscriber,
+						{
+							...MCP_PREPARE_LANE,
+							readinessOnly: parsed.readinessOnly,
+							simulateFromAddress: parsed.simulateFromAddress,
+						},
+					),
+				);
+			}),
+	);
+
+	registerPrepareTool(
+		server,
+		env,
+		'prepare_unsubscribe_by_provider_by_id',
+		'Prepare unsigned unsubscribeByProvider using only subscription id + subscriber (preferred)',
+		{
+			from: addressSchema,
+			id: bytes32Schema.describe('Subscription id; remaining fields loaded from chain'),
+			subscriber: addressSchema,
+			readinessOnly: readinessOnlySchema,
+			simulateFromAddress: simulateFromAddressSchema,
+		},
+		destructiveAnnotations,
+		async (args) =>
+			safeHandler('prepare_unsubscribe_by_provider_by_id', async () => {
+				const parsed = unsubscribeByProviderByIdInputSchema.parse(args);
+				return textResult(
+					await prepareUnsubscribeByProviderById(
+						env,
+						parsed.from,
+						parsed.id,
 						parsed.subscriber,
 						{
 							...MCP_PREPARE_LANE,

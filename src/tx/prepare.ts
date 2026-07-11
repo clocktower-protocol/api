@@ -363,6 +363,17 @@ export async function prepareSubscribe(
 
 export { checkSubscribeReadiness, checkRemitReadiness };
 
+/** Prepare cancel using only a subscription id. */
+export async function prepareCancelSubscriptionById(
+	env: Env,
+	from: `0x${string}`,
+	id: `0x${string}`,
+	options?: PrepareOptions,
+): Promise<PrepareResponse> {
+	const subscription = await loadWriteSubscriptionById(env, id);
+	return prepareCancelSubscription(env, from, subscription, options);
+}
+
 export async function prepareCancelSubscription(
 	env: Env,
 	from: `0x${string}`,
@@ -395,6 +406,17 @@ export async function prepareCancelSubscription(
 		const unsigned = [buildUnsigned(from, chain.contractAddress, data)];
 		return buildPrepareResult(env, from, unsigned, requestId, { id: canonical.id }, options);
 	}, options?.lane);
+}
+
+/** Prepare unsubscribe using only a subscription id. */
+export async function prepareUnsubscribeById(
+	env: Env,
+	from: `0x${string}`,
+	id: `0x${string}`,
+	options?: PrepareOptions,
+): Promise<PrepareResponse> {
+	const subscription = await loadWriteSubscriptionById(env, id);
+	return prepareUnsubscribe(env, from, subscription, options);
 }
 
 export async function prepareUnsubscribe(
@@ -450,6 +472,18 @@ export async function prepareUnsubscribe(
 			options,
 		);
 	}, options?.lane);
+}
+
+/** Prepare provider-unsubscribe using only subscription id + subscriber. */
+export async function prepareUnsubscribeByProviderById(
+	env: Env,
+	from: `0x${string}`,
+	id: `0x${string}`,
+	subscriber: `0x${string}`,
+	options?: PrepareOptions,
+): Promise<PrepareResponse> {
+	const subscription = await loadWriteSubscriptionById(env, id);
+	return prepareUnsubscribeByProvider(env, from, subscription, subscriber, options);
 }
 
 export async function prepareUnsubscribeByProvider(

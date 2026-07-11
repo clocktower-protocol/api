@@ -116,6 +116,9 @@ All history results are server-side limited (max 200 records, recommended ~100 p
 - `prepare_subscribe` — Prepare unsigned `subscribe` (includes ERC-20 `approve` when needed). Approve defaults to the token-native subscription amount; pass `infiniteApproval: true` for max allowance. `subscription.amount` must be a human-readable token string (e.g. `"10"`), not protocol wei.
 - `prepare_subscribe_by_id` / `POST /api/prepare/subscribe_by_id` — **Preferred.** Same as prepare subscribe, but only `from` + `id` are required; amount, token, and provider are loaded from chain.
 - `check_subscribe_readiness_by_id` / `POST /api/check_subscribe_readiness_by_id` — Readiness check with only `from` + `id`.
+- `prepare_cancel_subscription_by_id` / `POST /api/prepare/cancel_subscription_by_id` — **Preferred.** Cancel with only `from` + `id`.
+- `prepare_unsubscribe_by_id` / `POST /api/prepare/unsubscribe_by_id` — **Preferred.** Unsubscribe with only `from` + `id`.
+- `prepare_unsubscribe_by_provider_by_id` / `POST /api/prepare/unsubscribe_by_provider_by_id` — **Preferred.** Provider remove with `from` + `id` + `subscriber`.
 - `prepare_cancel_subscription` — Prepare provider cancel
 - `prepare_unsubscribe` — Prepare subscriber unsubscribe
 - `prepare_unsubscribe_by_provider` — Prepare provider-initiated unsubscribe

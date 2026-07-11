@@ -14,7 +14,10 @@ import {
 	prepareEditDetails,
 	prepareRemit,
 	prepareSubscribeById,
+	prepareCancelSubscriptionById,
 	prepareUnsubscribe,
+	prepareUnsubscribeById,
+	prepareUnsubscribeByProviderById,
 } from '../src/tx/prepare.js';
 import { checkRemitReadiness } from '../src/tx/remit-preflight.js';
 import * as remitScan from '../src/tx/remit-scan.js';
@@ -265,7 +268,7 @@ describe('prepareCreateSubscription', () => {
 	});
 });
 
-describe('prepareSubscribeById', () => {
+describe('prepare*ById helpers', () => {
 	const originalFetch = globalThis.fetch;
 
 	afterEach(() => {
@@ -273,7 +276,7 @@ describe('prepareSubscribeById', () => {
 		vi.restoreAllMocks();
 	});
 
-	it('throws when subscription id is unknown on chain', async () => {
+	const unknownIdFetch = () => {
 		const zeroes = '0'.repeat(64);
 		globalThis.fetch = vi.fn(async () =>
 			Response.json({
@@ -282,14 +285,37 @@ describe('prepareSubscribeById', () => {
 				result: `0x${zeroes}${zeroes}${zeroes}${zeroes}${zeroes}${zeroes}${zeroes}`,
 			}),
 		) as typeof fetch;
+	};
 
+	const from = '0x0000000000000000000000000000000000000001' as const;
+	const id = `0x${'11'.repeat(32)}` as const;
+	const subscriber = '0x0000000000000000000000000000000000000002' as const;
+
+	it('prepareSubscribeById throws when subscription id is unknown on chain', async () => {
+		unknownIdFetch();
+		await expect(prepareSubscribeById(testEnv, from, id, mcpLane)).rejects.toThrow(
+			/Subscription not found/,
+		);
+	});
+
+	it('prepareCancelSubscriptionById throws when subscription id is unknown on chain', async () => {
+		unknownIdFetch();
+		await expect(prepareCancelSubscriptionById(testEnv, from, id, mcpLane)).rejects.toThrow(
+			/Subscription not found/,
+		);
+	});
+
+	it('prepareUnsubscribeById throws when subscription id is unknown on chain', async () => {
+		unknownIdFetch();
+		await expect(prepareUnsubscribeById(testEnv, from, id, mcpLane)).rejects.toThrow(
+			/Subscription not found/,
+		);
+	});
+
+	it('prepareUnsubscribeByProviderById throws when subscription id is unknown on chain', async () => {
+		unknownIdFetch();
 		await expect(
-			prepareSubscribeById(
-				testEnv,
-				'0x0000000000000000000000000000000000000001',
-				`0x${'11'.repeat(32)}`,
-				mcpLane,
-			),
+			prepareUnsubscribeByProviderById(testEnv, from, id, subscriber, mcpLane),
 		).rejects.toThrow(/Subscription not found/);
 	});
 });

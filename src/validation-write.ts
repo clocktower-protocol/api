@@ -175,9 +175,25 @@ export const subscriptionActionInputSchema = z.object({
 	simulateFromAddress: simulateFromAddressSchema,
 });
 
+/** Cancel / unsubscribe using only on-chain id (server loads the full struct). */
+export const subscriptionActionByIdInputSchema = z.object({
+	from: fromAddressSchema,
+	id: bytes32Schema.describe('Subscription id (bytes32); remaining fields are loaded from chain'),
+	readinessOnly: readinessOnlySchema,
+	simulateFromAddress: simulateFromAddressSchema,
+});
+
 export const unsubscribeByProviderInputSchema = z.object({
 	from: fromAddressSchema,
 	subscription: subscriptionInputSchema,
+	subscriber: addressSchema,
+	readinessOnly: readinessOnlySchema,
+	simulateFromAddress: simulateFromAddressSchema,
+});
+
+export const unsubscribeByProviderByIdInputSchema = z.object({
+	from: fromAddressSchema,
+	id: bytes32Schema.describe('Subscription id (bytes32); remaining fields are loaded from chain'),
 	subscriber: addressSchema,
 	readinessOnly: readinessOnlySchema,
 	simulateFromAddress: simulateFromAddressSchema,

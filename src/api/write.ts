@@ -26,8 +26,11 @@ import {
   prepareSubscribe,
   prepareSubscribeById,
   prepareCancelSubscription,
+  prepareCancelSubscriptionById,
   prepareUnsubscribe,
+  prepareUnsubscribeById,
   prepareUnsubscribeByProvider,
+  prepareUnsubscribeByProviderById,
   prepareEditDetails,
   prepareRemit,
   loadWriteSubscriptionById,
@@ -62,7 +65,9 @@ import {
   subscribeByIdInputSchema,
   checkSubscribeReadinessByIdInputSchema,
   subscriptionActionInputSchema,
+  subscriptionActionByIdInputSchema,
   unsubscribeByProviderInputSchema,
+  unsubscribeByProviderByIdInputSchema,
   editDetailsInputSchema,
   createSubscriptionInputSchema,
   remitInputSchema,
@@ -239,6 +244,25 @@ export async function handlePrepareCancelSubscription(c: Context) {
   }
 }
 
+// 4b. Prepare cancel by id only
+export async function handlePrepareCancelSubscriptionById(c: Context) {
+  try {
+    const body = await c.req.json();
+    const parsed = subscriptionActionByIdInputSchema.parse(body);
+
+    const result = await prepareCancelSubscriptionById(
+      c.env,
+      parsed.from,
+      parsed.id,
+      prepareOpts(c, parsed),
+    );
+
+    return jsonResponse(result);
+  } catch (err: any) {
+    return handleWriteError(err, 'prepare_cancel_subscription_by_id');
+  }
+}
+
 // 5. Prepare unsubscribe
 export async function handlePrepareUnsubscribe(c: Context) {
   try {
@@ -257,6 +281,25 @@ export async function handlePrepareUnsubscribe(c: Context) {
     return jsonResponse(result);
   } catch (err: any) {
     return handleWriteError(err, 'prepare_unsubscribe');
+  }
+}
+
+// 5b. Prepare unsubscribe by id only
+export async function handlePrepareUnsubscribeById(c: Context) {
+  try {
+    const body = await c.req.json();
+    const parsed = subscriptionActionByIdInputSchema.parse(body);
+
+    const result = await prepareUnsubscribeById(
+      c.env,
+      parsed.from,
+      parsed.id,
+      prepareOpts(c, parsed),
+    );
+
+    return jsonResponse(result);
+  } catch (err: any) {
+    return handleWriteError(err, 'prepare_unsubscribe_by_id');
   }
 }
 
@@ -279,6 +322,26 @@ export async function handlePrepareUnsubscribeByProvider(c: Context) {
     return jsonResponse(result);
   } catch (err: any) {
     return handleWriteError(err, 'prepare_unsubscribe_by_provider');
+  }
+}
+
+// 6b. Prepare unsubscribe by provider using id only
+export async function handlePrepareUnsubscribeByProviderById(c: Context) {
+  try {
+    const body = await c.req.json();
+    const parsed = unsubscribeByProviderByIdInputSchema.parse(body);
+
+    const result = await prepareUnsubscribeByProviderById(
+      c.env,
+      parsed.from,
+      parsed.id,
+      parsed.subscriber,
+      prepareOpts(c, parsed),
+    );
+
+    return jsonResponse(result);
+  } catch (err: any) {
+    return handleWriteError(err, 'prepare_unsubscribe_by_provider_by_id');
   }
 }
 
