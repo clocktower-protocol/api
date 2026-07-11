@@ -8,6 +8,11 @@ export type PrepareOptions = {
 	/** Account passed to eth_estimateGas; defaults to `from`. */
 	simulateFromAddress?: `0x${string}`;
 	/**
+	 * When true on prepare_subscribe, ERC-20 approve uses max allowance instead of
+	 * the token-native subscription amount. Default is amount-scoped approve.
+	 */
+	infiniteApproval?: boolean;
+	/**
 	 * Rate-limit bucket lane (API builder/free or MCP).
 	 * Must be passed explicitly — do not use isolate-global state (concurrent
 	 * requests on one Worker isolate would cross-contaminate buckets).

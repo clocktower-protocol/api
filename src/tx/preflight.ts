@@ -8,7 +8,7 @@ import {
 	parseSubscriptionRecord,
 } from '../validation.js';
 import { convertProtocolAmountToTokenNative } from '../utils.js';
-import { ALLOWANCE_THRESHOLD, INFINITE_APPROVAL, ZERO_ADDRESS, ZERO_SUBSCRIPTION_ID } from './constants.js';
+import { INFINITE_APPROVAL, ZERO_ADDRESS, ZERO_SUBSCRIPTION_ID } from './constants.js';
 import type { SubscribeReadinessResult } from './types.js';
 
 function emptySubscribeReadiness(
@@ -113,11 +113,11 @@ export async function checkSubscribeReadiness(
 		errors.push('Insufficient token balance');
 	}
 
-	const needsApproval = allowance < ALLOWANCE_THRESHOLD;
+	// Compare ERC-20 allowance to the token-native subscription amount (SDK-style).
+	// Do not use a fixed global threshold — that is not denominated in token units.
+	const needsApproval = allowance < requiredAmount;
 	if (needsApproval) {
 		warnings.push('ERC20 approve required before subscribe');
-	} else if (allowance < requiredAmount) {
-		errors.push('Insufficient allowance for subscription amount');
 	}
 
 	return {

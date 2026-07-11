@@ -304,11 +304,15 @@ export async function prepareSubscribe(
 		const unsigned: UnsignedTransaction[] = [];
 
 		if (readiness.needsApproval) {
+			const requiredNative = BigInt(readiness.requiredAmount);
+			const approveAmount = options?.infiniteApproval
+				? INFINITE_APPROVAL
+				: requiredNative;
 			unsigned.push(
 				buildUnsigned(
 					from,
 					sub.token,
-					encodeApprove(chain.contractAddress, INFINITE_APPROVAL),
+					encodeApprove(chain.contractAddress, approveAmount),
 				),
 			);
 		}
@@ -324,6 +328,8 @@ export async function prepareSubscribe(
 			requestId,
 			{
 				needsApproval: readiness.needsApproval,
+				requiredAmount: readiness.requiredAmount,
+				infiniteApproval: Boolean(options?.infiniteApproval),
 				warnings: readiness.warnings,
 			},
 			options,

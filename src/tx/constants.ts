@@ -1,7 +1,5 @@
+/** Max-uint style approve when `infiniteApproval` is requested on prepare_subscribe. */
 export const INFINITE_APPROVAL = 2n ** 255n;
-
-/** Below this allowance (wei), prepare_subscribe includes an approve call. */
-export const ALLOWANCE_THRESHOLD = 100_000_000_000_000_000_000_000n;
 
 export {
 	REMIT_PREPARE_PRICE,

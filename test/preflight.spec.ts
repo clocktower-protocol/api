@@ -112,4 +112,70 @@ describe('checkSubscribeReadiness', () => {
 		expect(ethCallTargets[2]).toBe(USDC.toLowerCase());
 		expect(ethCallTargets[3]).toBe(USDC.toLowerCase());
 	});
+
+	it('sets needsApproval when allowance is below token-native required amount', async () => {
+		const onChainProvider = '0x000000000000000000000000000000000000abcd';
+		// On-chain amount = 1e18 protocol = 1 USDC (6 dec) => requiredAmount = 1_000_000
+		const allowanceHex = BigInt(500_000).toString(16).padStart(64, '0'); // 0.5 USDC
+		const balanceHex = BigInt(2_000_000).toString(16).padStart(64, '0'); // 2 USDC
+		const fetchMock = createGasAwareFetch([
+			mockIdSubMapResult(onChainProvider, USDC),
+			// approvedERC20: token, decimals=6, paused=false, minimum
+			`0x${encodeAddressPadded(USDC)}${'0'.repeat(63)}6${'0'.repeat(64)}${BigInt(1).toString(16).padStart(64, '0')}`,
+			`0x${allowanceHex}`,
+			`0x${balanceHex}`,
+		]);
+		globalThis.fetch = fetchMock;
+
+		const result = await checkSubscribeReadiness(
+			testEnv,
+			resolveChain(testEnv),
+			FROM,
+			{
+				id: SUB_ID,
+				amount: 1n,
+				provider: onChainProvider,
+				token: USDC,
+				cancelled: false,
+				frequency: 1,
+				dueDay: 15,
+			},
+		);
+
+		expect(result.requiredAmount).toBe('1000000');
+		expect(result.needsApproval).toBe(true);
+		expect(result.ready).toBe(true);
+		expect(result.warnings.some((w) => /approve/i.test(w))).toBe(true);
+	});
+
+	it('clears needsApproval when allowance meets token-native required amount', async () => {
+		const onChainProvider = '0x000000000000000000000000000000000000abcd';
+		const allowanceHex = BigInt(1_000_000).toString(16).padStart(64, '0');
+		const balanceHex = BigInt(2_000_000).toString(16).padStart(64, '0');
+		const fetchMock = createGasAwareFetch([
+			mockIdSubMapResult(onChainProvider, USDC),
+			`0x${encodeAddressPadded(USDC)}${'0'.repeat(63)}6${'0'.repeat(64)}${BigInt(1).toString(16).padStart(64, '0')}`,
+			`0x${allowanceHex}`,
+			`0x${balanceHex}`,
+		]);
+		globalThis.fetch = fetchMock;
+
+		const result = await checkSubscribeReadiness(
+			testEnv,
+			resolveChain(testEnv),
+			FROM,
+			{
+				id: SUB_ID,
+				amount: 1n,
+				provider: onChainProvider,
+				token: USDC,
+				cancelled: false,
+				frequency: 1,
+				dueDay: 15,
+			},
+		);
+
+		expect(result.needsApproval).toBe(false);
+		expect(result.ready).toBe(true);
+	});
 });
