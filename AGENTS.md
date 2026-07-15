@@ -104,6 +104,42 @@ Machine-readable tier manifest: `GET /catalog` (or `/api/catalog` on workers.dev
 - Widening CORS, disabling CSRF/geo blocks, or weakening rate limits
 - Force-push / history rewrite
 - Publishing or claiming a public production API
+- Auto-merging Dependabot **production major** upgrades
+
+## Dependabot / dependency PRs
+
+When reviewing or landing Dependabot (or similar) dependency PRs in this repo:
+
+### Prefer merge when
+
+- Change is **patch or minor**, CI/`npm test` is green (or run it locally if CI is missing).
+- **DevDependencies only** (e.g. `vitest`, `typescript`, `@cloudflare/workers-types`) and tests pass.
+- PR is a **grouped** routine bump with no lockfile surprises beyond the intended packages.
+
+### Always review carefully (do not rubber-stamp)
+
+- **Majors** of: `viem`, `hono`, `@x402/*`, `@coinbase/x402`, `@modelcontextprotocol/sdk`, `agents`, `zod`, `wrangler`, `@cloudflare/*`.
+- Anything that touches **payments, HTTP edge, RPC, or signing** (`viem`, x402 stack, `hono`, MCP SDK).
+- PRs that only/transitively bump packages pinned in **`package.json` `overrides`** (`esbuild`, `undici`, `ws`) — confirm overrides still make sense after the bump.
+- Security advisories: read the advisory; prefer upgrading the **direct** dependency when possible.
+
+### Do not
+
+- Auto-merge production majors without a human (or explicit user) go-ahead.
+- Hand-edit `package-lock.json` around Dependabot unless resolving a merge conflict; prefer Dependabot’s lockfile or `npm install` after a deliberate `package.json` change.
+- Broaden dependency ranges casually (`*` / overly loose ranges) to “make Dependabot happy.”
+- Commit or paste secrets while “fixing” a bump.
+
+### Suggested checks before merge
+
+1. `npm test`
+2. If `viem` / prepare/encode paths may be affected: sanity-check prepare or amount-related tests (`test/prepare*.spec.ts`, `test/amounts.spec.ts`, `test/validation-write.spec.ts`).
+3. If x402 / MCP middleware changed: run x402-related specs (`test/api-x402*.spec.ts`, `test/x402-sdk-invariant.spec.ts`) when present.
+4. Skim changelog/release notes for breaking API changes on majors.
+
+### Scope
+
+This is **review policy for agents and humans**, not GitHub enforcement. Actual Dependabot schedule/grouping lives in `.github/dependabot.yml` if/when added.
 
 ## Related repos
 
