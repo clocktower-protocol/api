@@ -3,14 +3,21 @@ import { enforceOriginAllowlist } from './csrf.js';
 import { enforceGeoBlock } from './geoBlock.js';
 import { ClocktowerMCP } from './mcp.js';
 import { RateLimiter } from './RateLimiter.js';
-import { enforceMcpRateLimit, enforceTierRateLimits } from './rateLimit.js';
+import {
+	enforceAuthFailRateLimit,
+	enforceMcpRateLimit,
+	enforceSecondaryIpRateLimit,
+	enforceTierRateLimits,
+} from './rateLimit.js';
 import { withSecurityHeaders } from './securityHeaders.js';
 import { validateApiPostRequest, validateEnv, validateMcpRequest } from './validation.js';
 import { createApiApp, createApiAppForEnv } from './api/app.js';
 import { handleApiCorsPreflight, withApiCorsHeaders } from './cors.js';
 import { getRateLimitIdentity, resolveApiAccess } from './middleware/accessLane.js';
 import { enforceBuilderPolicy, rewriteMePath } from './middleware/entitlementPolicy.js';
-import { enforceFreeTierPolicy } from './middleware/freeTierPolicy.js';
+import { enforceLanePolicy } from './middleware/freeTierPolicy.js';
+import { isApiKeyToken, verifyAdminSecret } from './auth/apiKeys.js';
+import { parseBearerToken } from './auth/session.js';
 import { isApiEnabled, isApiHealthCheckPath } from './config/apiAccess.js';
 import {
 	getPublicApiOrigin,
@@ -140,10 +147,43 @@ async function handleRequest(
 			}
 		}
 
+		// Portal/admin key management: admin secret is not a user lane; do not apply free/dev limits.
+		const isDeveloperKeysAdminPath =
+			pathname === '/api/developer/keys' ||
+			pathname.startsWith('/api/developer/keys/');
+		if (isDeveloperKeysAdminPath && verifyAdminSecret(routedRequest, env)) {
+			const apiResponse = await getApi(env).fetch(routedRequest, env, ctx);
+			return withSecurityHeaders(
+				withApiCorsHeaders(routedRequest, withLaneHeaders(apiResponse, 'free'), env),
+			);
+		}
+
 		const access = await resolveApiAccess(routedRequest, env);
 
-		if (access.lane === 'free') {
-			const policyBlocked = enforceFreeTierPolicy(routedRequest.method, pathname, routedRequest);
+		if (access.authError) {
+			const bearer = parseBearerToken(routedRequest);
+			if (bearer && isApiKeyToken(bearer)) {
+				const authLimited = await enforceAuthFailRateLimit(routedRequest, env);
+				if (authLimited) {
+					return withSecurityHeaders(withApiCorsHeaders(routedRequest, authLimited, env));
+				}
+			}
+			return withSecurityHeaders(withApiCorsHeaders(routedRequest, access.authError, env));
+		}
+
+		// Secondary IP ceiling for all REST traffic (multi-key / free DoS bound).
+		const ipCeiling = await enforceSecondaryIpRateLimit(routedRequest, env);
+		if (ipCeiling) {
+			return withSecurityHeaders(withApiCorsHeaders(routedRequest, ipCeiling, env));
+		}
+
+		if (access.lane === 'free' || access.lane === 'developer') {
+			const policyBlocked = enforceLanePolicy(
+				access.lane,
+				routedRequest.method,
+				pathname,
+				routedRequest,
+			);
 			if (policyBlocked) {
 				return withSecurityHeaders(withApiCorsHeaders(routedRequest, policyBlocked, env));
 			}
@@ -194,9 +234,9 @@ function buildDiscoveryPayload(env: Env, surface: RequestSurface) {
 		rest: getPublicApiOrigin(env),
 		apiEnabled: isApiEnabled(env),
 		surface,
-		note: 'REST API is free with tiered rate limits. MCP requires x402.',
+		note: 'REST: free (IP), developer API key (ctk_…), or Builder SIWE. MCP requires x402.',
 		access: {
-			rest: 'free (rate-limited) or builder session',
+			rest: 'free | developer API key | builder session',
 			mcp: 'x402 required',
 		},
 	};

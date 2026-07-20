@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { Errors, jsonResponse } from './responses.js';
 import { addressSchema } from './read.js';
-import { FREE_SEARCH_MAX_FIRST } from '../middleware/freeTierPolicy.js';
+import { getSearchMaxFirst } from '../config/rateLimits.js';
 import { parseAccessLane } from '../requestLane.js';
 import { searchSubscriptions } from '../tools/discovery.js';
 
@@ -57,12 +57,10 @@ export async function handleSearchSubscriptions(
 	let first = query.first ? Number(query.first) : undefined;
 	const skip = query.skip ? Number(query.skip) : undefined;
 
-	const maxFirst = lane === 'free' ? FREE_SEARCH_MAX_FIRST : 50;
+	const maxFirst = getSearchMaxFirst(lane);
 	if (first !== undefined && (!Number.isInteger(first) || first < 1 || first > maxFirst)) {
 		return Errors.validation(
-			lane === 'free'
-				? `Invalid first parameter (free tier: 1–${FREE_SEARCH_MAX_FIRST})`
-				: 'Invalid first parameter (must be 1-50)',
+			`Invalid first parameter (${lane} tier: 1–${maxFirst})`,
 		);
 	}
 	if (skip !== undefined && (!Number.isInteger(skip) || skip < 0)) {
@@ -72,7 +70,7 @@ export async function handleSearchSubscriptions(
 	let includeDetails = includeDetailsParse.data ?? false;
 	if (lane === 'free' && includeDetails) {
 		return Errors.validation(
-			'Free tier does not support includeDetails=true; omit it or authenticate as Builder',
+			'Free tier does not support includeDetails=true; use a developer API key or Builder session',
 		);
 	}
 
