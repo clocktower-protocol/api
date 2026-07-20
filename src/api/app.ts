@@ -20,6 +20,11 @@ import {
 import { handleGetCatalog } from './catalog.js';
 import { handleSearchSubscriptions } from './discovery.js';
 import { handleAuthChallenge, handleAuthVerify } from './auth.js';
+import {
+  handleCreateDeveloperKey,
+  handleListDeveloperKeys,
+  handleRevokeDeveloperKey,
+} from './developerKeys.js';
 import { withPublicCacheHeaders } from '../rpcCache.js';
 
 // Write handlers
@@ -33,12 +38,11 @@ export type ApiAppOptions = Record<string, never>;
  * This module defines the REST API surface mounted under `/api`.
  *
  * === Authentication Model ===
- * REST `/api/*` is free with tiered rate limits (see src/index.ts).
- * Builder subscribers authenticate via SIWE session (Bearer token).
- * MCP `/mcp` remains x402-gated for agents.
+ * REST `/api/*`: free (IP), developer API key (Bearer ctk_…), or Builder SIWE (cts_…).
+ * MCP `/mcp` remains x402-gated for agents (not API keys).
  *
  * === Current Endpoints ===
- * REST is free with tiered rate limits (or Builder SIWE session). MCP uses x402.
+ * REST free / developer key / Builder. MCP uses x402.
  *
  * Read:
  *   - GET /api/catalog
@@ -77,6 +81,7 @@ export type ApiAppOptions = Record<string, never>;
  *   - POST /api/transactions/status
  *
  * Auth: POST /api/auth/challenge, POST /api/auth/verify
+ * Developer keys (admin secret): POST/GET /api/developer/keys, DELETE /api/developer/keys/:id
  *
  * Related modules:
  *   - src/api/pricing.ts   → Centralized pricing
@@ -99,7 +104,7 @@ export function createApiApp(_options: ApiAppOptions = {}) {
       message: 'Clocktower REST API',
       version: 'tiered-access',
       auth: {
-        rest: 'free with rate limits, or Builder SIWE session',
+        rest: 'free (IP limits), developer API key (ctk_…), or Builder SIWE (cts_…)',
         mcp: 'x402 required on /mcp',
         basicAuth: requireBasic ? 'optional (enabled via flag)' : 'disabled',
       },
@@ -108,6 +113,12 @@ export function createApiApp(_options: ApiAppOptions = {}) {
 
   app.post('/api/auth/challenge', async (c: any) => handleAuthChallenge(c.req.raw, c.env));
   app.post('/api/auth/verify', async (c: any) => handleAuthVerify(c.req.raw, c.env));
+
+  app.post('/api/developer/keys', async (c: any) => handleCreateDeveloperKey(c.req.raw, c.env));
+  app.get('/api/developer/keys', async (c: any) => handleListDeveloperKeys(c.req.raw, c.env));
+  app.delete('/api/developer/keys/:id', async (c: any) =>
+    handleRevokeDeveloperKey(c.req.raw, c.env, c.req.param('id')),
+  );
 
   // === Read endpoints ===
 

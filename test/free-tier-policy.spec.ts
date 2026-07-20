@@ -1,7 +1,10 @@
 import { env, createExecutionContext, waitOnExecutionContext } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import worker from '../src/index.js';
-import { enforceFreeTierPolicy } from '../src/middleware/freeTierPolicy.js';
+import {
+	enforceFreeTierPolicy,
+	enforceLanePolicy,
+} from '../src/middleware/freeTierPolicy.js';
 
 const testEnv = {
 	...env,
@@ -57,5 +60,16 @@ describe('free tier policy', () => {
 		});
 		expect(res.status).not.toBe(402);
 		expect(res.headers.get('X-Clocktower-Lane')).toBe('free');
+	});
+
+	it('developer policy allows first up to 25 and includeDetails', () => {
+		const ok = new Request('http://example.com/api/subscriptions?first=25&includeDetails=true');
+		expect(enforceLanePolicy('developer', 'GET', '/api/subscriptions', ok)).toBeNull();
+		const tooBig = new Request('http://example.com/api/subscriptions?first=26');
+		expect(enforceLanePolicy('developer', 'GET', '/api/subscriptions', tooBig)?.status).toBe(400);
+	});
+
+	it('developer policy denies :me routes', () => {
+		expect(enforceLanePolicy('developer', 'GET', '/api/accounts/me')?.status).toBe(403);
 	});
 });

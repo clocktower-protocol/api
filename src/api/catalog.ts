@@ -9,13 +9,15 @@ import {
 	getPublicMcpOrigin,
 	getSiweDomain,
 } from '../config/hostnames.js';
+import { isDeveloperKeysEnabled } from '../auth/apiKeys.js';
 import { jsonResponse } from './responses.js';
 import { API_ROUTE_MANIFEST } from './x402.js';
 
 export function handleGetCatalog(env: Env) {
 	const apiOrigin = getPublicApiOrigin(env);
+	const developerEnabled = isDeveloperKeysEnabled(env);
 	return jsonResponse({
-		version: '2',
+		version: '3',
 		chainId: 8453,
 		hosts: {
 			api: apiOrigin,
@@ -29,13 +31,25 @@ export function handleGetCatalog(env: Env) {
 				free: {
 					auth: 'none',
 					limits: DEFAULT_TIER_LIMITS.free,
-					note: 'Cross-account and provider reads allowed under expensive bucket',
+					note: 'Highly metered; cross-account reads under expensive bucket',
+				},
+				developer: {
+					auth: 'API key (Authorization: Bearer ctk_…)',
+					enabled: developerEnabled,
+					limits: DEFAULT_TIER_LIMITS.developer,
+					note: 'Free developer tier. Keys are minted via admin/portal (POST /developer/keys). MCP is separate (x402).',
+					management: {
+						create: `${apiOrigin}/developer/keys`,
+						list: `${apiOrigin}/developer/keys?subjectId=`,
+						revoke: `${apiOrigin}/developer/keys/:id`,
+						adminAuth: 'Bearer <DEVELOPER_KEYS_ADMIN_SECRET> or X-Clocktower-Admin-Key',
+					},
 				},
 				builder: {
-					auth: 'SIWE session (Bearer token)',
+					auth: 'SIWE session (Bearer cts_…)',
 					enabled: isEntitlementAuthEnabled(env),
 					entitlementSubscriptionIds: getEntitlementSubscriptionIds(env),
-					note: 'Any ACTIVE subscription to a configured entitlement ID grants the same Builder access',
+					note: 'Optional higher tier when entitlement IDs are configured; off when none set',
 					limits: DEFAULT_TIER_LIMITS.builder,
 					authEndpoints: [`${apiOrigin}/auth/challenge`, `${apiOrigin}/auth/verify`],
 				},
@@ -46,6 +60,7 @@ export function handleGetCatalog(env: Env) {
 			},
 		},
 		apiEnabled: isApiEnabled(env),
+		developerKeysEnabled: developerEnabled,
 		builderAuthEnabled: isEntitlementAuthEnabled(env),
 		routes: API_ROUTE_MANIFEST.map(({ method, path, description }) => ({
 			method,
