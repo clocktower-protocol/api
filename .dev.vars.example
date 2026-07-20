@@ -1,6 +1,9 @@
 # Copy this file to .dev.vars for local development with `wrangler dev`.
 # .dev.vars is automatically loaded by Wrangler and is git-ignored.
 # Never commit real secrets.
+#
+# Generate secrets, e.g.:
+#   openssl rand -hex 32
 
 # =============================================================================
 # REQUIRED (core functionality)
@@ -17,11 +20,7 @@ X402_RECIPIENT=0xYourWalletAddress
 
 # =============================================================================
 # OPTIONAL - The Graph (history & provider detail endpoints)
-# These are only needed if you want to use the subgraph-backed history tools:
-#   - get_subscription_history / /api/subscriptions/:id/history
-#   - get_account_activity / /api/accounts/:address/activity
-#   - get_subscription_details_history
-#   - get_provider_profile
+# Needed for subgraph-backed history / discovery tools and REST routes.
 # =============================================================================
 # Mainnet (Base) - Decentralized Gateway
 # GRAPH_BASE_URL=https://gateway.thegraph.com/api/${GRAPH_API_KEY}/subgraphs/id/H26nGNfhfFZdT9BSEajo7kyK3vdiQr1EAutPMGCUMC9x
@@ -32,39 +31,76 @@ X402_RECIPIENT=0xYourWalletAddress
 # GRAPH_API_KEY=your-graph-api-key-here
 
 # =============================================================================
-# OPTIONAL - Rate limiting
+# OPTIONAL - Developer REST API keys (ctk_…)
+# Admin secret is required for mint/list/revoke (portal BFF or curl).
+# Same value must be used in clocktower-developers DEVELOPER_KEYS_ADMIN_SECRET.
+# Keys enabled when secret is set, unless DEVELOPER_KEYS_ENABLED=false.
+# MCP stays x402 — these secrets do not auth MCP.
 # =============================================================================
+# DEVELOPER_KEYS_ADMIN_SECRET=replace-with-openssl-rand-hex-32
+# DEVELOPER_KEYS_ENABLED=true
+# DEVELOPER_MAX_KEYS_PER_SUBJECT=5
+# DEVELOPER_RATE_LIMIT_RPM=80
+# DEVELOPER_EXPENSIVE_RATE_LIMIT_RPM=40
+# DEVELOPER_SUBGRAPH_DAILY_LIMIT=3000
+# DEVELOPER_WRITE_RATE_LIMIT_RPM=15
+# DEVELOPER_DAILY_REQUEST_LIMIT=10000
+
+# =============================================================================
+# OPTIONAL - Tiered rate limits (defaults live in src/config/rateLimits.ts)
+# =============================================================================
+# Free (anonymous IP)
+# FREE_RATE_LIMIT_RPM=20
+# FREE_EXPENSIVE_RATE_LIMIT_RPM=3
+# FREE_SUBGRAPH_DAILY_LIMIT=100
+# FREE_WRITE_RATE_LIMIT_RPM=2
+# FREE_DAILY_REQUEST_LIMIT=500
+
+# Builder (SIWE session cts_…) — leave entitlement IDs empty to keep Builder off
+# BUILDER_SUB_ID=
+# BUILDER_SUB_IDS=
+# BUILDER_RATE_LIMIT_RPM=120
+# BUILDER_EXPENSIVE_RATE_LIMIT_RPM=120
+# BUILDER_SUBGRAPH_DAILY_LIMIT=10000
+# BUILDER_WRITE_RATE_LIMIT_RPM=30
+# BUILDER_DAILY_REQUEST_LIMIT=
+
+# MCP (x402 agents)
+# MCP_RATE_LIMIT_RPM=300
+# MCP_EXPENSIVE_RATE_LIMIT_RPM=300
+# MCP_WRITE_RATE_LIMIT_RPM=60
+
+# Legacy flat limits (prefer FREE_*/BUILDER_*/MCP_* above)
 # RATE_LIMIT_REQUESTS_PER_MINUTE=60
 # WRITE_RATE_LIMIT_REQUESTS_PER_MINUTE=10
-# PREPARE_INTENT_TTL_SECONDS=900
 
 # =============================================================================
 # OPTIONAL - Developer safety net (Basic Auth)
 # Set ENABLE_AUTH=true to require HTTP Basic Auth on /mcp and optionally /api.
-# This is an extra layer on top of x402 micropayments (never a replacement).
+# Extra layer; not a replacement for x402 on MCP or REST rate limits.
 # =============================================================================
 # ENABLE_AUTH=true
 # CFP_USERNAME=your-username
 # CFP_PASSWORD=your-password
 
-# Optional CSRF protection for browsers when Basic Auth is enabled.
-# Comma-separated list of allowed Origins. Use "*" to allow any (not recommended).
+# Optional origin allowlist when Basic Auth is enabled.
+# Comma-separated Origins. Use "*" only for local experiments (not recommended).
 # CFP_ALLOWED_ORIGINS=https://app.example.com,https://admin.example.com
 
-# Controls whether Basic Auth is enforced on REST API routes (x402 is always required).
-# Production default in wrangler.jsonc is false (x402-only). Set true only for local dev.
+# Basic Auth on REST /api routes. Production default is false.
 # API_REQUIRE_BASIC_AUTH=false
 
-# Kill switch for the REST API. Set to false to disable /api/* (MCP /mcp stays up).
-# GET /api/status remains available for health checks. Default: true (enabled).
+# Kill switch for REST /api/* (MCP /mcp stays up). GET /api/status remains available.
 # API_ENABLED=true
 
-# Optional CORS for browser SPAs calling /api directly (x402 still required).
-# Comma-separated full origins. Unset = CORS disabled (default).
+# CORS for browser SPAs calling /api (comma-separated origins). Unset = disabled.
 # API_CORS_ALLOWED_ORIGINS=https://app.clocktower.finance,http://localhost:5173
 
+# Vitest / local only: mock x402 facilitator
+# X402_USE_MOCK_FACILITATOR=true
+
 # =============================================================================
-# OPTIONAL - Production hostnames (defaults match clocktower.finance launch)
+# OPTIONAL - Production hostnames (defaults match clocktower.finance)
 # =============================================================================
 # API_HOST=api.clocktower.finance
 # MCP_HOST=mcp.clocktower.finance
