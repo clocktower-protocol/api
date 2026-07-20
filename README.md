@@ -6,7 +6,7 @@
 
 Clocktower API is a Cloudflare Workers-based server that provides access to the Clocktower Protocol (a subscription management system on Base) through a REST API and the Model Context Protocol (MCP). The Worker name is `clocktower-api` (see `wrangler.jsonc`).
 
-Access uses three lanes: **free REST** (rate-limited), **Builder REST** (SIWE session + on-chain entitlement subscription), and **MCP** (x402 for agents).
+Access uses **REST** lanes (free IP, developer API key, optional Builder SIWE) and **MCP** (x402 for agents — not API keys).
 
 **Jump to:** [MCP Server](#mcp-server) · [REST API](#rest-api)
 
@@ -29,21 +29,25 @@ Builder SIWE auth uses domain `api.clocktower.finance` (configurable via `SIWE_D
 - **Hosting**: Cloudflare Workers + Durable Objects
 - **Interfaces**:
   - MCP Server at `mcp.clocktower.finance` (for AI agents — x402 USDC micropayments)
-  - REST API at `api.clocktower.finance` (free with rate limits, or Builder session for higher limits)
+  - REST API at `api.clocktower.finance` (free IP limits, free developer API keys, optional Builder)
 
 ## Access tiers
 
-| Lane | Surface | Auth | Default limits |
-|------|---------|------|----------------|
-| **Free** | REST `/api/*` | None | 20 rpm/IP; expensive routes 3 rpm; subgraph 100/day/IP; writes 2 prepare/min/IP |
-| **Builder** | REST `/api/*` | SIWE session (`Authorization: Bearer cts_…`) | 120 rpm/address; subgraph 10k/day; writes 30/min; scoped to your wallet |
-| **Agent** | MCP `/mcp` | x402 (USDC on Base) | 300 rpm/IP; writes 60/min/address |
+| Lane | Surface | Auth | Default limits (approx.) |
+|------|---------|------|---------------------------|
+| **Free** | REST | None (IP) | 20 rpm; expensive 3 rpm; subgraph 100/day; write 2/min; **500 req/day**; search `first` ≤ 10; no `includeDetails` |
+| **Developer** | REST | API key `Authorization: Bearer ctk_…` | 80 rpm; expensive 40; subgraph 3k/day; write 15/min; **10k req/day**; search `first` ≤ 25; `includeDetails` allowed |
+| **Builder** | REST | SIWE session `Bearer cts_…` | 120 rpm; subgraph 10k/day; write 30/min; wallet-scoped `:me` (optional; off until entitlement IDs set) |
+| **Agent** | MCP | x402 (USDC on Base) | 300 rpm; write 60/min — **not API keys** |
 
-- **Free tier**: No API key. Same REST endpoints as Builder; lower rate limits (20 rpm global, 2 prepare/min/IP, etc.). Cross-account reads allowed (expensive bucket). Provider writes (`cancel`, `unsubscribe_by_provider`, `edit_details`) use the write bucket; on-chain authorization still applies in prepare handlers. Discovery search is capped: `first` max **10**, and `includeDetails=true` is rejected (Builder may use up to 50 and `includeDetails`).
-- **Builder tier**: Subscribe to the Clocktower Builder entitlement subscription on-chain, then `POST /api/auth/challenge` → sign SIWE message → `POST /api/auth/verify` for a session token. Use `:me` routes for your own account. Requires `BUILDER_SUB_ID` (or `BUILDER_SUB_IDS`) in Worker config.
-- **MCP**: Unchanged x402 flow; higher rate limits than the legacy flat 60 rpm cap.
+- **Free**: Highly metered try-without-signup path. Same REST surface otherwise; write prepares still require on-chain auth in the wallet.
+- **Developer**: Free API keys for integrators. Higher limits + daily request budget. Keys are **hashed at rest**; plaintext shown **once** on create. Mint/list/revoke is **admin/portal-only** (`DEVELOPER_KEYS_ADMIN_SECRET`) via `POST/GET/DELETE /developer/keys` — end-user OAuth lives in a future developer portal, not this Worker.
+- **Builder**: Optional higher tier via on-chain entitlement + SIWE. Leave `BUILDER_SUB_ID` / `BUILDER_SUB_IDS` empty to keep it off.
+- **MCP**: Unchanged x402 micropayments. Do not send `ctk_` keys to MCP for auth.
 
-See `GET /api/catalog` for the machine-readable tier manifest.
+**Abuse / DoS controls (REST):** request body size + JSON depth caps; per-lane Durable Object rate limits (global / expensive / write / subgraph daily / **daily total**); secondary **IP ceiling**; **auth-fail RPM** on invalid `ctk_` keys (401, not free fallback); max keys per subject; admin create rate limits.
+
+See `GET /api/catalog` (or `/catalog` on the api host) for the machine-readable tier manifest.
 
 ---
 
@@ -208,7 +212,8 @@ Staging / local dev: `https://your-worker.workers.dev/api/...`
 | Method | When |
 |--------|------|
 | None | Free tier — call any allowed endpoint directly |
-| `Authorization: Bearer <session>` | Builder tier — after SIWE verify |
+| `Authorization: Bearer ctk_…` | Developer tier — free API key |
+| `Authorization: Bearer cts_…` | Builder tier — after SIWE verify |
 | x402 | **Not used on REST** (MCP only) |
 
 **Builder auth quickstart** (requires `BUILDER_SUB_ID` or `BUILDER_SUB_IDS` configured):
@@ -248,7 +253,7 @@ Paths below use the production API host form (no `/api` prefix). On `*.workers.d
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /subscriptions` | Search active subscriptions. Query params: `provider`, `token`, `frequency`, `cancelled` (default `false`), `includeDetails`, `first`, `skip`. **Free:** `first` max 10, no `includeDetails`. **Builder:** `first` max 50, `includeDetails` allowed. |
+| `GET /subscriptions` | Search active subscriptions. Query params: `provider`, `token`, `frequency`, `cancelled` (default `false`), `includeDetails`, `first`, `skip`. **Free:** `first` max 10, no `includeDetails`. **Developer:** `first` max 25, `includeDetails` allowed. **Builder:** `first` max 50. |
 | `GET /subscriptions/:id/details` | Current url/description (latest DetailsLog) |
 
 #### History & Profile Endpoints (GET, subgraph-backed)
@@ -338,7 +343,7 @@ This repository is open source ([MIT License](LICENSE)) for audit and transparen
 ## Security & Rate Limiting
 
 - **REST kill switch** — set `API_ENABLED=false` to block `/api/*` without redeploying (MCP unaffected)
-- **Tier-aware rate limits** — separate buckets for free, builder, and MCP lanes
+- **Tier-aware rate limits** — separate buckets for free, developer, builder, and MCP lanes
 - **Expensive route bucket** — subgraph-heavy endpoints (history, discovery, cross-account reads)
 - **Subgraph daily caps** — per-IP (free) or per-address (builder)
 - Per-address write rate limiting on prepare (keyed on `from`, lane-specific)

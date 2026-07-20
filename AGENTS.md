@@ -10,7 +10,8 @@ Full product docs: `README.md`. Deploy ops: `DEPLOY_REMINDER.md`.
 - **Protocol accounting is always 18 decimals.** Conversion path: human → token-native (`parseUnits` + approved token decimals) → protocol units. See `src/tx/amount.ts` and helpers in `src/utils.ts`.
 - **Prefer `*_by_id` write paths** when the caller already has a subscription id: `prepare_subscribe_by_id`, `check_subscribe_readiness_by_id`, `prepare_cancel_subscription_by_id`, `prepare_unsubscribe_by_id`, `prepare_unsubscribe_by_provider_by_id` (and matching REST routes under `/api/prepare/*` and readiness). Keep object-based prepares for create and for callers that already hold a full subscription object.
 - **Prepare returns unsigned calldata only.** The server never holds user keys, never relays signed txs, and never broadcasts for the user. Workflow: prepare/readiness → wallet signs → client broadcasts → optional `get_transaction_status`.
-- **Three access lanes are distinct:** free REST (IP rate limits), Builder REST (SIWE session + on-chain entitlement), MCP (x402 USDC). Do not apply MCP pricing to REST or free-tier limits to Builder without an explicit product change.
+- **REST access lanes are distinct from MCP:** free (IP), **developer** (`Bearer ctk_…` API key), Builder (`Bearer cts_…` SIWE, optional/off). **MCP stays x402** — never use API keys for MCP auth. Invalid `ctk_` keys must **401**, not fall through to free.
+- **API keys:** store SHA-256 only; plaintext once on create; mint via admin secret (`DEVELOPER_KEYS_ADMIN_SECRET`), not public unauthenticated mint.
 - **ERC-20 approve on subscribe defaults to amount-scoped** (token-native subscription amount). Use `infiniteApproval: true` only when the client opts into max allowance.
 - **Secrets stay out of git.** Use `wrangler secret` / gitignored `.dev.vars`. Never commit API keys, Graph keys, or session material.
 - **Do not force-push or rewrite shared history** unless the user explicitly asks.
@@ -61,11 +62,12 @@ Prefer full `npm test` before finishing a multi-file write-path change.
 
 | Lane | Surface | Auth | Limits live in |
 |------|---------|------|----------------|
-| Free | REST | None | `config/rateLimits`, free-tier middleware |
-| Builder | REST | `Authorization: Bearer cts_…` (SIWE) | Entitlement sub IDs (`BUILDER_SUB_IDS` / `BUILDER_SUB_ID`) |
+| Free | REST | None (IP) | `config/rateLimits`, `enforceLanePolicy` |
+| Developer | REST | `Bearer ctk_…` | Key id identity; daily total + RPM; `src/auth/apiKeys.ts` |
+| Builder | REST | `Bearer cts_…` (SIWE) | Entitlement sub IDs (`BUILDER_SUB_IDS` / `BUILDER_SUB_ID`) — may be off |
 | Agent | MCP | x402 | `src/api/pricing.ts` + MCP rate limits |
 
-Machine-readable tier manifest: `GET /catalog` (or `/api/catalog` on workers.dev). Details and pricing tables: `README.md` — do not duplicate full tables here.
+Machine-readable tier manifest: `GET /catalog` (or `/api/catalog` on workers.dev). Details: `README.md`.
 
 ## Change playbooks
 
@@ -85,9 +87,11 @@ Machine-readable tier manifest: `GET /catalog` (or `/api/catalog` on workers.dev
 3. Run amount + validation-write + prepare tests
 4. Align docs in README if the public contract changes; coordinate with `clocktower-sdk` only when asked
 
-**Rate limits / tiers**
+**Rate limits / tiers / API keys**
 
-- `src/config/rateLimits.ts`, `src/middleware/*`, related tests (`*rateLimit*`, `free-tier*`)
+- `src/config/rateLimits.ts`, `src/middleware/accessLane.ts`, `src/auth/apiKeys.ts`, `src/api/developerKeys.ts`
+- Abuse: daily totals, secondary IP ceiling, auth-fail limits, max keys/subject, search caps
+- Tests: `test/tier-rateLimit.spec.ts`, `test/api-keys.spec.ts`, `test/access-lane-apikey.spec.ts`, `test/free-tier-policy.spec.ts`
 
 **MCP pricing**
 
