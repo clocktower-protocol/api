@@ -41,4 +41,28 @@ describe('tier rate limits config', () => {
 		expect(getTierLimits(env, 'free').globalRpm).toBe(15);
 		expect(getTierLimits({} as Env, 'mcp').globalRpm).toBe(DEFAULT_TIER_LIMITS.mcp.globalRpm);
 	});
+
+	it('includes developer lane between free and builder', () => {
+		const dev = DEFAULT_TIER_LIMITS.developer;
+		const free = DEFAULT_TIER_LIMITS.free;
+		const builder = DEFAULT_TIER_LIMITS.builder;
+		expect(dev.globalRpm).toBeGreaterThan(free.globalRpm);
+		expect(dev.globalRpm).toBeLessThan(builder.globalRpm);
+		expect(dev.expensiveRpm).toBeGreaterThan(free.expensiveRpm);
+		expect(dev.writeRpm).toBeGreaterThan(free.writeRpm);
+		expect(dev.dailyTotalRequests).toBe(10_000);
+		expect(Number.isFinite(dev.dailyTotalRequests)).toBe(true);
+	});
+
+	it('applies developer env overrides', () => {
+		const env = {
+			DEVELOPER_RATE_LIMIT_RPM: '99',
+			DEVELOPER_DAILY_REQUEST_LIMIT: '1234',
+			DEVELOPER_EXPENSIVE_RATE_LIMIT_RPM: '11',
+		} as Env;
+		const limits = getTierLimits(env, 'developer');
+		expect(limits.globalRpm).toBe(99);
+		expect(limits.dailyTotalRequests).toBe(1234);
+		expect(limits.expensiveRpm).toBe(11);
+	});
 });

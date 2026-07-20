@@ -36,10 +36,24 @@ declare namespace Cloudflare {
 		FREE_EXPENSIVE_RATE_LIMIT_RPM?: string;
 		FREE_SUBGRAPH_DAILY_LIMIT?: string;
 		FREE_WRITE_RATE_LIMIT_RPM?: string;
+		FREE_DAILY_REQUEST_LIMIT?: string;
+		DEVELOPER_RATE_LIMIT_RPM?: string;
+		DEVELOPER_EXPENSIVE_RATE_LIMIT_RPM?: string;
+		DEVELOPER_SUBGRAPH_DAILY_LIMIT?: string;
+		DEVELOPER_WRITE_RATE_LIMIT_RPM?: string;
+		DEVELOPER_DAILY_REQUEST_LIMIT?: string;
+		DEVELOPER_MAX_KEYS_PER_SUBJECT?: string;
+		/** When 'false', reject ctk_ keys and disable mint. Default enabled when admin secret set. */
+		DEVELOPER_KEYS_ENABLED?: string;
+		/** Shared secret for portal/admin key management routes. */
+		DEVELOPER_KEYS_ADMIN_SECRET?: string;
 		BUILDER_RATE_LIMIT_RPM?: string;
+		BUILDER_EXPENSIVE_RATE_LIMIT_RPM?: string;
 		BUILDER_SUBGRAPH_DAILY_LIMIT?: string;
 		BUILDER_WRITE_RATE_LIMIT_RPM?: string;
+		BUILDER_DAILY_REQUEST_LIMIT?: string;
 		MCP_RATE_LIMIT_RPM?: string;
+		MCP_EXPENSIVE_RATE_LIMIT_RPM?: string;
 		MCP_WRITE_RATE_LIMIT_RPM?: string;
 		/** Legacy single Builder entitlement subscription ID. */
 		BUILDER_SUB_ID?: string;

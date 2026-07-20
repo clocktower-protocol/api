@@ -94,6 +94,20 @@ export async function enforceTierRateLimits(
 		return buildRateLimitResponse(lane, global);
 	}
 
+	// Daily total request budget (volume / bandwidth proxy). Skip when unlimited.
+	if (Number.isFinite(limits.dailyTotalRequests) && limits.dailyTotalRequests < Number.MAX_SAFE_INTEGER) {
+		const day = dailyWindowKey();
+		const dailyTotal = await checkBucket(
+			env,
+			`${lane}:${identityKey}:day:${day}`,
+			limits.dailyTotalRequests,
+			DAY_MS,
+		);
+		if (!dailyTotal.ok) {
+			return buildRateLimitResponse(lane, dailyTotal);
+		}
+	}
+
 	if (routeClass === 'expensive') {
 		const expensive = await checkBucket(
 			env,
@@ -156,7 +170,14 @@ export async function enforceWriteRateLimitForAddress(
 	lane: AccessLane = 'free',
 ): Promise<void> {
 	const limit = getWriteRateLimit(env, lane);
-	const prefix = lane === 'mcp' ? 'mcp' : lane === 'builder' ? 'builder' : 'free';
+	const prefix =
+		lane === 'mcp'
+			? 'mcp'
+			: lane === 'builder'
+				? 'builder'
+				: lane === 'developer'
+					? 'developer'
+					: 'free';
 	const result = await checkRateLimit(
 		env.RATE_LIMITER,
 		`${prefix}:wr:${address.toLowerCase()}`,
@@ -166,6 +187,48 @@ export async function enforceWriteRateLimitForAddress(
 	if (!result.ok) {
 		throw new Error(`Write rate limit exceeded (${limit} requests per minute)`);
 	}
+}
+
+/** Secondary IP ceiling so multi-key abuse from one IP is bounded. */
+export async function enforceSecondaryIpRateLimit(
+	request: Request,
+	env: Env,
+	limitRpm = 300,
+): Promise<Response | null> {
+	const ip = getClientIp(request);
+	const result = await checkBucket(env, `ip-ceiling:${ip}`, limitRpm);
+	if (!result.ok) {
+		return buildRateLimitResponse('free', { ...result, bucket: result.bucket });
+	}
+	return null;
+}
+
+/** Limit invalid API-key presentation attempts per IP (DoS / stuffing). */
+export async function enforceAuthFailRateLimit(
+	request: Request,
+	env: Env,
+	limitRpm = 30,
+): Promise<Response | null> {
+	const ip = getClientIp(request);
+	const result = await checkBucket(env, `auth-fail:${ip}`, limitRpm);
+	if (!result.ok) {
+		return Response.json(
+			{
+				error: 'Too many failed authentication attempts',
+				code: 'AUTH_RATE_LIMITED',
+				limit: result.limit,
+				bucket: result.bucket,
+			},
+			{
+				status: 429,
+				headers: {
+					'Retry-After': String(Math.ceil(result.resetMs / 1000)),
+					'X-RateLimit-Limit': String(result.limit),
+				},
+			},
+		);
+	}
+	return null;
 }
 
 export function getClientIp(request: Request): string {
