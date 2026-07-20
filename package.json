@@ -1,7 +1,7 @@
 {
-  "name": "clocktower-mcp",
+  "name": "clocktower-api",
   "version": "1.0.0",
-  "description": "MCP Server for the Clocktower Protocol",
+  "description": "REST API and MCP server for the Clocktower Protocol",
   "license": "MIT",
   "private": true,
   "type": "module",

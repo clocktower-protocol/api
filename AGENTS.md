@@ -1,6 +1,6 @@
 # AGENTS.md — clocktower-api
 
-Cloudflare Worker that exposes the Clocktower protocol on Base via **REST** (`api.clocktower.finance`) and **MCP** (`mcp.clocktower.finance`). Worker name in Wrangler is `clocktower-mcp`. Pre-release: no public production API yet.
+Cloudflare Worker that exposes the Clocktower protocol on Base via **REST** (`api.clocktower.finance`) and **MCP** (`mcp.clocktower.finance`). Worker name in Wrangler is `clocktower-api`. Pre-release: no public production API yet.
 
 Full product docs: `README.md`. Deploy ops: `DEPLOY_REMINDER.md`.
 

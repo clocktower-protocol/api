@@ -1,9 +1,11 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "clocktower-mcp",
+	"name": "clocktower-api",
 	"main": "src/index.ts",
 	"compatibility_date": "2026-05-28",
-	"compatibility_flags": ["nodejs_compat"],
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
 	"minify": false,
 	"observability": {
 		"enabled": true
@@ -22,22 +24,26 @@
 	},
 	"migrations": [
 		{
-			"new_sqlite_classes": ["ClocktowerMCP"],
+			"new_sqlite_classes": [
+				"ClocktowerMCP"
+			],
 			"tag": "v1"
 		},
 		{
-			"new_sqlite_classes": ["RateLimiter"],
+			"new_sqlite_classes": [
+				"RateLimiter"
+			],
 			"tag": "v2"
 		}
 	],
 	"kv_namespaces": [
 		{
 			"binding": "SESSIONS_KV",
-			"id": "00000000000000000000000000000001"
+			"id": "7b1a7b199dcc40ce88a4b0f335cea924"
 		},
 		{
 			"binding": "RPC_CACHE_KV",
-			"id": "00000000000000000000000000000002"
+			"id": "f328db56e4834fcab17e56be5903dc31"
 		}
 	],
 	"vars": {
@@ -58,7 +64,7 @@
 		"MCP_HOST": "mcp.clocktower.finance",
 		"SIWE_DOMAIN": "api.clocktower.finance"
 		// Custom domains: route both hosts to this Worker in the Cloudflare dashboard
-		// (Workers & Pages → clocktower-mcp → Settings → Domains & Routes), or via:
+		// (Workers & Pages → clocktower-api → Settings → Domains & Routes), or via:
 		//   wrangler deploy --route "api.clocktower.finance/*"
 		//   wrangler deploy --route "mcp.clocktower.finance/*"
 		// GRAPH_* vars are NOT declared here (they contain secrets).
@@ -82,11 +88,15 @@
 			},
 			"migrations": [
 				{
-					"new_sqlite_classes": ["ClocktowerMCP"],
+					"new_sqlite_classes": [
+						"ClocktowerMCP"
+					],
 					"tag": "v1"
 				},
 				{
-					"new_sqlite_classes": ["RateLimiter"],
+					"new_sqlite_classes": [
+						"RateLimiter"
+					],
 					"tag": "v2"
 				}
 			],

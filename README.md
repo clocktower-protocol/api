@@ -4,7 +4,7 @@
 
 > **Status:** Pre-release. There is no public production API yet. The documentation below describes the intended interface; endpoints, limits, and auth flows may change before launch.
 
-Clocktower API is a Cloudflare Workers-based server that provides access to the Clocktower Protocol (a subscription management system on Base) through a REST API and the Model Context Protocol (MCP). The planned Worker name is `clocktower-mcp` (see `wrangler.jsonc`).
+Clocktower API is a Cloudflare Workers-based server that provides access to the Clocktower Protocol (a subscription management system on Base) through a REST API and the Model Context Protocol (MCP). The Worker name is `clocktower-api` (see `wrangler.jsonc`).
 
 Access uses three lanes: **free REST** (rate-limited), **Builder REST** (SIWE session + on-chain entitlement subscription), and **MCP** (x402 for agents).
 
