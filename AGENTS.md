@@ -9,6 +9,7 @@ Full product docs: `README.md`. Deploy ops: `DEPLOY_REMINDER.md`.
 - **Subscription `amount` on API inputs is a human token-unit string** (e.g. `"10"` or `"100.5"`), never protocol wei and never token-native raw integers.
 - **Protocol accounting is always 18 decimals.** Conversion path: human → token-native (`parseUnits` + approved token decimals) → protocol units. See `src/tx/amount.ts` and helpers in `src/utils.ts`.
 - **Prefer `*_by_id` write paths** when the caller already has a subscription id: `prepare_subscribe_by_id`, `check_subscribe_readiness_by_id`, `prepare_cancel_subscription_by_id`, `prepare_unsubscribe_by_id`, `prepare_unsubscribe_by_provider_by_id` (and matching REST routes under `/api/prepare/*` and readiness). Keep object-based prepares for create and for callers that already hold a full subscription object.
+- **Prepare/readiness is tightly rate-limited** on free/developer (write RPM + **write daily**). Defaults: free 2/min · 20/day; developer 5/min · 100/day. Full prepare runs simulation/gas (Alchemy cost) even without relaying. Production write volume → SDK + caller's own RPC.
 - **Prepare returns unsigned calldata only.** The server never holds user keys, never relays signed txs, and never broadcasts for the user. Workflow: prepare/readiness → wallet signs → client broadcasts → optional `get_transaction_status`.
 - **REST access lanes are distinct from MCP:** free (IP), **developer** (`Bearer ctk_…` API key), Builder (`Bearer cts_…` SIWE, optional/off). **MCP stays x402** — never use API keys for MCP auth. Invalid `ctk_` keys must **401**, not fall through to free.
 - **API keys:** store SHA-256 only; plaintext once on create; mint via admin secret (`DEVELOPER_KEYS_ADMIN_SECRET`), not public unauthenticated mint.
@@ -62,8 +63,8 @@ Prefer full `npm test` before finishing a multi-file write-path change.
 
 | Lane | Surface | Auth | Limits live in |
 |------|---------|------|----------------|
-| Free | REST | None (IP) | `config/rateLimits`, `enforceLanePolicy` |
-| Developer | REST | `Bearer ctk_…` | Key id identity; daily total + RPM; `src/auth/apiKeys.ts` |
+| Free | REST | None (IP) | `config/rateLimits`, `enforceLanePolicy`; write 2/min · 20/day |
+| Developer | REST | `Bearer ctk_…` | Key id; write 5/min · 100/day; `src/auth/apiKeys.ts` |
 | Builder | REST | `Bearer cts_…` (SIWE) | Entitlement sub IDs (`BUILDER_SUB_IDS` / `BUILDER_SUB_ID`) — may be off |
 | Agent | MCP | x402 | `src/api/pricing.ts` + MCP rate limits |
 

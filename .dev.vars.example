@@ -43,17 +43,20 @@ X402_RECIPIENT=0xYourWalletAddress
 # DEVELOPER_RATE_LIMIT_RPM=80
 # DEVELOPER_EXPENSIVE_RATE_LIMIT_RPM=40
 # DEVELOPER_SUBGRAPH_DAILY_LIMIT=3000
-# DEVELOPER_WRITE_RATE_LIMIT_RPM=15
-# DEVELOPER_DAILY_REQUEST_LIMIT=10000
+# DEVELOPER_WRITE_RATE_LIMIT_RPM=5
+# DEVELOPER_WRITE_DAILY_LIMIT=100
+# DEVELOPER_DAILY_REQUEST_LIMIT=5000
 
 # =============================================================================
 # OPTIONAL - Tiered rate limits (defaults live in src/config/rateLimits.ts)
+# Prepare/readiness uses write RPM + write daily (RPC simulation cost).
 # =============================================================================
 # Free (anonymous IP)
 # FREE_RATE_LIMIT_RPM=20
 # FREE_EXPENSIVE_RATE_LIMIT_RPM=3
 # FREE_SUBGRAPH_DAILY_LIMIT=100
 # FREE_WRITE_RATE_LIMIT_RPM=2
+# FREE_WRITE_DAILY_LIMIT=20
 # FREE_DAILY_REQUEST_LIMIT=500
 
 # Builder (SIWE session cts_…) — leave entitlement IDs empty to keep Builder off

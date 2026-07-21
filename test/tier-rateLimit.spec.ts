@@ -50,19 +50,27 @@ describe('tier rate limits config', () => {
 		expect(dev.globalRpm).toBeLessThan(builder.globalRpm);
 		expect(dev.expensiveRpm).toBeGreaterThan(free.expensiveRpm);
 		expect(dev.writeRpm).toBeGreaterThan(free.writeRpm);
-		expect(dev.dailyTotalRequests).toBe(10_000);
+		expect(free.writeRpm).toBe(2);
+		expect(dev.writeRpm).toBe(5);
+		expect(free.writeDaily).toBe(20);
+		expect(dev.writeDaily).toBe(100);
+		expect(dev.dailyTotalRequests).toBe(5_000);
 		expect(Number.isFinite(dev.dailyTotalRequests)).toBe(true);
 	});
 
-	it('applies developer env overrides', () => {
+	it('applies developer env overrides including write daily', () => {
 		const env = {
 			DEVELOPER_RATE_LIMIT_RPM: '99',
 			DEVELOPER_DAILY_REQUEST_LIMIT: '1234',
 			DEVELOPER_EXPENSIVE_RATE_LIMIT_RPM: '11',
+			DEVELOPER_WRITE_DAILY_LIMIT: '42',
+			DEVELOPER_WRITE_RATE_LIMIT_RPM: '3',
 		} as Env;
 		const limits = getTierLimits(env, 'developer');
 		expect(limits.globalRpm).toBe(99);
 		expect(limits.dailyTotalRequests).toBe(1234);
 		expect(limits.expensiveRpm).toBe(11);
+		expect(limits.writeDaily).toBe(42);
+		expect(limits.writeRpm).toBe(3);
 	});
 });

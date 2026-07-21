@@ -141,6 +141,20 @@ export async function enforceTierRateLimits(
 		if (!write.ok) {
 			return buildRateLimitResponse(lane, write);
 		}
+
+		// Dedicated prepare/readiness daily budget (Alchemy simulation cost).
+		if (Number.isFinite(limits.writeDaily) && limits.writeDaily < Number.MAX_SAFE_INTEGER) {
+			const day = dailyWindowKey();
+			const writeDay = await checkBucket(
+				env,
+				`${lane}:${identityKey}:write-day:${day}`,
+				limits.writeDaily,
+				DAY_MS,
+			);
+			if (!writeDay.ok) {
+				return buildRateLimitResponse(lane, writeDay);
+			}
+		}
 	}
 
 	return null;

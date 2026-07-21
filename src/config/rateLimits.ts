@@ -12,32 +12,45 @@ export type TierLimitConfig = {
 	subgraphDaily: number;
 	writeRpm: number;
 	/**
+	 * Prepare + readiness calls per UTC day (RPC-expensive dry-runs).
+	 * Use Number.MAX_SAFE_INTEGER when unlimited (or not enforced).
+	 */
+	writeDaily: number;
+	/**
 	 * Total requests per UTC day for this lane+identity.
 	 * Use Number.MAX_SAFE_INTEGER when unlimited (or not enforced).
 	 */
 	dailyTotalRequests: number;
 };
 
+/**
+ * Free/developer keys are for exploration and reads. Prepare/readiness is
+ * intentionally tight (Alchemy simulation cost). Production writes should use
+ * the SDK against the caller's own RPC.
+ */
 export const DEFAULT_TIER_LIMITS: Record<AccessLane, TierLimitConfig> = {
 	free: {
 		globalRpm: 20,
 		expensiveRpm: 3,
 		subgraphDaily: 100,
 		writeRpm: 2,
+		writeDaily: 20,
 		dailyTotalRequests: 500,
 	},
 	developer: {
 		globalRpm: 80,
 		expensiveRpm: 40,
 		subgraphDaily: 3_000,
-		writeRpm: 15,
-		dailyTotalRequests: 10_000,
+		writeRpm: 5,
+		writeDaily: 100,
+		dailyTotalRequests: 5_000,
 	},
 	builder: {
 		globalRpm: 120,
 		expensiveRpm: 120,
 		subgraphDaily: 10_000,
 		writeRpm: 30,
+		writeDaily: Number.MAX_SAFE_INTEGER,
 		dailyTotalRequests: Number.MAX_SAFE_INTEGER,
 	},
 	mcp: {
@@ -45,6 +58,7 @@ export const DEFAULT_TIER_LIMITS: Record<AccessLane, TierLimitConfig> = {
 		expensiveRpm: 300,
 		subgraphDaily: Number.MAX_SAFE_INTEGER,
 		writeRpm: 60,
+		writeDaily: Number.MAX_SAFE_INTEGER,
 		dailyTotalRequests: Number.MAX_SAFE_INTEGER,
 	},
 };
@@ -148,6 +162,19 @@ function dailyTotalEnv(env: Env, lane: AccessLane): string | undefined {
 	}
 }
 
+function writeDailyEnv(env: Env, lane: AccessLane): string | undefined {
+	switch (lane) {
+		case 'free':
+			return env.FREE_WRITE_DAILY_LIMIT;
+		case 'developer':
+			return env.DEVELOPER_WRITE_DAILY_LIMIT;
+		case 'builder':
+			return env.BUILDER_WRITE_DAILY_LIMIT;
+		case 'mcp':
+			return env.MCP_WRITE_DAILY_LIMIT;
+	}
+}
+
 export function getTierLimits(env: Env, lane: AccessLane): TierLimitConfig {
 	const defaults = DEFAULT_TIER_LIMITS[lane];
 	return {
@@ -155,6 +182,7 @@ export function getTierLimits(env: Env, lane: AccessLane): TierLimitConfig {
 		expensiveRpm: parseEnvLimit(expensiveRpmEnv(env, lane), defaults.expensiveRpm),
 		subgraphDaily: parseEnvLimit(subgraphDailyEnv(env, lane), defaults.subgraphDaily),
 		writeRpm: parseEnvLimit(writeRpmEnv(env, lane), defaults.writeRpm),
+		writeDaily: parseEnvLimit(writeDailyEnv(env, lane), defaults.writeDaily),
 		dailyTotalRequests: parseEnvLimit(dailyTotalEnv(env, lane), defaults.dailyTotalRequests),
 	};
 }
@@ -189,10 +217,10 @@ export function classifyRoute(method: string, pathname: string): RouteClass {
 
 export function getUpgradeHint(lane: AccessLane): string {
 	if (lane === 'free') {
-		return 'Get a free developer API key for higher limits, or use MCP with x402 for agents.';
+		return 'Get a free developer API key for higher read limits. Prepare/readiness is intentionally limited — for production writes use the SDK with your own RPC.';
 	}
 	if (lane === 'developer') {
-		return 'Developer API key rate limit exceeded. Reduce request volume or retry after the window resets.';
+		return 'Developer rate limit exceeded. Prepare/readiness caps protect shared RPC cost — use the SDK against your own RPC for production write volume. Retry after the window resets.';
 	}
 	if (lane === 'builder') {
 		return 'Rate limit exceeded for your Builder session. Retry after the window resets.';

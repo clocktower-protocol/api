@@ -35,17 +35,18 @@ Builder SIWE auth uses domain `api.clocktower.finance` (configurable via `SIWE_D
 
 | Lane | Surface | Auth | Default limits (approx.) |
 |------|---------|------|---------------------------|
-| **Free** | REST | None (IP) | 20 rpm; expensive 3 rpm; subgraph 100/day; write 2/min; **500 req/day**; search `first` ≤ 10; no `includeDetails` |
-| **Developer** | REST | API key `Authorization: Bearer ctk_…` | 80 rpm; expensive 40; subgraph 3k/day; write 15/min; **10k req/day**; search `first` ≤ 25; `includeDetails` allowed |
+| **Free** | REST | None (IP) | 20 rpm; expensive 3 rpm; subgraph 100/day; **prepare 2/min · 20/day**; **500 req/day**; search `first` ≤ 10; no `includeDetails` |
+| **Developer** | REST | API key `Authorization: Bearer ctk_…` | 80 rpm; expensive 40; subgraph 3k/day; **prepare 5/min · 100/day**; **5k req/day**; search `first` ≤ 25; `includeDetails` allowed |
 | **Builder** | REST | SIWE session `Bearer cts_…` | 120 rpm; subgraph 10k/day; write 30/min; wallet-scoped `:me` (optional; off until entitlement IDs set) |
 | **Agent** | MCP | x402 (USDC on Base) | 300 rpm; write 60/min — **not API keys** |
 
-- **Free**: Highly metered try-without-signup path. Same REST surface otherwise; write prepares still require on-chain auth in the wallet.
-- **Developer**: Free API keys for integrators. Higher limits + daily request budget. Keys are **hashed at rest**; plaintext shown **once** on create. Mint/list/revoke is **admin/portal-only** (`DEVELOPER_KEYS_ADMIN_SECRET`) via `POST/GET/DELETE /developer/keys` — end-user OAuth lives in a future developer portal, not this Worker.
+- **Free**: Highly metered try-without-signup path. Exploration and light reads.
+- **Developer**: Free API keys for integrators — **higher read limits**. Keys are **hashed at rest**; plaintext shown **once** on create. Mint/list/revoke is **admin/portal-only** (`DEVELOPER_KEYS_ADMIN_SECRET`) via `POST/GET/DELETE /developer/keys`.
+- **Prepare / readiness** (free + developer): intentionally tight. Full prepare runs on-chain **simulation + gas estimate** (Alchemy cost) even though the server never relays the tx. For **production write volume**, use the **SDK with your own RPC**. Free/developer keys are not a free dry-run farm.
 - **Builder**: Optional higher tier via on-chain entitlement + SIWE. Leave `BUILDER_SUB_ID` / `BUILDER_SUB_IDS` empty to keep it off.
 - **MCP**: Unchanged x402 micropayments. Do not send `ctk_` keys to MCP for auth.
 
-**Abuse / DoS controls (REST):** request body size + JSON depth caps; per-lane Durable Object rate limits (global / expensive / write / subgraph daily / **daily total**); secondary **IP ceiling**; **auth-fail RPM** on invalid `ctk_` keys (401, not free fallback); max keys per subject; admin create rate limits.
+**Abuse / DoS controls (REST):** request body size + JSON depth caps; per-lane Durable Object rate limits (global / expensive / write RPM / **write daily** / subgraph daily / **daily total**); secondary **IP ceiling**; **auth-fail RPM** on invalid `ctk_` keys (401, not free fallback); max keys per subject; admin create rate limits.
 
 See `GET /api/catalog` (or `/catalog` on the api host) for the machine-readable tier manifest.
 
@@ -290,12 +291,12 @@ All `prepare_*` endpoints accept optional `readinessOnly: true` and `simulateFro
 | Endpoint | Free tier | Description |
 |----------|-----------|-------------|
 | `POST /check_subscribe_readiness` | Allowed | Validate whether an account can subscribe |
-| `POST /prepare/create_subscription` | 2/min/IP | Prepare a new subscription |
-| `POST /prepare/subscribe` | 2/min/IP | Prepare subscribing to an existing subscription |
-| `POST /prepare/cancel_subscription` | 2/min/IP | Prepare cancelling a subscription (provider must match `from`) |
-| `POST /prepare/unsubscribe` | 2/min/IP | Prepare unsubscribing from a subscription |
-| `POST /prepare/unsubscribe_by_provider` | 2/min/IP | Provider-initiated unsubscribe |
-| `POST /prepare/edit_details` | 2/min/IP | Provider metadata edit |
+| `POST /prepare/create_subscription` | Free: 2/min · 20/day; Developer: 5/min · 100/day | Prepare a new subscription |
+| `POST /prepare/subscribe` | (same write bucket) | Prepare subscribing to an existing subscription |
+| `POST /prepare/cancel_subscription` | (same write bucket) | Prepare cancelling a subscription (provider must match `from`) |
+| `POST /prepare/unsubscribe` | (same write bucket) | Prepare unsubscribing from a subscription |
+| `POST /prepare/unsubscribe_by_provider` | (same write bucket) | Provider-initiated unsubscribe |
+| `POST /prepare/edit_details` | (same write bucket) | Provider metadata edit |
 | `POST /check_remit_readiness` | Allowed | Check whether `remit()` is callable |
 | `POST /prepare/remit` | 2/min/IP | Prepare permissionless `remit()` transaction |
 | `POST /transactions/status` | Allowed | Check status of a broadcast transaction |
