@@ -48,6 +48,8 @@ Builder SIWE auth uses domain `api.clocktower.finance` (configurable via `SIWE_D
 
 **Abuse / DoS controls (REST):** request body size + JSON depth caps; per-lane Durable Object rate limits (global / expensive / write RPM / **write daily** / subgraph daily / **daily total**); secondary **IP ceiling**; **auth-fail RPM** on invalid `ctk_` keys (401, not free fallback); max keys per subject; admin create rate limits.
 
+**Observability:** structured `api_access` JSON logs (keyId/lane/route/status — never full API keys) for Workers Logs and Logpush; **Analytics Engine** dataset `api_analytics` for SQL monitoring; hourly cron can alert via `ALERT_WEBHOOK_URL` when `CF_ACCOUNT_ID` + `CF_API_TOKEN` are set. Configure Logpush → R2 with a 90-day lifecycle for retention.
+
 See `GET /api/catalog` (or `/catalog` on the api host) for the machine-readable tier manifest.
 
 ---

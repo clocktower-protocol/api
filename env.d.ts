@@ -16,6 +16,22 @@ declare namespace Cloudflare {
 		RATE_LIMITER: DurableObjectNamespace;
 		SESSIONS_KV?: KVNamespace;
 		RPC_CACHE_KV?: KVNamespace;
+		/** Workers Analytics Engine dataset for API access metrics. */
+		API_ANALYTICS?: AnalyticsEngineDataset;
+		/** Dataset name for SQL API (default api_analytics). */
+		API_ANALYTICS_DATASET?: string;
+		/** Set false to disable structured logs + AE writes. */
+		OBSERVABILITY_ENABLED?: string;
+		/** Account ID for Analytics Engine SQL (scheduled alerts). */
+		CF_ACCOUNT_ID?: string;
+		/** API token with Analytics Engine read (scheduled alerts). */
+		CF_API_TOKEN?: string;
+		/** Slack/Discord/generic webhook for abuse findings. */
+		ALERT_WEBHOOK_URL?: string;
+		/** Alert if prepare/readiness events ≥ this in 24h (default 80). */
+		ALERT_WRITE_COUNT_24H?: string;
+		/** Alert if 429 events ≥ this in 24h (default 50). */
+		ALERT_429_COUNT_24H?: string;
 		ALCHEMY_API_KEY: string;
 		ALCHEMY_URL: string;
 		CLOCKTOWER_ADDRESS: string;

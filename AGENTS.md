@@ -43,6 +43,14 @@ npm run types         # regenerate env.d.ts
 npm run deploy        # wrangler deploy — ask before production
 ```
 
+## Observability
+
+- Every REST response emits structured JSON (`type: api_access`) for Workers Logs / Logpush.
+- Analytics Engine binding `API_ANALYTICS` (dataset `api_analytics`) stores metrics for SQL.
+- Never log full `ctk_…` tokens — only `keyId` / identity.
+- Hourly cron runs abuse SQL when `CF_ACCOUNT_ID` + `CF_API_TOKEN` are set; optional `ALERT_WEBHOOK_URL`.
+- Logpush → R2 for 90-day retention is dashboard config (see `.dev.vars.example`).
+
 When changing amounts, prepare, validation, or write tools, run at least:
 
 ```bash

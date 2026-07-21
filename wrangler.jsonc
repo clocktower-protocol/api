@@ -10,6 +10,18 @@
 	"observability": {
 		"enabled": true
 	},
+	// Workers Analytics Engine: per-request metrics for API key monitoring (SQL API).
+	// Create dataset once if needed: dashboard → Analytics Engine, or first deploy creates binding.
+	"analytics_engine_datasets": [
+		{
+			"binding": "API_ANALYTICS",
+			"dataset": "api_analytics"
+		}
+	],
+	// Daily abuse checks (requires CF_ACCOUNT_ID + CF_API_TOKEN + optional ALERT_WEBHOOK_URL).
+	"triggers": {
+		"crons": ["0 * * * *"]
+	},
 	"durable_objects": {
 		"bindings": [
 			{
@@ -118,6 +130,12 @@
 				{
 					"binding": "RPC_CACHE_KV",
 					"id": "test-rpc-cache-kv"
+				}
+			],
+			"analytics_engine_datasets": [
+				{
+					"binding": "API_ANALYTICS",
+					"dataset": "api_analytics"
 				}
 			],
 			"vars": {

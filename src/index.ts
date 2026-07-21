@@ -29,6 +29,12 @@ import {
 } from './config/hostnames.js';
 import { Errors } from './api/responses.js';
 import type { AccessLane } from './config/rateLimits.js';
+import {
+	buildAccessEvent,
+	peekErrorMeta,
+	recordAccess,
+} from './observability/accessLog.js';
+import { runScheduledAlerts } from './observability/alerts.js';
 
 /** Once per isolate, same idea as validateEnv in the MCP durable object on first init. */
 let apiEnvValidated = false;
@@ -73,11 +79,45 @@ function withLaneHeaders(response: Response, lane: AccessLane): Response {
 	});
 }
 
+async function respondRest(
+	env: Env,
+	request: Request,
+	pathname: string,
+	response: Response,
+	meta: {
+		lane: AccessLane | 'admin' | 'unknown';
+		identity: string;
+		keyId?: string;
+		subjectId?: string;
+		started: number;
+	},
+): Promise<Response> {
+	const errMeta = await peekErrorMeta(response);
+	recordAccess(
+		env,
+		buildAccessEvent({
+			request,
+			pathname,
+			lane: meta.lane,
+			identity: meta.identity,
+			keyId: meta.keyId,
+			subjectId: meta.subjectId,
+			status: response.status,
+			code: errMeta.code,
+			bucket: errMeta.bucket,
+			durationMs: Date.now() - meta.started,
+			requestId: errMeta.requestId,
+		}),
+	);
+	return response;
+}
+
 async function handleRequest(
 	request: Request,
 	env: Env,
 	ctx: ExecutionContext,
 ): Promise<Response> {
+	const started = Date.now();
 	const geoBlocked = enforceGeoBlock(request);
 	if (geoBlocked) {
 		return geoBlocked;
@@ -120,22 +160,39 @@ async function handleRequest(
 			return withSecurityHeaders(corsPreflight);
 		}
 
+		const logMetaBase = {
+			started,
+			identity: `ip:${routedRequest.headers.get('CF-Connecting-IP') ?? 'unknown'}`,
+		};
+
 		if (routedRequest.method === 'POST') {
 			const invalidPost = await validateApiPostRequest(routedRequest);
 			if (invalidPost) {
-				return withSecurityHeaders(withApiCorsHeaders(routedRequest, invalidPost, env));
+				const res = withSecurityHeaders(withApiCorsHeaders(routedRequest, invalidPost, env));
+				return respondRest(env, routedRequest, pathname, res, {
+					...logMetaBase,
+					lane: 'unknown',
+				});
 			}
 		}
 
 		if (!isApiEnabled(env) && !isApiHealthCheckPath(routedRequest.method, pathname)) {
-			return withSecurityHeaders(
+			const res = withSecurityHeaders(
 				withApiCorsHeaders(routedRequest, Errors.apiDisabled(), env),
 			);
+			return respondRest(env, routedRequest, pathname, res, {
+				...logMetaBase,
+				lane: 'unknown',
+			});
 		}
 
 		const configError = ensureApiEnvValidated(env);
 		if (configError) {
-			return withSecurityHeaders(withApiCorsHeaders(routedRequest, configError, env));
+			const res = withSecurityHeaders(withApiCorsHeaders(routedRequest, configError, env));
+			return respondRest(env, routedRequest, pathname, res, {
+				...logMetaBase,
+				lane: 'unknown',
+			});
 		}
 
 		const requireBasicAuth = env.API_REQUIRE_BASIC_AUTH !== 'false';
@@ -143,7 +200,11 @@ async function handleRequest(
 		if (requireBasicAuth) {
 			const unauthorized = enforceBasicAuth(routedRequest, env);
 			if (unauthorized) {
-				return withSecurityHeaders(withApiCorsHeaders(routedRequest, unauthorized, env));
+				const res = withSecurityHeaders(withApiCorsHeaders(routedRequest, unauthorized, env));
+				return respondRest(env, routedRequest, pathname, res, {
+					...logMetaBase,
+					lane: 'unknown',
+				});
 			}
 		}
 
@@ -153,28 +214,57 @@ async function handleRequest(
 			pathname.startsWith('/api/developer/keys/');
 		if (isDeveloperKeysAdminPath && verifyAdminSecret(routedRequest, env)) {
 			const apiResponse = await getApi(env).fetch(routedRequest, env, ctx);
-			return withSecurityHeaders(
+			const res = withSecurityHeaders(
 				withApiCorsHeaders(routedRequest, withLaneHeaders(apiResponse, 'free'), env),
 			);
+			return respondRest(env, routedRequest, pathname, res, {
+				...logMetaBase,
+				lane: 'admin',
+				identity: 'admin',
+			});
 		}
 
 		const access = await resolveApiAccess(routedRequest, env);
+		const keyId = access.apiKey?.id;
+		const subjectId = access.apiKey?.subjectId;
+		const identity = getRateLimitIdentity(access, routedRequest);
 
 		if (access.authError) {
 			const bearer = parseBearerToken(routedRequest);
 			if (bearer && isApiKeyToken(bearer)) {
 				const authLimited = await enforceAuthFailRateLimit(routedRequest, env);
 				if (authLimited) {
-					return withSecurityHeaders(withApiCorsHeaders(routedRequest, authLimited, env));
+					const res = withSecurityHeaders(withApiCorsHeaders(routedRequest, authLimited, env));
+					return respondRest(env, routedRequest, pathname, res, {
+						started,
+						lane: 'developer',
+						identity,
+						keyId,
+						subjectId,
+					});
 				}
 			}
-			return withSecurityHeaders(withApiCorsHeaders(routedRequest, access.authError, env));
+			const res = withSecurityHeaders(withApiCorsHeaders(routedRequest, access.authError, env));
+			return respondRest(env, routedRequest, pathname, res, {
+				started,
+				lane: 'developer',
+				identity,
+				keyId,
+				subjectId,
+			});
 		}
 
 		// Secondary IP ceiling for all REST traffic (multi-key / free DoS bound).
 		const ipCeiling = await enforceSecondaryIpRateLimit(routedRequest, env);
 		if (ipCeiling) {
-			return withSecurityHeaders(withApiCorsHeaders(routedRequest, ipCeiling, env));
+			const res = withSecurityHeaders(withApiCorsHeaders(routedRequest, ipCeiling, env));
+			return respondRest(env, routedRequest, pathname, res, {
+				started,
+				lane: access.lane,
+				identity,
+				keyId,
+				subjectId,
+			});
 		}
 
 		if (access.lane === 'free' || access.lane === 'developer') {
@@ -185,19 +275,39 @@ async function handleRequest(
 				routedRequest,
 			);
 			if (policyBlocked) {
-				return withSecurityHeaders(withApiCorsHeaders(routedRequest, policyBlocked, env));
+				const res = withSecurityHeaders(withApiCorsHeaders(routedRequest, policyBlocked, env));
+				return respondRest(env, routedRequest, pathname, res, {
+					started,
+					lane: access.lane,
+					identity,
+					keyId,
+					subjectId,
+				});
 			}
 		} else if (access.session) {
 			const policyBlocked = await enforceBuilderPolicy(routedRequest, env, access.session);
 			if (policyBlocked) {
-				return withSecurityHeaders(withApiCorsHeaders(routedRequest, policyBlocked, env));
+				const res = withSecurityHeaders(withApiCorsHeaders(routedRequest, policyBlocked, env));
+				return respondRest(env, routedRequest, pathname, res, {
+					started,
+					lane: access.lane,
+					identity,
+					keyId,
+					subjectId,
+				});
 			}
 		}
 
-		const identity = getRateLimitIdentity(access, routedRequest);
 		const rateLimited = await enforceTierRateLimits(routedRequest, env, access.lane, identity);
 		if (rateLimited) {
-			return withSecurityHeaders(withApiCorsHeaders(routedRequest, rateLimited, env));
+			const res = withSecurityHeaders(withApiCorsHeaders(routedRequest, rateLimited, env));
+			return respondRest(env, routedRequest, pathname, res, {
+				started,
+				lane: access.lane,
+				identity,
+				keyId,
+				subjectId,
+			});
 		}
 
 		let apiRequest = routedRequest;
@@ -214,9 +324,16 @@ async function handleRequest(
 		apiRequest = new Request(apiRequest, { headers });
 
 		const apiResponse = await getApi(env).fetch(apiRequest, env, ctx);
-		return withSecurityHeaders(
+		const res = withSecurityHeaders(
 			withApiCorsHeaders(routedRequest, withLaneHeaders(apiResponse, access.lane), env),
 		);
+		return respondRest(env, routedRequest, pathname, res, {
+			started,
+			lane: access.lane,
+			identity,
+			keyId,
+			subjectId,
+		});
 	}
 
 	return Response.json(buildDiscoveryPayload(env, surface));
@@ -251,6 +368,24 @@ function buildDiscoveryPayload(env: Env, surface: RequestSurface) {
 export default {
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
 		return withSecurityHeaders(await handleRequest(request, env, ctx));
+	},
+
+	async scheduled(
+		_controller: ScheduledController,
+		env: Env,
+		ctx: ExecutionContext,
+	): Promise<void> {
+		ctx.waitUntil(
+			runScheduledAlerts(env).catch((err) => {
+				console.log(
+					JSON.stringify({
+						type: 'api_alert_error',
+						ts: new Date().toISOString(),
+						error: err instanceof Error ? err.message : String(err),
+					}),
+				);
+			}),
+		);
 	},
 };
 

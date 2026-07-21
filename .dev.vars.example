@@ -103,6 +103,23 @@ X402_RECIPIENT=0xYourWalletAddress
 # X402_USE_MOCK_FACILITATOR=true
 
 # =============================================================================
+# OPTIONAL - Observability (Analytics Engine + scheduled alerts)
+# Structured JSON logs always go to console (Workers Logs / Logpush).
+# API_ANALYTICS binding is in wrangler.jsonc (dataset: api_analytics).
+# =============================================================================
+# OBSERVABILITY_ENABLED=true
+# CF_ACCOUNT_ID=your-cloudflare-account-id
+# CF_API_TOKEN=token-with-analytics-engine-read
+# ALERT_WEBHOOK_URL=https://hooks.slack.com/services/...
+# ALERT_WRITE_COUNT_24H=80
+# ALERT_429_COUNT_24H=50
+# API_ANALYTICS_DATASET=api_analytics
+
+# Logpush (90-day retention): configure in Cloudflare dashboard
+#   Workers → clocktower-api / account Logpush → Workers trace/logs → R2
+#   Set R2 lifecycle expiration to 90 days.
+
+# =============================================================================
 # OPTIONAL - Production hostnames (defaults match clocktower.finance)
 # =============================================================================
 # API_HOST=api.clocktower.finance

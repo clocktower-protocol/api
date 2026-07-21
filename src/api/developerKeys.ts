@@ -8,6 +8,7 @@ import {
 } from '../auth/apiKeys.js';
 import { checkRateLimit, RATE_LIMITER_WINDOW_MS } from '../RateLimiter.js';
 import { getClientIp } from '../rateLimit.js';
+import { recordAdminAudit } from '../observability/accessLog.js';
 import { Errors, jsonResponse } from './responses.js';
 
 async function requireAdmin(request: Request, env: Env): Promise<Response | null> {
@@ -89,6 +90,13 @@ export async function handleCreateDeveloperKey(request: Request, env: Env): Prom
 
 	try {
 		const { id, token, record } = await createApiKey(env, subjectId, label);
+		recordAdminAudit(env, {
+			action: 'create',
+			status: 201,
+			subjectId: subjectId.trim(),
+			keyId: id,
+			ip,
+		});
 		return jsonResponse(
 			{
 				id,
@@ -101,8 +109,22 @@ export async function handleCreateDeveloperKey(request: Request, env: Env): Prom
 	} catch (err: unknown) {
 		const e = err as Error & { code?: string };
 		if (e.code === 'MAX_KEYS') {
+			recordAdminAudit(env, {
+				action: 'create',
+				status: 409,
+				subjectId: subjectId.trim(),
+				ip,
+				code: 'MAX_KEYS',
+			});
 			return jsonResponse({ error: e.message, code: 'MAX_KEYS' }, 409);
 		}
+		recordAdminAudit(env, {
+			action: 'create',
+			status: 400,
+			subjectId: subjectId.trim(),
+			ip,
+			code: 'VALIDATION_ERROR',
+		});
 		return Errors.validation(e.message ?? 'Failed to create API key');
 	}
 }
@@ -117,14 +139,28 @@ export async function handleListDeveloperKeys(request: Request, env: Env): Promi
 		return Errors.validation('subjectId query parameter is required');
 	}
 
+	const ip = getClientIp(request);
 	try {
 		const keys = await listApiKeysForSubject(env, subjectId);
+		recordAdminAudit(env, {
+			action: 'list',
+			status: 200,
+			subjectId: subjectId.trim(),
+			ip,
+		});
 		return jsonResponse({
 			subjectId: subjectId.trim(),
 			keys: keys.map(toPublicMeta),
 		});
 	} catch (err: unknown) {
 		const message = err instanceof Error ? err.message : String(err);
+		recordAdminAudit(env, {
+			action: 'list',
+			status: 500,
+			subjectId: subjectId.trim(),
+			ip,
+			code: 'INTERNAL',
+		});
 		return jsonResponse({ error: message, code: 'INTERNAL' }, 500);
 	}
 }
@@ -141,14 +177,36 @@ export async function handleRevokeDeveloperKey(
 		return Errors.validation('Invalid key id');
 	}
 
+	const ip = getClientIp(request);
 	try {
 		const revoked = await revokeApiKey(env, id);
 		if (!revoked) {
+			recordAdminAudit(env, {
+				action: 'revoke',
+				status: 404,
+				keyId: id,
+				ip,
+				code: 'NOT_FOUND',
+			});
 			return jsonResponse({ error: 'Key not found', code: 'NOT_FOUND' }, 404);
 		}
+		recordAdminAudit(env, {
+			action: 'revoke',
+			status: 200,
+			subjectId: revoked.subjectId,
+			keyId: id,
+			ip,
+		});
 		return jsonResponse({ key: toPublicMeta(revoked), revoked: true });
 	} catch (err: unknown) {
 		const message = err instanceof Error ? err.message : String(err);
+		recordAdminAudit(env, {
+			action: 'revoke',
+			status: 500,
+			keyId: id,
+			ip,
+			code: 'INTERNAL',
+		});
 		return jsonResponse({ error: message, code: 'INTERNAL' }, 500);
 	}
 }
