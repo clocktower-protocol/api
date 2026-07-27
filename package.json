@@ -9,6 +9,7 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "start": "wrangler dev",
+    "build": "node -e \"console.log('No frontend build; wrangler bundles TypeScript on deploy')\"",
     "test": "vitest run",
     "test:watch": "vitest",
     "types": "wrangler types env.d.ts --include-runtime false"
