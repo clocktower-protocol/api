@@ -57,6 +57,7 @@ function collectPreflightWarnings(preflight?: Record<string, unknown>): string[]
 export function buildPrepareInstructions(
 	signingMode: 'eip5792' | 'raw',
 	txCount: number,
+	chainId: number = BASE_CHAIN_ID,
 ): string[] {
 	const steps: string[] = [];
 
@@ -78,7 +79,7 @@ export function buildPrepareInstructions(
 	}
 
 	steps.push(
-		'Ensure the wallet is connected to Base mainnet (chain ID 8453) before signing.',
+		`Ensure the wallet is connected to chain ID ${chainId} before signing.`,
 	);
 	steps.push(
 		'Review gasEstimates and gasSummary; budgets are advisory and may change before broadcast.',
@@ -106,11 +107,12 @@ export function buildReadinessOnlyResult(
 	errors: string[],
 	warnings: string[],
 	details: Record<string, unknown>,
+	chainId: number = BASE_CHAIN_ID,
 ): ReadinessOnlyResult {
 	return {
 		requestId,
 		readinessOnly: true,
-		chainId: BASE_CHAIN_ID,
+		chainId,
 		operation,
 		ready,
 		errors,
@@ -187,6 +189,10 @@ export function finalizePrepareResult(
 		...result,
 		requestId,
 		warnings,
-		instructions: buildPrepareInstructions(result.signingMode, result.unsignedTransactions.length),
+		instructions: buildPrepareInstructions(
+			result.signingMode,
+			result.unsignedTransactions.length,
+			result.chainId,
+		),
 	};
 }

@@ -123,6 +123,13 @@ function hydrateChain(env: Env, spec: ChainSpec): ChainConfig {
 	throw new UnsupportedChainError(`Chain ${spec.chainId} is not configured`);
 }
 
+export function getSubgraphUrl(env: Env, chainId: number): string | undefined {
+	if (chainId === BASE_CHAIN_ID) {
+		return env.GRAPH_BASE_URL;
+	}
+	return undefined;
+}
+
 /** Base mainnet only. Used by MCP, SIWE, and Builder entitlement. Ignores DEFAULT_REST_CHAIN_ID. */
 export function resolveChain(env: Env): ChainConfig {
 	return hydrateChain(env, BASE_SPEC);

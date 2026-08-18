@@ -1,5 +1,5 @@
 import type { WriteDetails, WriteSubscription } from '../abi/clocktower-write.js';
-import { BASE_CHAIN_ID, resolveChain, type ChainConfig } from '../chain.js';
+import { resolveChain, type ChainConfig } from '../chain.js';
 import { createClocktowerClient } from '../client.js';
 import { CLOCKTOWER_READ_ABI } from '../abi/clocktower.js';
 import {
@@ -124,13 +124,14 @@ function buildUnsigned(
 	from: `0x${string}`,
 	to: `0x${string}`,
 	data: `0x${string}`,
+	chainId: number,
 	value = 0n,
 ): UnsignedTransaction {
 	return {
 		to,
 		data,
 		value,
-		chainId: BASE_CHAIN_ID,
+		chainId,
 		from,
 	};
 }
@@ -185,11 +186,11 @@ async function buildPrepareResult(
 	return finalizePrepareResult(
 		requestId,
 		{
-			chainId: BASE_CHAIN_ID,
+			chainId: chain.chainId,
 			signingMode,
 			eip5792: {
 				version: '1.0',
-				chainId: toChainIdHex(BASE_CHAIN_ID),
+				chainId: toChainIdHex(chain.chainId),
 				from,
 				calls: unsigned.map((tx) => ({
 					to: tx.to,
@@ -263,11 +264,12 @@ export async function prepareCreateSubscription(
 					minimum: approvedToken.minimum.toString(),
 					decimals: approvedToken.decimals,
 				},
+				chain.chainId,
 			);
 		}
 
 		const data = encodeCreateSubscription(amount, token, details, frequency, dueDay);
-		const unsigned = [buildUnsigned(from, chain.contractAddress, data)];
+		const unsigned = [buildUnsigned(from, chain.contractAddress, data, chain.chainId)];
 
 		return buildPrepareResult(
 			env,
@@ -321,6 +323,7 @@ export async function prepareSubscribe(
 					balance: readiness.balance,
 					requiredAmount: readiness.requiredAmount,
 				},
+				chain.chainId,
 			);
 		}
 
@@ -341,12 +344,13 @@ export async function prepareSubscribe(
 					from,
 					sub.token,
 					encodeApprove(chain.contractAddress, approveAmount),
+					chain.chainId,
 				),
 			);
 		}
 
 		unsigned.push(
-			buildUnsigned(from, chain.contractAddress, encodeSubscribe(sub)),
+			buildUnsigned(from, chain.contractAddress, encodeSubscribe(sub), chain.chainId),
 		);
 
 		return buildPrepareResult(
@@ -399,6 +403,7 @@ export async function prepareCancelSubscription(
 				isProvider ? [] : ['Only the subscription provider can cancel'],
 				[],
 				{ id: canonical.id, provider: canonical.provider },
+				chain.chainId,
 			);
 		}
 
@@ -407,7 +412,7 @@ export async function prepareCancelSubscription(
 		}
 
 		const data = encodeCancelSubscription(canonical);
-		const unsigned = [buildUnsigned(from, chain.contractAddress, data)];
+		const unsigned = [buildUnsigned(from, chain.contractAddress, data, chain.chainId)];
 		return buildPrepareResult(env, from, unsigned, requestId, { id: canonical.id }, options);
 	}, options?.lane);
 }
@@ -452,6 +457,7 @@ export async function prepareUnsubscribe(
 						],
 				[],
 				{ id: canonical.id },
+				chain.chainId,
 			);
 		}
 
@@ -463,7 +469,7 @@ export async function prepareUnsubscribe(
 		}
 
 		const data = encodeUnsubscribe(canonical);
-		const unsigned = [buildUnsigned(from, chain.contractAddress, data)];
+		const unsigned = [buildUnsigned(from, chain.contractAddress, data, chain.chainId)];
 		return buildPrepareResult(
 			env,
 			from,
@@ -512,6 +518,7 @@ export async function prepareUnsubscribeByProvider(
 				isProvider ? [] : ['Only the subscription provider can unsubscribe a subscriber'],
 				[],
 				{ id: canonical.id, subscriber, provider: canonical.provider },
+				chain.chainId,
 			);
 		}
 
@@ -520,7 +527,7 @@ export async function prepareUnsubscribeByProvider(
 		}
 
 		const data = encodeUnsubscribeByProvider(canonical, subscriber);
-		const unsigned = [buildUnsigned(from, chain.contractAddress, data)];
+		const unsigned = [buildUnsigned(from, chain.contractAddress, data, chain.chainId)];
 		return buildPrepareResult(
 			env,
 			from,
@@ -557,6 +564,7 @@ export async function prepareEditDetails(
 				isProvider ? [] : ['Only the subscription provider can edit details'],
 				[],
 				{ id: canonical.id, provider: canonical.provider },
+				chain.chainId,
 			);
 		}
 
@@ -565,7 +573,7 @@ export async function prepareEditDetails(
 		}
 
 		const data = encodeEditDetails(details, id);
-		const unsigned = [buildUnsigned(from, chain.contractAddress, data)];
+		const unsigned = [buildUnsigned(from, chain.contractAddress, data, chain.chainId)];
 		return buildPrepareResult(
 			env,
 			from,
@@ -586,7 +594,8 @@ export async function prepareRemit(
 	options?: PrepareOptions,
 ): Promise<PrepareResponse> {
 	return runPrepare('prepare_remit', env, from, async ({ requestId }) => {
-		const readiness = await checkRemitReadiness(env, from, writeChain(env, options));
+		const chain = writeChain(env, options);
+		const readiness = await checkRemitReadiness(env, from, chain);
 
 		if (options?.readinessOnly) {
 			return buildReadinessOnlyResult(
@@ -602,6 +611,7 @@ export async function prepareRemit(
 					maxRemits: readiness.maxRemits,
 					expectedTransactions: readiness.expectedTransactions,
 				},
+				chain.chainId,
 			);
 		}
 
@@ -609,9 +619,8 @@ export async function prepareRemit(
 			throw new Error(readiness.errors[0] ?? 'Remit not ready');
 		}
 
-		const chain = writeChain(env, options);
 		const data = encodeRemit();
-		const unsigned = [buildUnsigned(from, chain.contractAddress, data)];
+		const unsigned = [buildUnsigned(from, chain.contractAddress, data, chain.chainId)];
 
 		return buildPrepareResult(
 			env,

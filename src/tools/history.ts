@@ -16,6 +16,7 @@
  */
 
 import dayjs from 'dayjs';
+import { BASE_CHAIN_ID, getSubgraphUrl } from '../chain.js';
 import { getApprovedTokenByAddress } from '../config/approvedTokens.js';
 import { formatProtocolStoredAmount } from '../utils.js';
 
@@ -79,17 +80,12 @@ const SUBSCRIPT_EVENT_LOOKUP = [
   'SubPaid', 'Subscribed', 'Unsubscribed', 'Feefill', 'SubRefund'
 ];
 
-function getTokenTicker(tokenAddress: string): string {
-  const info = getApprovedTokenByAddress(tokenAddress);
-  return info ? info.symbol : 'TOKEN';
-}
-
 /**
  * Returns normalized amount information for a SubLog event using the same
  * protocol-to-native conversion logic as the rest of the API.
  */
-function getNormalizedAmount(protocolAmount: string, tokenAddress: string) {
-  const info = getApprovedTokenByAddress(tokenAddress);
+function getNormalizedAmount(protocolAmount: string, tokenAddress: string, chainId: number) {
+  const info = getApprovedTokenByAddress(tokenAddress, chainId);
   const decimals = info ? info.decimals : 18;
 
   try {
@@ -114,7 +110,7 @@ function formatTimestamp(timestamp: string): string {
   return dayjs.unix(Number(timestamp)).format('MM/DD/YYYY h:mm:ss A');
 }
 
-export function formatSubLogEvent(log: SubLog, isProviderView = false) {
+export function formatSubLogEvent(log: SubLog, isProviderView = false, chainId: number = BASE_CHAIN_ID) {
   const eventIndex = Number(log.subScriptEvent);
   let eventName = SUBSCRIPT_EVENT_LOOKUP[eventIndex] || `Event ${eventIndex}`;
 
@@ -122,7 +118,7 @@ export function formatSubLogEvent(log: SubLog, isProviderView = false) {
   if (isProviderView && eventIndex === 5) eventName = 'SubPaid (internal)';
   if (!isProviderView && eventIndex === 2) eventName = 'ProvPaid (internal)';
 
-  const normalized = getNormalizedAmount(log.amount, log.token);
+  const normalized = getNormalizedAmount(log.amount, log.token, chainId);
 
   // Exclude the raw protocol 18-decimal amount from the public response.
   // Users should only see properly normalized amounts (in the token's native decimals).
@@ -204,11 +200,7 @@ async function querySubgraph(
     // If validation module has issues we still proceed; querySubgraph will fail with its own clear message.
   }
 
-  const isMainnet = chainId === 8453;
-
-  const baseUrl = isMainnet
-    ? env.GRAPH_BASE_URL
-    : env.GRAPH_BASE_SEPOLIA_URL;
+  const baseUrl = getSubgraphUrl(env, chainId);
 
   const apiKey = env.GRAPH_API_KEY;
 
@@ -480,7 +472,7 @@ function normalizeHistoryOptions(options: HistoryOptions = {}): { first: number;
 export async function getSubscriptionHistory(
   env: Env,
   subscriptionId: `0x${string}`,
-  chainId: number = 8453,
+  chainId: number = BASE_CHAIN_ID,
   options: HistoryOptions = {}
 ) {
   const { first, skip } = normalizeHistoryOptions(options);
@@ -494,7 +486,7 @@ export async function getSubscriptionHistory(
 
     const rawEvents: SubLog[] = data?.subLogs ?? [];
     const formattedEvents = rawEvents.map(event =>
-      formatSubLogEvent(event, false)
+      formatSubLogEvent(event, false, chainId)
     );
 
     return {
@@ -529,7 +521,7 @@ export async function getSubscriptionHistory(
 export async function getProviderProfile(
   env: Env,
   provider: `0x${string}`,
-  chainId: number = 8453
+  chainId: number = BASE_CHAIN_ID
 ) {
   try {
     const data = await querySubgraph(env, chainId, GET_LATEST_PROV_DETAILS, {
@@ -577,7 +569,7 @@ export async function getProviderProfile(
 export async function getAccountActivity(
   env: Env,
   account: `0x${string}`,
-  chainId: number = 8453,
+  chainId: number = BASE_CHAIN_ID,
   options: HistoryOptions = {}
 ) {
   const { first, skip } = normalizeHistoryOptions(options);
@@ -629,7 +621,7 @@ export async function getAccountActivity(
   const limitedEvents = uniqueEvents.slice(0, first);
 
   const formatted = limitedEvents.map((event) =>
-    formatSubLogEvent(event)
+    formatSubLogEvent(event, false, chainId)
   );
 
   return {
@@ -652,7 +644,7 @@ export async function getAccountActivity(
 export async function getSubscriptionDetails(
   env: Env,
   subscriptionId: `0x${string}`,
-  chainId: number = 8453,
+  chainId: number = BASE_CHAIN_ID,
 ) {
   try {
     const data = await querySubgraph(env, chainId, GET_DETAILS_LOG, {
@@ -702,7 +694,7 @@ export type SubscriptionCreateEvent = {
  */
 export async function searchSubscriptionCreates(
   env: Env,
-  chainId: number = 8453,
+  chainId: number = BASE_CHAIN_ID,
   options: SearchCreatesOptions = {},
 ) {
   const { first, skip } = normalizeHistoryOptions(options);
@@ -771,7 +763,7 @@ export async function searchSubscriptionCreates(
 export async function getSubscriptionDetailsHistory(
   env: Env,
   subscriptionId: `0x${string}`,
-  chainId: number = 8453,
+  chainId: number = BASE_CHAIN_ID,
   options: HistoryOptions = {}
 ) {
   const { first, skip } = normalizeHistoryOptions(options);

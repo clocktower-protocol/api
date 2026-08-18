@@ -1,5 +1,4 @@
 import { formatEther } from 'viem';
-import { BASE_CHAIN_ID } from '../chain.js';
 import { getFunctionSelector } from './encode.js';
 import type { GasEstimate, GasSummary, UnsignedTransaction } from './types.js';
 
@@ -44,17 +43,20 @@ export type EstimateGasResult = {
 	warnings: string[];
 };
 
-export async function assertRpcChainId(client: GasEstimatorClient): Promise<void> {
+export async function assertRpcChainId(
+	client: GasEstimatorClient,
+	expectedChainId: number,
+): Promise<void> {
 	const rpcChainId = await client.getChainId();
-	if (rpcChainId !== BASE_CHAIN_ID) {
-		throw new Error(`RPC chainId mismatch: expected ${BASE_CHAIN_ID}, got ${rpcChainId}`);
+	if (rpcChainId !== expectedChainId) {
+		throw new Error(`RPC chainId mismatch: expected ${expectedChainId}, got ${rpcChainId}`);
 	}
 }
 
-function assertTxChainId(tx: UnsignedTransaction): void {
-	if (tx.chainId !== BASE_CHAIN_ID) {
+function assertTxChainId(tx: UnsignedTransaction, expectedChainId: number): void {
+	if (tx.chainId !== expectedChainId) {
 		throw new Error(
-			`Unsigned transaction chainId does not match Base mainnet (${BASE_CHAIN_ID})`,
+			`Unsigned transaction chainId ${tx.chainId} does not match expected ${expectedChainId}`,
 		);
 	}
 }
@@ -85,6 +87,7 @@ async function resolveFeePerGas(client: GasEstimatorClient): Promise<{
 }
 
 function buildGasEstimate(
+	chainId: number,
 	gasLimit: bigint,
 	maxFeePerGas: bigint,
 	maxPriorityFeePerGas: bigint,
@@ -92,7 +95,7 @@ function buildGasEstimate(
 ): GasEstimate {
 	const estimatedCostWei = gasLimit * maxFeePerGas;
 	return {
-		chainId: BASE_CHAIN_ID,
+		chainId,
 		gasLimit: gasLimit.toString(),
 		maxFeePerGas: maxFeePerGas.toString(),
 		maxPriorityFeePerGas: maxPriorityFeePerGas.toString(),
@@ -107,7 +110,12 @@ export async function estimateGasForTransactions(
 	transactions: UnsignedTransaction[],
 	options: EstimateGasOptions = {},
 ): Promise<EstimateGasResult> {
-	await assertRpcChainId(client);
+	const expectedChainId = transactions[0]?.chainId;
+	if (expectedChainId === undefined) {
+		return { estimates: [], warnings: [] };
+	}
+
+	await assertRpcChainId(client, expectedChainId);
 
 	const warnings: string[] = [];
 	const { maxFeePerGas, maxPriorityFeePerGas } = await resolveFeePerGas(client);
@@ -115,7 +123,7 @@ export async function estimateGasForTransactions(
 	const estimates: GasEstimate[] = [];
 
 	for (const tx of transactions) {
-		assertTxChainId(tx);
+		assertTxChainId(tx, expectedChainId);
 		const account = options.simulateFromAddress ?? tx.from;
 
 		try {
@@ -126,12 +134,24 @@ export async function estimateGasForTransactions(
 				value: tx.value,
 			});
 			estimates.push(
-				buildGasEstimate(gasLimit, maxFeePerGas, maxPriorityFeePerGas, 'simulated'),
+				buildGasEstimate(
+					expectedChainId,
+					gasLimit,
+					maxFeePerGas,
+					maxPriorityFeePerGas,
+					'simulated',
+				),
 			);
 		} catch {
 			const gasLimit = heuristicGasLimit(tx);
 			estimates.push(
-				buildGasEstimate(gasLimit, maxFeePerGas, maxPriorityFeePerGas, 'heuristic'),
+				buildGasEstimate(
+					expectedChainId,
+					gasLimit,
+					maxFeePerGas,
+					maxPriorityFeePerGas,
+					'heuristic',
+				),
 			);
 			warnings.push(
 				`Gas limit for transaction to ${tx.to} fell back to heuristic (${gasLimit}) after estimateGas failed.`,
@@ -148,6 +168,7 @@ export function buildGasSummary(
 		expectedTransactions?: number;
 	},
 ): GasSummary {
+	const chainId = estimates[0]?.chainId ?? 0;
 	const totalGasLimit = estimates.reduce((sum, e) => sum + BigInt(e.gasLimit), 0n);
 	const totalEstimatedCostWei = estimates.reduce(
 		(sum, e) => sum + BigInt(e.estimatedCostWei),
@@ -155,7 +176,7 @@ export function buildGasSummary(
 	);
 
 	const summary: GasSummary = {
-		chainId: BASE_CHAIN_ID,
+		chainId,
 		totalGasLimit: totalGasLimit.toString(),
 		totalEstimatedCostWei: totalEstimatedCostWei.toString(),
 		totalEstimatedCostEth: formatEther(totalEstimatedCostWei),
@@ -182,6 +203,6 @@ export function buildRemitBacklogGasWarning(expectedTransactions: number, gasSum
 	}
 	return (
 		`Remit backlog may require ${expectedTransactions} broadcasts; estimated total gas budget ` +
-		`~${gasSummary.totalBacklogEstimatedCostEth} ETH on Base (chainId ${BASE_CHAIN_ID}) if each remit costs similarly.`
+		`~${gasSummary.totalBacklogEstimatedCostEth} ETH on chainId ${gasSummary.chainId} if each remit costs similarly.`
 	);
 }

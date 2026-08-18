@@ -1,11 +1,10 @@
 import type { WriteSubscription } from '../abi/clocktower-write.js';
-import { BASE_CHAIN_ID } from '../chain.js';
 
 export type UnsignedTransaction = {
 	to: `0x${string}`;
 	data: `0x${string}`;
 	value: bigint;
-	chainId: typeof BASE_CHAIN_ID;
+	chainId: number;
 	from: `0x${string}`;
 };
 
@@ -21,7 +20,7 @@ export type SimulationResult = {
 };
 
 export type GasEstimate = {
-	chainId: typeof BASE_CHAIN_ID;
+	chainId: number;
 	gasLimit: string;
 	maxFeePerGas: string;
 	maxPriorityFeePerGas: string;
@@ -31,7 +30,7 @@ export type GasEstimate = {
 };
 
 export type GasSummary = {
-	chainId: typeof BASE_CHAIN_ID;
+	chainId: number;
 	totalGasLimit: string;
 	totalEstimatedCostWei: string;
 	totalEstimatedCostEth: string;
@@ -44,7 +43,7 @@ export type GasSummary = {
 export type ReadinessOnlyResult = {
 	requestId: string;
 	readinessOnly: true;
-	chainId: typeof BASE_CHAIN_ID;
+	chainId: number;
 	operation: string;
 	ready: boolean;
 	errors: string[];
@@ -56,7 +55,7 @@ export type ReadinessOnlyResult = {
 export type PrepareResult = {
 	requestId: string;
 	readinessOnly?: false;
-	chainId: typeof BASE_CHAIN_ID;
+	chainId: number;
 	signingMode: 'eip5792' | 'raw';
 	instructions: string[];
 	warnings: string[];

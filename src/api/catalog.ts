@@ -9,6 +9,7 @@ import {
 	getPublicMcpOrigin,
 	getSiweDomain,
 } from '../config/hostnames.js';
+import { getDefaultRestChainId, listChainCatalog } from '../chain.js';
 import { isDeveloperKeysEnabled } from '../auth/apiKeys.js';
 import { jsonResponse } from './responses.js';
 import { API_ROUTE_MANIFEST } from './x402.js';
@@ -16,16 +17,18 @@ import { API_ROUTE_MANIFEST } from './x402.js';
 export function handleGetCatalog(env: Env) {
 	const apiOrigin = getPublicApiOrigin(env);
 	const developerEnabled = isDeveloperKeysEnabled(env);
+	const defaultChainId = getDefaultRestChainId(env);
 	return jsonResponse({
 		version: '3',
-		chainId: 8453,
+		chainId: defaultChainId,
+		chains: listChainCatalog(env),
 		hosts: {
 			api: apiOrigin,
 			mcp: getPublicMcpOrigin(env),
 		},
 		siweDomain: getSiweDomain(env),
 		pathNote:
-			'On api host, omit the /api prefix (e.g. GET /catalog). Legacy workers.dev URLs keep /api.',
+			'On api host, omit the /api prefix (e.g. GET /catalog). Legacy workers.dev URLs keep /api. Protocol routes accept optional ?chainId= (decimal or CAIP-2 eip155:<id>); omitted uses DEFAULT_REST_CHAIN_ID.',
 		access: {
 			rest: {
 				free: {

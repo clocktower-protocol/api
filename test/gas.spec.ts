@@ -37,7 +37,7 @@ function mockClient(overrides: Partial<GasEstimatorClient> = {}): GasEstimatorCl
 describe('gas estimation', () => {
 	it('assertRpcChainId rejects mismatched RPC chain', async () => {
 		const client = mockClient({ getChainId: vi.fn(async () => 1) });
-		await expect(assertRpcChainId(client)).rejects.toThrow(/chainId mismatch/);
+		await expect(assertRpcChainId(client, BASE_CHAIN_ID)).rejects.toThrow(/chainId mismatch/);
 	});
 
 	it('estimateGasForTransactions returns per-tx estimates on Base', async () => {

@@ -2,7 +2,7 @@ import type { X402McpServer } from './types.js';
 import { safeHandler } from './safeHandler.js';
 import { CLOCKTOWER_READ_ABI } from '../abi/clocktower.js';
 import { ERC20_ABI } from '../abi/erc20.js';
-import { resolveChain, type ChainConfig } from '../chain.js';
+import { BASE_CHAIN_ID, resolveChain, type ChainConfig } from '../chain.js';
 import { createClocktowerClient } from '../client.js';
 import {
 	buildDayFrequencyProbes,
@@ -28,7 +28,7 @@ import {
 	parseSubscriptionRecord,
 	type SubscriptionRecord,
 } from '../validation.js';
-import { APPROVED_TOKENS } from '../config/approvedTokens.js';
+import { getApprovedTokens } from '../config/approvedTokens.js';
 import {
   getSubscriptionHistory,
   getAccountActivity,
@@ -448,7 +448,7 @@ export async function listApprovedTokens(env: Env, protocolChain?: ChainConfig) 
 	const { chain } = getContractContext(env, protocolChain);
 
 	const tokens = await Promise.all(
-		APPROVED_TOKENS.map(async (staticInfo) => {
+		getApprovedTokens(chain.chainId).map(async (staticInfo) => {
 			const onChain = await getApprovedToken(env, staticInfo.address, chain);
 			return {
 				address: staticInfo.address,
@@ -620,7 +620,7 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 		async ({ id, first, skip }) =>
 			safeHandler('get_subscription_history', async () =>
 				textResult(
-					await getSubscriptionHistory(env, id as `0x${string}`, 8453, {
+					await getSubscriptionHistory(env, id as `0x${string}`, BASE_CHAIN_ID, {
 						first: first as number | undefined,
 						skip: skip as number | undefined,
 					}),
@@ -646,7 +646,7 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 		async ({ address, first, skip }) =>
 			safeHandler('get_account_activity', async () =>
 				textResult(
-					await getAccountActivity(env, address as `0x${string}`, 8453, {
+					await getAccountActivity(env, address as `0x${string}`, BASE_CHAIN_ID, {
 						first: first as number | undefined,
 						skip: skip as number | undefined,
 					}),
@@ -664,7 +664,7 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 		{},
 		async ({ address }) =>
 			safeHandler('get_provider_profile', async () =>
-				textResult(await getProviderProfile(env, address as `0x${string}`, 8453)),
+				textResult(await getProviderProfile(env, address as `0x${string}`, BASE_CHAIN_ID)),
 			),
 	);
 
@@ -678,7 +678,7 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 		{},
 		async ({ id }) =>
 			safeHandler('get_subscription_details', async () =>
-				textResult(await getSubscriptionDetails(env, id as `0x${string}`, 8453)),
+				textResult(await getSubscriptionDetails(env, id as `0x${string}`, BASE_CHAIN_ID)),
 			),
 	);
 
@@ -736,7 +736,7 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 		async ({ id, first, skip }) =>
 			safeHandler('get_subscription_details_history', async () =>
 				textResult(
-					await getSubscriptionDetailsHistory(env, id as `0x${string}`, 8453, {
+					await getSubscriptionDetailsHistory(env, id as `0x${string}`, BASE_CHAIN_ID, {
 						first: first as number | undefined,
 						skip: skip as number | undefined,
 					}),
