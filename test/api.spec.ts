@@ -262,4 +262,40 @@ describe('clocktower-mcp worker - /api (tiered free REST)', () => {
 			expect([200, 401, 429]).toContain(res.status);
 		}
 	});
+
+	it('catalog reports the REST default chainId and chains list', async () => {
+		const res = await fetchWorker('/api/catalog', {
+			headers: { 'CF-Connecting-IP': '203.0.113.54' },
+		});
+		expect([200, 401, 429]).toContain(res.status);
+		if (res.status === 200) {
+			const body = (await res.json()) as {
+				chainId?: number;
+				chains?: Array<{ chainId: number; default?: boolean }>;
+			};
+			expect(body.chainId).toBe(8453);
+			expect(body.chains).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({ chainId: 8453, default: true, rest: true, mcp: true }),
+				]),
+			);
+		}
+	});
+
+	it('omitted chainId uses the REST default on protocol routes', async () => {
+		const res = await fetchWorker('/api/protocol/state', {
+			headers: { 'CF-Connecting-IP': '203.0.113.55' },
+		});
+		expect([200, 401, 429, 500]).toContain(res.status);
+	});
+
+	it('rejects an unsupported chainId on protocol routes', async () => {
+		const res = await fetchWorker('/api/protocol/state?chainId=1', {
+			headers: { 'CF-Connecting-IP': '203.0.113.56' },
+		});
+		expect(res.status).toBe(400);
+		const body = (await res.json()) as { code?: string; error?: string };
+		expect(body.code).toBe('VALIDATION_ERROR');
+		expect(body.error).toMatch(/Unsupported chainId 1/);
+	});
 });

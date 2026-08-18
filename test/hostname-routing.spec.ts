@@ -28,6 +28,18 @@ describe('production hostname routing', () => {
 		const body = await res.json();
 		expect(body.hosts.api).toBe('https://api.clocktower.finance');
 		expect(body.siweDomain).toBe('api.clocktower.finance');
+		expect(body.chainId).toBe(8453);
+		expect(body.chains).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					chainId: 8453,
+					caip2: 'eip155:8453',
+					rest: true,
+					mcp: true,
+					default: true,
+				}),
+			]),
+		);
 	});
 
 	it('rejects REST paths on mcp host', async () => {

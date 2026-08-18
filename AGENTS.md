@@ -1,6 +1,6 @@
 # AGENTS.md — clocktower-api
 
-Cloudflare Worker that exposes the Clocktower protocol on Base via **REST** (`api.clocktower.finance`) and **MCP** (`mcp.clocktower.finance`). Worker name in Wrangler is `clocktower-api`. Pre-release: no public production API yet.
+Cloudflare Worker that exposes the Clocktower protocol via **REST** (`api.clocktower.finance`) and **MCP** (`mcp.clocktower.finance`). Worker name in Wrangler is `clocktower-api`. Pre-release: no public production API yet. MCP, x402, SIWE, and Builder entitlement are **Base-only** (chainId 8453). REST protocol routes accept optional `?chainId=` and default to `DEFAULT_REST_CHAIN_ID` (shipped as 8453).
 
 Full product docs: `README.md`. Deploy ops: `DEPLOY_REMINDER.md`.
 
@@ -10,6 +10,8 @@ Full product docs: `README.md`. Deploy ops: `DEPLOY_REMINDER.md`.
 - **Protocol accounting is always 18 decimals.** Conversion path: human → token-native (`parseUnits` + approved token decimals) → protocol units. See `src/tx/amount.ts` and helpers in `src/utils.ts`.
 - **Prefer `*_by_id` write paths** when the caller already has a subscription id: `prepare_subscribe_by_id`, `check_subscribe_readiness_by_id`, `prepare_cancel_subscription_by_id`, `prepare_unsubscribe_by_id`, `prepare_unsubscribe_by_provider_by_id` (and matching REST routes under `/api/prepare/*` and readiness). Keep object-based prepares for create and for callers that already hold a full subscription object.
 - **Prepare/readiness is tightly rate-limited** on free/developer (write RPM + **write daily**). Defaults: free 2/min · 20/day; developer 5/min · 100/day. Full prepare runs simulation/gas (Alchemy cost) even without relaying. Production write volume → SDK + caller's own RPC.
+- **REST protocol chain:** optional `?chainId=` (decimal or CAIP-2 `eip155:<id>`). Omitted uses `DEFAULT_REST_CHAIN_ID` (default `8453`). Unknown or REST-disabled chains return 400. **MCP stays Base-only** (x402). `DEFAULT_REST_CHAIN_ID` does not move MCP, SIWE, or Builder entitlement.
+- **Builder entitlement is always checked on Base**, even when a REST call targets another protocol chain.
 - **Prepare returns unsigned calldata only.** The server never holds user keys, never relays signed txs, and never broadcasts for the user. Workflow: prepare/readiness → wallet signs → client broadcasts → optional `get_transaction_status`.
 - **REST access lanes are distinct from MCP:** free (IP), **developer** (`Bearer ctk_…` API key), Builder (`Bearer cts_…` SIWE, optional/off). **MCP stays x402** — never use API keys for MCP auth. Invalid `ctk_` keys must **401**, not fall through to free.
 - **API keys:** store SHA-256 only; plaintext once on create; mint via admin secret (`DEVELOPER_KEYS_ADMIN_SECRET`), not public unauthenticated mint.
@@ -21,6 +23,7 @@ Full product docs: `README.md`. Deploy ops: `DEPLOY_REMINDER.md`.
 
 | Path | Role |
 |------|------|
+| `src/chain.ts` | Chain registry, REST `?chainId=` parse, `DEFAULT_REST_CHAIN_ID` |
 | `src/index.ts` | Worker entry |
 | `src/api/` | Hono REST (read, write, auth, catalog, pricing, x402) |
 | `src/tools/`, `src/mcp*.ts`, `src/clocktower-mcp.ts` | MCP tools and agent wiring |
@@ -108,12 +111,20 @@ Machine-readable tier manifest: `GET /catalog` (or `/api/catalog` on workers.dev
 
 **Auth / SIWE**
 
-- `src/auth/`, `src/api/auth.ts`, session KV; respect `SIWE_DOMAIN` / hostname config
+- `src/auth/`, `src/api/auth.ts`, session KV; respect `SIWE_DOMAIN` / hostname config. SIWE chain ID stays Base (8453).
+
+**New REST chain**
+
+1. Add a row in `src/chain.ts` (`restEnabled: true`, `mcpEnabled: false`) plus viem chain.
+2. Env: RPC URL (trailing slash) + contract address + subgraph URL; validate when the row is enabled. Keep Base `ALCHEMY_URL` / `CLOCKTOWER_ADDRESS` for MCP.
+3. Per-chain approved tokens in `src/config/approvedTokens.ts`.
+4. Tests with RPC `eth_chainId` for that id (`test/chain.spec.ts`, prepare/gas as needed).
+5. Catalog `chains[]` is derived from the registry. Optionally point `DEFAULT_REST_CHAIN_ID` at the new chain only after it is `restEnabled`. Do not enable MCP on non-Base.
 
 ## Ask before
 
 - Production `wrangler deploy` or changing live secrets/vars
-- Changing `CLOCKTOWER_ADDRESS`, chain IDs, or hostname routing defaults
+- Changing `CLOCKTOWER_ADDRESS`, `DEFAULT_REST_CHAIN_ID`, chain IDs, or hostname routing defaults
 - Widening CORS, disabling CSRF/geo blocks, or weakening rate limits
 - Force-push / history rewrite
 - Publishing or claiming a public production API

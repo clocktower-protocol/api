@@ -4,7 +4,7 @@
 
 > **Status:** Pre-release. There is no public production API yet. The documentation below describes the intended interface; endpoints, limits, and auth flows may change before launch.
 
-Clocktower API is a Cloudflare Workers-based server that provides access to the Clocktower Protocol (a subscription management system on Base) through a REST API and the Model Context Protocol (MCP). The Worker name is `clocktower-api` (see `wrangler.jsonc`).
+Clocktower API is a Cloudflare Workers-based server that provides access to the Clocktower Protocol (a subscription management system) through a REST API and the Model Context Protocol (MCP). The Worker name is `clocktower-api` (see `wrangler.jsonc`). REST can select a protocol chain; MCP is Base-only because of x402.
 
 Access uses **REST** lanes (free IP, developer API key, optional Builder SIWE) and **MCP** (x402 for agents — not API keys).
 
@@ -25,7 +25,7 @@ Builder SIWE auth uses domain `api.clocktower.finance` (configurable via `SIWE_D
 
 ## Overview
 
-- **Protocol**: Clocktower on Base mainnet (eip155:8453)
+- **Protocol**: Clocktower on Base mainnet today (`eip155:8453`). REST accepts optional `?chainId=` (decimal or CAIP-2); omitted uses `DEFAULT_REST_CHAIN_ID` (default 8453). MCP, x402, SIWE, and Builder entitlement stay on Base.
 - **Hosting**: Cloudflare Workers + Durable Objects
 - **Interfaces**:
   - MCP Server at `mcp.clocktower.finance` (for AI agents — x402 USDC micropayments)
@@ -134,7 +134,7 @@ All history results are server-side limited (max 200 records, recommended ~100 p
 - `prepare_remit` — Prepare permissionless `remit()` (earns caller fees in subscription ERC-20 tokens)
 - `get_transaction_status` — Poll confirmation status for a transaction hash after client-side broadcast
 
-**Write workflow:** prepare (or readiness check) → sign in wallet → broadcast from wallet → optionally poll `get_transaction_status`. The server returns unsigned calldata and never relays signed transactions. Each full prepare runs on-chain simulation and gas estimation on Base (chainId 8453) before x402 payment settles; failed simulation or validation throws so you are not charged.
+**Write workflow:** prepare (or readiness check) → sign in wallet → broadcast from wallet → optionally poll `get_transaction_status`. The server returns unsigned calldata and never relays signed transactions. Each full prepare runs on-chain simulation and gas estimation on the selected REST chain (default Base, chainId 8453). MCP prepare still simulates on Base before x402 payment settles; failed simulation or validation throws so you are not charged.
 
 **Remit flow:** `check_remit_readiness` → `prepare_remit` → sign → broadcast from wallet → repeat until readiness reports caught up. One `remit()` clears at most `maxRemits` subscriber payments per transaction. When the backlog needs multiple broadcasts, `preflight.expectedTransactions`, `gasSummary.backlogMultiplier`, and `warnings` describe the total gas budget. Remit can be gas-heavy on large backlogs — the caller pays gas (unlike the operator cron bot). Use `get_subscriptions_due` for a lightweight single-day read; use `check_remit_readiness` before preparing a remit tx.
 
@@ -151,7 +151,7 @@ Full prepare responses (default) include:
 | `signingMode` | `raw` for a single tx, or `eip5792` when multiple steps are needed (e.g. approve + subscribe). |
 | `eip5792` | Batch descriptor when `signingMode` is `eip5792`. |
 | `simulation` | On-chain simulation results (must succeed before payment settles). |
-| `gasEstimates` | Per-transaction gas budget on Base (chainId 8453): `gasLimit`, EIP-1559 fees, `estimatedCostWei` / `estimatedCostEth`, and `source` (`simulated` or `heuristic` fallback). |
+| `gasEstimates` | Per-transaction gas budget on the selected chain: `gasLimit`, EIP-1559 fees, `estimatedCostWei` / `estimatedCostEth`, and `source` (`simulated` or `heuristic` fallback). |
 | `gasSummary` | Aggregated totals across `gasEstimates`. For remit backlogs, includes `backlogMultiplier`, `totalBacklogEstimatedCostWei`, and `totalBacklogEstimatedCostEth` when multiple broadcasts are expected. |
 | `preflight` | Operation-specific context (allowance, remit queue size, etc.). |
 
@@ -160,7 +160,7 @@ Optional request fields on any `prepare_*` call (REST body or MCP tool argument)
 - **`readinessOnly: true`** — run preflight/readiness checks only; no unsigned transactions, simulation, or gas estimates. Response uses `readinessOnly: true` with `ready`, `errors`, `warnings`, `details`, and `instructions`. On MCP, billed at the readiness tier ($0.01; remit readiness path $0.02) instead of full prepare.
 - **`simulateFromAddress`** — optional `0x` address passed to `eth_estimateGas` when the signing wallet differs from the account that will broadcast (defaults to `from`).
 
-Gas estimates are advisory: fees can change between prepare and broadcast. Estimation always verifies the RPC reports Base mainnet (chainId 8453). Per-transaction limits come from `eth_estimateGas` when possible; otherwise a conservative heuristic is used and a warning is added (`source: "heuristic"`).
+Gas estimates are advisory: fees can change between prepare and broadcast. Estimation verifies the RPC reports the selected chain (REST `?chainId=` or `DEFAULT_REST_CHAIN_ID`; MCP always Base 8453). Per-transaction limits come from `eth_estimateGas` when possible; otherwise a conservative heuristic is used and a warning is added (`source: "heuristic"`).
 
 Example excerpt from a full prepare response:
 
@@ -209,6 +209,8 @@ The REST API provides the same capabilities as the MCP tools over standard HTTP.
 **Base URL**: `https://api.clocktower.finance` (paths omit `/api`; e.g. `GET /catalog`, `POST /auth/challenge`).
 
 Staging / local dev: `https://your-worker.workers.dev/api/...`
+
+**Chain selection:** protocol reads, prepares, history, discovery, approved tokens, and transaction status accept optional `?chainId=8453` or `?chainId=eip155:8453`. Omitted `chainId` uses `DEFAULT_REST_CHAIN_ID` (default 8453). Unknown or unsupported values return 400. Auth, developer keys, health, and catalog are not chain-scoped (catalog still lists available chains). MCP does not take `chainId`.
 
 ### Authentication
 

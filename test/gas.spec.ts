@@ -40,6 +40,11 @@ describe('gas estimation', () => {
 		await expect(assertRpcChainId(client, BASE_CHAIN_ID)).rejects.toThrow(/chainId mismatch/);
 	});
 
+	it('assertRpcChainId accepts the expected chain even when it is not Base', async () => {
+		const client = mockClient({ getChainId: vi.fn(async () => 1) });
+		await expect(assertRpcChainId(client, 1)).resolves.toBeUndefined();
+	});
+
 	it('estimateGasForTransactions returns per-tx estimates on Base', async () => {
 		const client = mockClient();
 		const { estimates, warnings } = await estimateGasForTransactions(client, [
