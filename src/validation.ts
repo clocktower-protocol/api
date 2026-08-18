@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { assertDefaultRestChainId } from './chain.js';
 
 export const MAX_REQUEST_BYTES = 1024 * 1024;
 export const MAX_JSON_DEPTH = 10;
@@ -237,6 +238,8 @@ export function validateEnv(env: Env): void {
 	assertRequiredString(env.CDP_API_KEY_ID, 'CDP_API_KEY_ID');
 	assertRequiredString(env.CDP_API_KEY_SECRET, 'CDP_API_KEY_SECRET');
 	assertAddress(env.X402_RECIPIENT, 'X402_RECIPIENT');
+	// Fail fast: invalid REST default must not wait until the first omitted-chainId request.
+	assertDefaultRestChainId(env);
 }
 
 /**

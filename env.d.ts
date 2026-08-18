@@ -35,6 +35,8 @@ declare namespace Cloudflare {
 		ALCHEMY_API_KEY: string;
 		ALCHEMY_URL: string;
 		CLOCKTOWER_ADDRESS: string;
+		/** REST default when `chainId` is omitted (decimal or CAIP-2). Unset → 8453. Does not move MCP/SIWE. */
+		DEFAULT_REST_CHAIN_ID?: string;
 		CDP_API_KEY_ID: string;
 		CDP_API_KEY_SECRET: string;
 		X402_RECIPIENT: string;
