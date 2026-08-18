@@ -1,4 +1,5 @@
 import { Errors, jsonResponse } from './responses.js';
+import type { ChainConfig } from '../chain.js';
 import {
   getApprovedToken,
   getProtocolState,
@@ -37,9 +38,9 @@ export const frequencySchema = z.coerce.number().int().min(0).max(3).optional();
 
 type Env = any; // Using any here to avoid import cycles in early stages
 
-export async function handleGetProtocolState(env: Env) {
+export async function handleGetProtocolState(env: Env, chain?: ChainConfig) {
   try {
-    const data = await getProtocolState(env);
+    const data = await getProtocolState(env, chain);
     return jsonResponse(data);
   } catch (err: any) {
     console.error('get_protocol_state failed', err);
@@ -47,14 +48,14 @@ export async function handleGetProtocolState(env: Env) {
   }
 }
 
-export async function handleGetSubscription(env: Env, idParam: string) {
+export async function handleGetSubscription(env: Env, idParam: string, chain?: ChainConfig) {
   const parseResult = bytes32Schema.safeParse(idParam);
   if (!parseResult.success) {
     return Errors.validation('Invalid subscription id (must be 32-byte hex)');
   }
 
   try {
-    const data = await getSubscription(env, parseResult.data as `0x${string}`);
+    const data = await getSubscription(env, parseResult.data as `0x${string}`, chain);
     return jsonResponse(data);
   } catch (err: any) {
     if (err.message?.includes('not found')) {
@@ -69,6 +70,7 @@ export async function handleGetAccountSubscriptions(
   env: Env,
   addressParam: string,
   bySubscriberParam: string | null,
+  chain?: ChainConfig,
 ) {
   const addressParse = addressSchema.safeParse(addressParam);
   if (!addressParse.success) {
@@ -85,6 +87,7 @@ export async function handleGetAccountSubscriptions(
       env,
       bySubscriberParse.data,
       addressParse.data as `0x${string}`,
+      chain,
     );
     return jsonResponse(data);
   } catch (err: any) {
@@ -93,14 +96,14 @@ export async function handleGetAccountSubscriptions(
   }
 }
 
-export async function handleGetSubscribers(env: Env, idParam: string) {
+export async function handleGetSubscribers(env: Env, idParam: string, chain?: ChainConfig) {
   const parseResult = bytes32Schema.safeParse(idParam);
   if (!parseResult.success) {
     return Errors.validation('Invalid subscription id (must be 32-byte hex)');
   }
 
   try {
-    const data = await getSubscribers(env, parseResult.data as `0x${string}`);
+    const data = await getSubscribers(env, parseResult.data as `0x${string}`, chain);
     return jsonResponse(data);
   } catch (err: any) {
     console.error('get_subscribers failed', err);
@@ -108,14 +111,14 @@ export async function handleGetSubscribers(env: Env, idParam: string) {
   }
 }
 
-export async function handleGetApprovedToken(env: Env, tokenParam: string) {
+export async function handleGetApprovedToken(env: Env, tokenParam: string, chain?: ChainConfig) {
   const parseResult = addressSchema.safeParse(tokenParam);
   if (!parseResult.success) {
     return Errors.validation('Invalid token address');
   }
 
   try {
-    const data = await getApprovedToken(env, parseResult.data as `0x${string}`);
+    const data = await getApprovedToken(env, parseResult.data as `0x${string}`, chain);
     return jsonResponse(data);
   } catch (err: any) {
     console.error('get_approved_token failed', err);
@@ -127,6 +130,7 @@ export async function handleGetSubscriptionsDue(
   env: Env,
   dayNumberParam: string | null,
   frequencyParam: string | null,
+  chain?: ChainConfig,
 ) {
   const options: { dayNumber?: number; frequency?: number } = {};
 
@@ -147,7 +151,7 @@ export async function handleGetSubscriptionsDue(
   }
 
   try {
-    const data = await getSubscriptionsDue(env, options);
+    const data = await getSubscriptionsDue(env, options, chain);
     return jsonResponse(data);
   } catch (err: any) {
     console.error('get_subscriptions_due failed', err);
@@ -158,9 +162,9 @@ export async function handleGetSubscriptionsDue(
 /**
  * Returns approved tokens enriched with on-chain minimum and paused state.
  */
-export async function handleListApprovedTokens(env: Env) {
+export async function handleListApprovedTokens(env: Env, chain?: ChainConfig) {
   try {
-    const data = await listApprovedTokens(env);
+    const data = await listApprovedTokens(env, chain);
     return jsonResponse(data);
   } catch (err: any) {
     console.error('list_approved_tokens failed', err);
@@ -168,7 +172,7 @@ export async function handleListApprovedTokens(env: Env) {
   }
 }
 
-export async function handleGetSubscriptionDetails(env: Env, idParam: string) {
+export async function handleGetSubscriptionDetails(env: Env, idParam: string, chain?: ChainConfig) {
   const parseResult = bytes32Schema.safeParse(idParam);
   if (!parseResult.success) {
     return Errors.validation('Invalid subscription id');
@@ -178,7 +182,7 @@ export async function handleGetSubscriptionDetails(env: Env, idParam: string) {
     const data = await getSubscriptionDetails(
       env,
       parseResult.data as `0x${string}`,
-      8453,
+      chain?.chainId,
     );
     return jsonResponse(data);
   } catch (err: any) {
@@ -190,7 +194,12 @@ export async function handleGetSubscriptionDetails(env: Env, idParam: string) {
   }
 }
 
-export async function handleGetFeeBalance(env: Env, idParam: string, addressParam: string) {
+export async function handleGetFeeBalance(
+  env: Env,
+  idParam: string,
+  addressParam: string,
+  chain?: ChainConfig,
+) {
   const idParse = bytes32Schema.safeParse(idParam);
   if (!idParse.success) {
     return Errors.validation('Invalid subscription id');
@@ -202,7 +211,7 @@ export async function handleGetFeeBalance(env: Env, idParam: string, addressPara
   }
 
   try {
-    const data = await getFeeBalance(env, idParse.data as `0x${string}`, addressParse.data as `0x${string}`);
+    const data = await getFeeBalance(env, idParse.data as `0x${string}`, addressParse.data as `0x${string}`, chain);
     return jsonResponse(data);
   } catch (err: any) {
     console.error('get_fee_balance failed', err);
@@ -210,14 +219,14 @@ export async function handleGetFeeBalance(env: Env, idParam: string, addressPara
   }
 }
 
-export async function handleGetAccount(env: Env, addressParam: string) {
+export async function handleGetAccount(env: Env, addressParam: string, chain?: ChainConfig) {
   const parseResult = addressSchema.safeParse(addressParam);
   if (!parseResult.success) {
     return Errors.validation('Invalid address');
   }
 
   try {
-    const data = await getAccount(env, parseResult.data as `0x${string}`);
+    const data = await getAccount(env, parseResult.data as `0x${string}`, chain);
     return jsonResponse(data);
   } catch (err: any) {
     console.error('get_account failed', err);
@@ -227,7 +236,7 @@ export async function handleGetAccount(env: Env, addressParam: string) {
 
 // === History & Profile handlers (subgraph-backed) ===
 
-export async function handleGetSubscriptionHistory(env: Env, idParam: string, query: any) {
+export async function handleGetSubscriptionHistory(env: Env, idParam: string, query: any, chain?: ChainConfig) {
   const parseResult = bytes32Schema.safeParse(idParam);
   if (!parseResult.success) {
     return Errors.validation('Invalid subscription id');
@@ -237,7 +246,7 @@ export async function handleGetSubscriptionHistory(env: Env, idParam: string, qu
     const data = await getSubscriptionHistory(
       env,
       parseResult.data as `0x${string}`,
-      8453,
+      chain?.chainId,
       {
         first: query.first ? Number(query.first) : undefined,
         skip: query.skip ? Number(query.skip) : undefined,
@@ -251,7 +260,7 @@ export async function handleGetSubscriptionHistory(env: Env, idParam: string, qu
   }
 }
 
-export async function handleGetAccountActivity(env: Env, addressParam: string, query: any) {
+export async function handleGetAccountActivity(env: Env, addressParam: string, query: any, chain?: ChainConfig) {
   const parseResult = addressSchema.safeParse(addressParam);
   if (!parseResult.success) {
     return Errors.validation('Invalid address');
@@ -261,7 +270,7 @@ export async function handleGetAccountActivity(env: Env, addressParam: string, q
     const data = await getAccountActivity(
       env,
       parseResult.data as `0x${string}`,
-      8453,
+      chain?.chainId,
       {
         first: query.first ? Number(query.first) : undefined,
         skip: query.skip ? Number(query.skip) : undefined,
@@ -275,14 +284,14 @@ export async function handleGetAccountActivity(env: Env, addressParam: string, q
   }
 }
 
-export async function handleGetProviderProfile(env: Env, addressParam: string) {
+export async function handleGetProviderProfile(env: Env, addressParam: string, chain?: ChainConfig) {
   const parseResult = addressSchema.safeParse(addressParam);
   if (!parseResult.success) {
     return Errors.validation('Invalid address');
   }
 
   try {
-    const data = await getProviderProfile(env, parseResult.data as `0x${string}`, 8453);
+    const data = await getProviderProfile(env, parseResult.data as `0x${string}`, chain?.chainId);
     return jsonResponse(data);
   } catch (err: any) {
     console.error('get_provider_profile failed', err);
@@ -291,7 +300,7 @@ export async function handleGetProviderProfile(env: Env, addressParam: string) {
   }
 }
 
-export async function handleGetSubscriptionDetailsHistory(env: Env, idParam: string, query: any) {
+export async function handleGetSubscriptionDetailsHistory(env: Env, idParam: string, query: any, chain?: ChainConfig) {
   const parseResult = bytes32Schema.safeParse(idParam);
   if (!parseResult.success) {
     return Errors.validation('Invalid subscription id');
@@ -301,7 +310,7 @@ export async function handleGetSubscriptionDetailsHistory(env: Env, idParam: str
     const data = await getSubscriptionDetailsHistory(
       env,
       parseResult.data as `0x${string}`,
-      8453,
+      chain?.chainId,
       {
         first: query.first ? Number(query.first) : undefined,
         skip: query.skip ? Number(query.skip) : undefined,

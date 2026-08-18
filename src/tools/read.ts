@@ -2,7 +2,7 @@ import type { X402McpServer } from './types.js';
 import { safeHandler } from './safeHandler.js';
 import { CLOCKTOWER_READ_ABI } from '../abi/clocktower.js';
 import { ERC20_ABI } from '../abi/erc20.js';
-import { resolveChain } from '../chain.js';
+import { resolveChain, type ChainConfig } from '../chain.js';
 import { createClocktowerClient } from '../client.js';
 import {
 	buildDayFrequencyProbes,
@@ -159,23 +159,22 @@ export { addressSchema, bytes32Schema } from '../validation.js';
 
 export const TOOL_PRICE = 0.01;
 
-function getContractContext(env: Env) {
-	const chain = resolveChain(env);
+function getContractContext(env: Env, chain: ChainConfig = resolveChain(env)) {
 	const client = createClocktowerClient(chain);
 	return { chain, client };
 }
 
-export async function getProtocolState(env: Env) {
-	const { chain, client } = getContractContext(env);
+export async function getProtocolState(env: Env, protocolChain?: ChainConfig) {
+	const { chain: resolved, client } = getContractContext(env, protocolChain);
 
 	const [callerFee, systemFee] = await Promise.all([
 		client.readContract({
-			address: chain.contractAddress,
+			address: resolved.contractAddress,
 			abi: CLOCKTOWER_READ_ABI,
 			functionName: 'callerFee',
 		}),
 		client.readContract({
-			address: chain.contractAddress,
+			address: resolved.contractAddress,
 			abi: CLOCKTOWER_READ_ABI,
 			functionName: 'systemFee',
 		}),
@@ -198,15 +197,15 @@ export async function getProtocolState(env: Env) {
 	const systemFeePercent = (systemFeeBps - 10000) / 100;
 
 	return {
-		chainId: chain.chainId,
-		contractAddress: chain.contractAddress,
+		chainId: resolved.chainId,
+		contractAddress: resolved.contractAddress,
 		callerFeePercent: callerFeePercent,
 		systemFeePercent: systemFeePercent,
 	};
 }
 
-export async function getSubscription(env: Env, id: `0x${string}`) {
-	const { chain, client } = getContractContext(env);
+export async function getSubscription(env: Env, id: `0x${string}`, protocolChain?: ChainConfig) {
+	const { chain, client } = getContractContext(env, protocolChain);
 
 	const subscription = await client.readContract({
 		address: chain.contractAddress,
@@ -228,8 +227,9 @@ export async function getAccountSubscriptions(
 	env: Env,
 	bySubscriber: boolean,
 	account: `0x${string}`,
+	protocolChain?: ChainConfig,
 ) {
-	const { chain, client } = getContractContext(env);
+	const { chain, client } = getContractContext(env, protocolChain);
 
 	const subscriptions = await client.readContract({
 		address: chain.contractAddress,
@@ -263,8 +263,8 @@ export async function getAccountSubscriptions(
 	};
 }
 
-export async function getSubscribers(env: Env, id: `0x${string}`) {
-	const { chain, client } = getContractContext(env);
+export async function getSubscribers(env: Env, id: `0x${string}`, protocolChain?: ChainConfig) {
+	const { chain, client } = getContractContext(env, protocolChain);
 
 	const [subscribers, subscription] = await Promise.all([
 		client.readContract({
@@ -293,8 +293,8 @@ export async function getSubscribers(env: Env, id: `0x${string}`) {
 	};
 }
 
-export async function getApprovedToken(env: Env, token: `0x${string}`) {
-	const { chain, client } = getContractContext(env);
+export async function getApprovedToken(env: Env, token: `0x${string}`, protocolChain?: ChainConfig) {
+	const { chain, client } = getContractContext(env, protocolChain);
 
 	const approvedToken = await client.readContract({
 		address: chain.contractAddress,
@@ -310,8 +310,13 @@ export async function getApprovedToken(env: Env, token: `0x${string}`) {
 	};
 }
 
-export async function getFeeBalance(env: Env, subscriptionId: `0x${string}`, subscriber: `0x${string}`) {
-	const { chain, client } = getContractContext(env);
+export async function getFeeBalance(
+	env: Env,
+	subscriptionId: `0x${string}`,
+	subscriber: `0x${string}`,
+	protocolChain?: ChainConfig,
+) {
+	const { chain, client } = getContractContext(env, protocolChain);
 
 	const [balance, subscription] = await Promise.all([
 		client.readContract({
@@ -351,13 +356,13 @@ export async function getFeeBalance(env: Env, subscriptionId: `0x${string}`, sub
 	};
 }
 
-export async function getAccount(env: Env, account: `0x${string}`) {
-	const { chain } = getContractContext(env);
+export async function getAccount(env: Env, account: `0x${string}`, protocolChain?: ChainConfig) {
+	const { chain } = getContractContext(env, protocolChain);
 
 	// Fetch both views using the already-rich formatting logic
 	const [asSubscriberRaw, asProviderRaw] = await Promise.all([
-		getAccountSubscriptions(env, true, account),
-		getAccountSubscriptions(env, false, account),
+		getAccountSubscriptions(env, true, account, chain),
+		getAccountSubscriptions(env, false, account, chain),
 	]);
 
 	// For the subscriber view, enrich each entry with the caller's personal fee balance.
@@ -365,7 +370,7 @@ export async function getAccount(env: Env, account: `0x${string}`) {
 	const enrichedSubscribedTo = await Promise.all(
 		asSubscriberRaw.subscriptions.map(async (entry: any) => {
 			try {
-				const fee = await getFeeBalance(env, entry.subscription.id, account);
+				const fee = await getFeeBalance(env, entry.subscription.id, account, chain);
 				return {
 					...entry,
 					feeBalance: fee.feeBalance,
@@ -393,8 +398,9 @@ export async function getAccount(env: Env, account: `0x${string}`) {
 export async function getSubscriptionsDue(
 	env: Env,
 	options: { dayNumber?: number; frequency?: number } = {},
+	protocolChain?: ChainConfig,
 ) {
-	const { chain, client } = getContractContext(env);
+	const { chain, client } = getContractContext(env, protocolChain);
 	const dayNumber = options.dayNumber ?? getCurrentDay();
 
 	const frequencies =
@@ -438,12 +444,12 @@ export async function getSubscriptionsDue(
 	return { chainId: chain.chainId, dayNumber, results };
 }
 
-export async function listApprovedTokens(env: Env) {
-	const { chain } = getContractContext(env);
+export async function listApprovedTokens(env: Env, protocolChain?: ChainConfig) {
+	const { chain } = getContractContext(env, protocolChain);
 
 	const tokens = await Promise.all(
 		APPROVED_TOKENS.map(async (staticInfo) => {
-			const onChain = await getApprovedToken(env, staticInfo.address);
+			const onChain = await getApprovedToken(env, staticInfo.address, chain);
 			return {
 				address: staticInfo.address,
 				symbol: staticInfo.symbol,

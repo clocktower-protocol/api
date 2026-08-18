@@ -26,6 +26,7 @@ import {
   handleRevokeDeveloperKey,
 } from './developerKeys.js';
 import { withPublicCacheHeaders } from '../rpcCache.js';
+import { requestChain, restChainMiddleware, type ApiBindings } from './restChain.js';
 
 // Write handlers
 import * as writeHandlers from './write.js';
@@ -95,7 +96,9 @@ export function createApiAppForEnv(_env: Env, options: ApiAppOptions = {}) {
 }
 
 export function createApiApp(_options: ApiAppOptions = {}) {
-  const app = new Hono<{ Bindings: Env }>();
+  const app = new Hono<ApiBindings>();
+
+  app.use('*', restChainMiddleware);
 
   app.get('/', (c) => {
     const requireBasic = c.env.API_REQUIRE_BASIC_AUTH !== 'false';
@@ -126,14 +129,19 @@ export function createApiApp(_options: ApiAppOptions = {}) {
 
   app.get('/api/protocol/state', async (c: any) => {
     const lane = c.req.header('X-Clocktower-Lane') ?? 'free';
-    const response = await handleGetProtocolState(c.env);
+    const response = await handleGetProtocolState(c.env, requestChain(c));
     return lane === 'free' ? withPublicCacheHeaders(response) : response;
   });
 
   app.get('/api/subscriptions/due', async (c: any) => {
     const dayNumber = c.req.query('dayNumber');
     const frequency = c.req.query('frequency');
-    return await handleGetSubscriptionsDue(c.env, dayNumber ?? null, frequency ?? null);
+    return await handleGetSubscriptionsDue(
+      c.env,
+      dayNumber ?? null,
+      frequency ?? null,
+      requestChain(c),
+    );
   });
 
   app.get('/api/subscriptions', async (c: any) => {
@@ -141,66 +149,74 @@ export function createApiApp(_options: ApiAppOptions = {}) {
       c.env,
       c.req.query(),
       c.req.header('X-Clocktower-Lane'),
+      requestChain(c),
     );
   });
 
   app.get('/api/subscriptions/:id/details', async (c: any) => {
     const id = c.req.param('id');
-    return await handleGetSubscriptionDetails(c.env, id);
+    return await handleGetSubscriptionDetails(c.env, id, requestChain(c));
   });
 
   app.get('/api/subscriptions/:id', async (c: any) => {
     const id = c.req.param('id');
-    return await handleGetSubscription(c.env, id);
+    return await handleGetSubscription(c.env, id, requestChain(c));
   });
 
   app.get('/api/subscriptions/:id/subscribers', async (c: any) => {
     const id = c.req.param('id');
-    return await handleGetSubscribers(c.env, id);
+    return await handleGetSubscribers(c.env, id, requestChain(c));
   });
 
   app.get('/api/accounts/:address/subscriptions', async (c: any) => {
     const address = c.req.param('address');
     const bySubscriber = c.req.query('bySubscriber');
-    return await handleGetAccountSubscriptions(c.env, address, bySubscriber ?? null);
+    return await handleGetAccountSubscriptions(
+      c.env,
+      address,
+      bySubscriber ?? null,
+      requestChain(c),
+    );
   });
 
   app.get('/api/approved-tokens/:token', async (c: any) => {
     const token = c.req.param('token');
-    return await handleGetApprovedToken(c.env, token);
+    return await handleGetApprovedToken(c.env, token, requestChain(c));
   });
 
-  app.get('/api/approved-tokens', async (c: any) => handleListApprovedTokens(c.env));
+  app.get('/api/approved-tokens', async (c: any) =>
+    handleListApprovedTokens(c.env, requestChain(c)),
+  );
 
   app.get('/api/subscriptions/:id/fee-balance', async (c: any) => {
     const id = c.req.param('id');
     const address = c.req.query('address');
-    return await handleGetFeeBalance(c.env, id, address ?? '');
+    return await handleGetFeeBalance(c.env, id, address ?? '', requestChain(c));
   });
 
   app.get('/api/accounts/:address', async (c: any) => {
     const address = c.req.param('address');
-    return await handleGetAccount(c.env, address);
+    return await handleGetAccount(c.env, address, requestChain(c));
   });
 
   app.get('/api/subscriptions/:id/history', async (c: any) => {
     const id = c.req.param('id');
-    return await handleGetSubscriptionHistory(c.env, id, c.req.query());
+    return await handleGetSubscriptionHistory(c.env, id, c.req.query(), requestChain(c));
   });
 
   app.get('/api/accounts/:address/activity', async (c: any) => {
     const address = c.req.param('address');
-    return await handleGetAccountActivity(c.env, address, c.req.query());
+    return await handleGetAccountActivity(c.env, address, c.req.query(), requestChain(c));
   });
 
   app.get('/api/providers/:address', async (c: any) => {
     const address = c.req.param('address');
-    return await handleGetProviderProfile(c.env, address);
+    return await handleGetProviderProfile(c.env, address, requestChain(c));
   });
 
   app.get('/api/subscriptions/:id/details-history', async (c: any) => {
     const id = c.req.param('id');
-    return await handleGetSubscriptionDetailsHistory(c.env, id, c.req.query());
+    return await handleGetSubscriptionDetailsHistory(c.env, id, c.req.query(), requestChain(c));
   });
 
   // === Write endpoints ===

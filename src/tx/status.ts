@@ -1,9 +1,12 @@
 import type { Hash } from 'viem';
-import { resolveChain } from '../chain.js';
+import { resolveChain, type ChainConfig } from '../chain.js';
 import { createClocktowerClient } from '../client.js';
 
-export async function getTransactionStatus(env: Env, txHash: Hash) {
-	const chain = resolveChain(env);
+export async function getTransactionStatus(
+	env: Env,
+	txHash: Hash,
+	chain: ChainConfig = resolveChain(env),
+) {
 	const client = createClocktowerClient(chain);
 
 	try {

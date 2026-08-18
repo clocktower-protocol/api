@@ -39,6 +39,10 @@ function toChainIdHex(chainId: number): `0x${string}` {
 	return `0x${chainId.toString(16)}` as `0x${string}`;
 }
 
+function writeChain(env: Env, options?: PrepareOptions): ChainConfig {
+	return options?.chain ?? resolveChain(env);
+}
+
 /**
  * Reads the authoritative subscription from chain for the given id.
  * All prepare* write paths build their calldata from this canonical tuple,
@@ -110,8 +114,8 @@ export async function fetchCanonicalSubscription(
 export async function loadWriteSubscriptionById(
 	env: Env,
 	id: `0x${string}`,
+	chain: ChainConfig = resolveChain(env),
 ): Promise<WriteSubscription> {
-	const chain = resolveChain(env);
 	const client = createClocktowerClient(chain);
 	return fetchCanonicalSubscription(client, chain, id);
 }
@@ -139,7 +143,7 @@ async function buildPrepareResult(
 	preflight?: Record<string, unknown>,
 	options?: PrepareOptions,
 ): Promise<PrepareResult> {
-	const chain = resolveChain(env);
+	const chain = writeChain(env, options);
 	const client = createClocktowerClient(chain);
 
 	// Simulate before returning. A failed simulation guarantees the eventual
@@ -221,7 +225,7 @@ export async function prepareCreateSubscription(
 	options?: PrepareOptions,
 ): Promise<PrepareResponse> {
 	return runPrepare('prepare_create_subscription', env, from, async ({ requestId }) => {
-		const chain = resolveChain(env);
+		const chain = writeChain(env, options);
 		const client = createClocktowerClient(chain);
 
 		const approvedToken = parseApprovedTokenRecord(
@@ -290,7 +294,7 @@ export async function prepareSubscribeById(
 	id: `0x${string}`,
 	options?: PrepareOptions,
 ): Promise<PrepareResponse> {
-	const subscription = await loadWriteSubscriptionById(env, id);
+	const subscription = await loadWriteSubscriptionById(env, id, options?.chain);
 	return prepareSubscribe(env, from, subscription, options);
 }
 
@@ -301,7 +305,7 @@ export async function prepareSubscribe(
 	options?: PrepareOptions,
 ): Promise<PrepareResponse> {
 	return runPrepare('prepare_subscribe', env, from, async ({ requestId }) => {
-		const chain = resolveChain(env);
+		const chain = writeChain(env, options);
 		const readiness = await checkSubscribeReadiness(env, chain, from, subscription);
 
 		if (options?.readinessOnly) {
@@ -370,7 +374,7 @@ export async function prepareCancelSubscriptionById(
 	id: `0x${string}`,
 	options?: PrepareOptions,
 ): Promise<PrepareResponse> {
-	const subscription = await loadWriteSubscriptionById(env, id);
+	const subscription = await loadWriteSubscriptionById(env, id, options?.chain);
 	return prepareCancelSubscription(env, from, subscription, options);
 }
 
@@ -381,7 +385,7 @@ export async function prepareCancelSubscription(
 	options?: PrepareOptions,
 ): Promise<PrepareResponse> {
 	return runPrepare('prepare_cancel_subscription', env, from, async ({ requestId }) => {
-		const chain = resolveChain(env);
+		const chain = writeChain(env, options);
 		const client = createClocktowerClient(chain);
 
 		const canonical = await fetchCanonicalSubscription(client, chain, subscription.id);
@@ -415,7 +419,7 @@ export async function prepareUnsubscribeById(
 	id: `0x${string}`,
 	options?: PrepareOptions,
 ): Promise<PrepareResponse> {
-	const subscription = await loadWriteSubscriptionById(env, id);
+	const subscription = await loadWriteSubscriptionById(env, id, options?.chain);
 	return prepareUnsubscribe(env, from, subscription, options);
 }
 
@@ -426,7 +430,7 @@ export async function prepareUnsubscribe(
 	options?: PrepareOptions,
 ): Promise<PrepareResponse> {
 	return runPrepare('prepare_unsubscribe', env, from, async ({ requestId }) => {
-		const chain = resolveChain(env);
+		const chain = writeChain(env, options);
 		const client = createClocktowerClient(chain);
 
 		const canonical = await fetchCanonicalSubscription(client, chain, subscription.id);
@@ -482,7 +486,7 @@ export async function prepareUnsubscribeByProviderById(
 	subscriber: `0x${string}`,
 	options?: PrepareOptions,
 ): Promise<PrepareResponse> {
-	const subscription = await loadWriteSubscriptionById(env, id);
+	const subscription = await loadWriteSubscriptionById(env, id, options?.chain);
 	return prepareUnsubscribeByProvider(env, from, subscription, subscriber, options);
 }
 
@@ -494,7 +498,7 @@ export async function prepareUnsubscribeByProvider(
 	options?: PrepareOptions,
 ): Promise<PrepareResponse> {
 	return runPrepare('prepare_unsubscribe_by_provider', env, from, async ({ requestId }) => {
-		const chain = resolveChain(env);
+		const chain = writeChain(env, options);
 		const client = createClocktowerClient(chain);
 
 		const canonical = await fetchCanonicalSubscription(client, chain, subscription.id);
@@ -536,7 +540,7 @@ export async function prepareEditDetails(
 	options?: PrepareOptions,
 ): Promise<PrepareResponse> {
 	return runPrepare('prepare_edit_details', env, from, async ({ requestId }) => {
-		const chain = resolveChain(env);
+		const chain = writeChain(env, options);
 		const client = createClocktowerClient(chain);
 
 		// Validate the subscription exists and the caller is the provider before
@@ -582,7 +586,7 @@ export async function prepareRemit(
 	options?: PrepareOptions,
 ): Promise<PrepareResponse> {
 	return runPrepare('prepare_remit', env, from, async ({ requestId }) => {
-		const readiness = await checkRemitReadiness(env, from);
+		const readiness = await checkRemitReadiness(env, from, writeChain(env, options));
 
 		if (options?.readinessOnly) {
 			return buildReadinessOnlyResult(
@@ -605,7 +609,7 @@ export async function prepareRemit(
 			throw new Error(readiness.errors[0] ?? 'Remit not ready');
 		}
 
-		const chain = resolveChain(env);
+		const chain = writeChain(env, options);
 		const data = encodeRemit();
 		const unsigned = [buildUnsigned(from, chain.contractAddress, data)];
 

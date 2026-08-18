@@ -11,7 +11,8 @@ import type { Context } from 'hono';
 import { z } from 'zod';
 import { parseUnits } from 'viem';
 import { CLOCKTOWER_READ_ABI } from '../abi/clocktower.js';
-import { resolveChain } from '../chain.js';
+import { UnsupportedChainError } from '../chain.js';
+import { requestChain } from './restChain.js';
 import { createClocktowerClient } from '../client.js';
 import type { AccessLane } from '../config/rateLimits.js';
 import { normalizeSubscriptionAmount } from '../tx/amount.js';
@@ -56,6 +57,7 @@ function prepareOpts(c: Context, parsed: {
     simulateFromAddress: parsed.simulateFromAddress,
     infiniteApproval: parsed.infiniteApproval,
     lane: requestLane(c),
+    chain: requestChain(c),
   };
 }
 
@@ -95,10 +97,11 @@ export async function handleCheckSubscribeReadiness(c: Context) {
       requestLane(c),
     );
 
-    const chain = resolveChain(c.env);
+    const chain = requestChain(c);
     const normalizedSubscription = await normalizeSubscriptionAmount(
       c.env,
       parsed.subscription,
+      chain,
     );
     const result = await checkSubscribeReadiness(
       c.env,
@@ -125,8 +128,8 @@ export async function handleCheckSubscribeReadinessById(c: Context) {
       requestLane(c),
     );
 
-    const chain = resolveChain(c.env);
-    const subscription = await loadWriteSubscriptionById(c.env, parsed.id);
+    const chain = requestChain(c);
+    const subscription = await loadWriteSubscriptionById(c.env, parsed.id, chain);
     const result = await checkSubscribeReadiness(
       c.env,
       chain,
@@ -147,7 +150,7 @@ export async function handlePrepareCreateSubscription(c: Context) {
     const parsed = createSubscriptionInputSchema.parse(body);
 
     // Fetch token decimals from the protocol
-    const chain = resolveChain(c.env);
+    const chain = requestChain(c);
     const client = createClocktowerClient(chain);
 
     const approvedToken = parseApprovedTokenRecord(
@@ -189,7 +192,12 @@ export async function handlePrepareSubscribe(c: Context) {
 
     let subscription = parsed.subscription;
 
-    const normalizedSubscription = await normalizeSubscriptionAmount(c.env, parsed.subscription);
+    const chain = requestChain(c);
+    const normalizedSubscription = await normalizeSubscriptionAmount(
+      c.env,
+      parsed.subscription,
+      chain,
+    );
 
     const result = await prepareSubscribe(
       c.env,
@@ -229,7 +237,12 @@ export async function handlePrepareCancelSubscription(c: Context) {
     const body = await c.req.json();
     const parsed = subscriptionActionInputSchema.parse(body);
 
-    const normalizedSubscription = await normalizeSubscriptionAmount(c.env, parsed.subscription);
+    const chain = requestChain(c);
+    const normalizedSubscription = await normalizeSubscriptionAmount(
+      c.env,
+      parsed.subscription,
+      chain,
+    );
 
     const result = await prepareCancelSubscription(
       c.env,
@@ -269,7 +282,12 @@ export async function handlePrepareUnsubscribe(c: Context) {
     const body = await c.req.json();
     const parsed = subscriptionActionInputSchema.parse(body);
 
-    const normalizedSubscription = await normalizeSubscriptionAmount(c.env, parsed.subscription);
+    const chain = requestChain(c);
+    const normalizedSubscription = await normalizeSubscriptionAmount(
+      c.env,
+      parsed.subscription,
+      chain,
+    );
 
     const result = await prepareUnsubscribe(
       c.env,
@@ -309,7 +327,12 @@ export async function handlePrepareUnsubscribeByProvider(c: Context) {
     const body = await c.req.json();
     const parsed = unsubscribeByProviderInputSchema.parse(body);
 
-    const normalizedSubscription = await normalizeSubscriptionAmount(c.env, parsed.subscription);
+    const chain = requestChain(c);
+    const normalizedSubscription = await normalizeSubscriptionAmount(
+      c.env,
+      parsed.subscription,
+      chain,
+    );
 
     const result = await prepareUnsubscribeByProvider(
       c.env,
@@ -373,7 +396,7 @@ export async function handleCheckRemitReadiness(c: Context) {
 
     await enforceWriteRateLimitForAddress(c.env, parsed.from, requestLane(c));
 
-    const result = await checkRemitReadiness(c.env, parsed.from);
+    const result = await checkRemitReadiness(c.env, parsed.from, requestChain(c));
 
     return jsonResponse(result);
   } catch (err: any) {
@@ -404,7 +427,7 @@ export async function handleGetTransactionStatus(c: Context) {
     });
     const parsed = schema.parse(body);
 
-    const result = await getTransactionStatus(c.env, parsed.txHash as `0x${string}`);
+    const result = await getTransactionStatus(c.env, parsed.txHash as `0x${string}`, requestChain(c));
 
     return jsonResponse(result);
   } catch (err: any) {
@@ -441,6 +464,10 @@ function handleWriteError(err: any, operation: string) {
   const message = err?.message || String(err);
   const withRequestId = (body: Record<string, unknown>, status: number) =>
     jsonResponse(requestId ? { ...body, requestId } : body, status);
+
+  if (err instanceof UnsupportedChainError || message.includes('chainId must')) {
+    return withRequestId({ error: message, code: 'VALIDATION_ERROR' }, 400);
+  }
 
   // Common domain errors from the tx layer (map to appropriate error codes)
   if (message.includes('Subscription not found')) {

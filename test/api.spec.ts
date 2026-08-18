@@ -231,4 +231,35 @@ describe('clocktower-mcp worker - /api (tiered free REST)', () => {
 			expect(body.code).toBe('VALIDATION_ERROR');
 		}
 	});
+
+	it('rejects an unsupported REST chainId query', async () => {
+		const res = await fetchWorker('/api/catalog?chainId=1', {
+			headers: { 'CF-Connecting-IP': '203.0.113.50' },
+		});
+		expect(res.status).toBe(400);
+		const body = (await res.json()) as { code?: string; error?: string };
+		expect(body.code).toBe('VALIDATION_ERROR');
+		expect(body.error).toMatch(/Unsupported chainId 1/);
+	});
+
+	it('rejects a malformed REST chainId query', async () => {
+		const res = await fetchWorker('/api/catalog?chainId=not-a-chain', {
+			headers: { 'CF-Connecting-IP': '203.0.113.51' },
+		});
+		expect(res.status).toBe(400);
+		const body = (await res.json()) as { code?: string };
+		expect(body.code).toBe('VALIDATION_ERROR');
+	});
+
+	it('accepts decimal and CAIP-2 Base chainId queries', async () => {
+		for (const [chainId, ip] of [
+			['8453', '203.0.113.52'],
+			['eip155:8453', '203.0.113.53'],
+		] as const) {
+			const res = await fetchWorker(`/api/catalog?chainId=${chainId}`, {
+				headers: { 'CF-Connecting-IP': ip },
+			});
+			expect([200, 401, 429]).toContain(res.status);
+		}
+	});
 });

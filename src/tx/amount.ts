@@ -1,4 +1,4 @@
-import { resolveChain } from '../chain.js';
+import { resolveChain, type ChainConfig } from '../chain.js';
 import { createClocktowerClient } from '../client.js';
 import { CLOCKTOWER_READ_ABI } from '../abi/clocktower.js';
 import { parseApprovedTokenRecord } from '../validation.js';
@@ -15,14 +15,17 @@ type Env = any;
  * `amount` must be a human token-unit string — not protocol wei and not
  * token-native raw integers. Mirrors the SDK create path (human → native → protocol).
  */
-export async function normalizeSubscriptionAmount(env: Env, subscription: any) {
+export async function normalizeSubscriptionAmount(
+  env: Env,
+  subscription: any,
+  chain: ChainConfig = resolveChain(env),
+) {
   if (typeof subscription.amount !== 'string') {
     throw new Error(
       'subscription.amount must be a human-readable decimal string (e.g. "10" or "100.5")',
     );
   }
 
-  const chain = resolveChain(env);
   const client = createClocktowerClient(chain);
 
   const approvedToken = parseApprovedTokenRecord(

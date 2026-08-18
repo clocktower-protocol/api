@@ -1,4 +1,4 @@
-import { BASE_CHAIN_ID } from '../chain.js';
+import { BASE_CHAIN_ID, type ChainConfig } from '../chain.js';
 import type { AccessLane } from '../config/rateLimits.js';
 import { enforceWriteRateLimitForAddress } from '../rateLimit.js';
 import type { PrepareResult, ReadinessOnlyResult, PrepareResponse } from './types.js';
@@ -19,6 +19,10 @@ export type PrepareOptions = {
 	 * Defaults to `free` (strictest API write RPM) when omitted.
 	 */
 	lane?: AccessLane;
+	/**
+	 * REST-selected protocol chain. MCP omits this so prepare uses Base via resolveChain.
+	 */
+	chain?: ChainConfig;
 };
 
 export function createRequestId(): string {

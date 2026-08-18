@@ -1,5 +1,5 @@
 import { CLOCKTOWER_READ_ABI } from '../abi/clocktower.js';
-import { resolveChain } from '../chain.js';
+import { resolveChain, type ChainConfig } from '../chain.js';
 import { createClocktowerClient } from '../client.js';
 import { getCurrentDay } from '../utils.js';
 import { scanDueSubscriptionIds } from './remit-scan.js';
@@ -10,8 +10,8 @@ const LARGE_QUEUE_THRESHOLD = 50;
 export async function checkRemitReadiness(
 	env: Env,
 	from: `0x${string}`,
+	chain: ChainConfig = resolveChain(env),
 ): Promise<RemitReadinessResult> {
-	const chain = resolveChain(env);
 	const client = createClocktowerClient(chain);
 	const currentDay = getCurrentDay();
 

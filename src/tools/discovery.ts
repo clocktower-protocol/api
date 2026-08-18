@@ -3,6 +3,7 @@
  */
 
 import { getFrequencyLabel } from '../utils.js';
+import { resolveChain, type ChainConfig } from '../chain.js';
 import { getSubscription } from './read.js';
 import {
 	getSubscriptionDetails,
@@ -34,10 +35,15 @@ function normalizeDiscoveryOptions(options: SearchSubscriptionsOptions = {}) {
 	};
 }
 
-export async function searchSubscriptions(env: Env, options: SearchSubscriptionsOptions = {}) {
+export async function searchSubscriptions(
+	env: Env,
+	options: SearchSubscriptionsOptions = {},
+	chain: ChainConfig = resolveChain(env),
+) {
 	const normalized = normalizeDiscoveryOptions(options);
+	const chainId = chain.chainId;
 
-	const subgraphResult = await searchSubscriptionCreates(env, 8453, {
+	const subgraphResult = await searchSubscriptionCreates(env, chainId, {
 		provider: normalized.provider,
 		token: normalized.token,
 		first: Math.min(normalized.first + normalized.skip + 50, 200),
@@ -46,7 +52,7 @@ export async function searchSubscriptions(env: Env, options: SearchSubscriptions
 
 	if (subgraphResult.error) {
 		return {
-			chainId: 8453,
+			chainId,
 			subscriptions: [],
 			hasMore: false,
 			count: 0,
@@ -62,7 +68,7 @@ export async function searchSubscriptions(env: Env, options: SearchSubscriptions
 		}
 
 		try {
-			const onChain = await getSubscription(env, createEvent.internal_id as `0x${string}`);
+			const onChain = await getSubscription(env, createEvent.internal_id as `0x${string}`, chain);
 			const sub = onChain.subscription;
 
 			if (sub.cancelled !== normalized.cancelled) {
@@ -94,7 +100,7 @@ export async function searchSubscriptions(env: Env, options: SearchSubscriptions
 				const detailsResult = await getSubscriptionDetails(
 					env,
 					createEvent.internal_id as `0x${string}`,
-					8453,
+					chainId,
 				);
 				entry.details = detailsResult.details;
 			}
@@ -108,7 +114,7 @@ export async function searchSubscriptions(env: Env, options: SearchSubscriptions
 	const page = enriched.slice(normalized.skip, normalized.skip + normalized.first);
 
 	return {
-		chainId: 8453,
+		chainId,
 		subscriptions: page,
 		hasMore: enriched.length > normalized.skip + normalized.first,
 		count: page.length,

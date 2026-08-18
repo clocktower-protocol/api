@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { ChainConfig } from '../chain.js';
 import { Errors, jsonResponse } from './responses.js';
 import { addressSchema } from './read.js';
 import { getSearchMaxFirst } from '../config/rateLimits.js';
@@ -16,6 +17,7 @@ export async function handleSearchSubscriptions(
 	env: Env,
 	query: Record<string, string | undefined>,
 	laneHeader?: string | null,
+	chain?: ChainConfig,
 ) {
 	const lane = parseAccessLane(laneHeader);
 
@@ -75,15 +77,19 @@ export async function handleSearchSubscriptions(
 	}
 
 	try {
-		const data = await searchSubscriptions(env, {
-			provider: providerParse.data as `0x${string}` | undefined,
-			token: tokenParse.data as `0x${string}` | undefined,
-			frequency: frequencyParse.data,
-			cancelled: cancelledParse.data ?? false,
-			includeDetails,
-			first,
-			skip,
-		});
+		const data = await searchSubscriptions(
+			env,
+			{
+				provider: providerParse.data as `0x${string}` | undefined,
+				token: tokenParse.data as `0x${string}` | undefined,
+				frequency: frequencyParse.data,
+				cancelled: cancelledParse.data ?? false,
+				includeDetails,
+				first,
+				skip,
+			},
+			chain,
+		);
 		return jsonResponse(data);
 	} catch (err: unknown) {
 		console.error('search_subscriptions failed', err);
