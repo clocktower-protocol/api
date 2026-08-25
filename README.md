@@ -6,7 +6,7 @@
 
 Clocktower API is a Cloudflare Workers-based server that provides access to the Clocktower Protocol (a subscription management system) through a REST API and the Model Context Protocol (MCP). The Worker name is `clocktower-api` (see `wrangler.jsonc`). REST can select a protocol chain; MCP is Base-only because of x402.
 
-Access uses **REST** lanes (free IP, developer API key, optional Builder SIWE) and **MCP** (x402 for agents — not API keys).
+Access uses **REST** lanes (free IP, developer API key) and **MCP** (x402 for agents — not API keys).
 
 **Jump to:** [MCP Server](#mcp-server) · [REST API](#rest-api)
 
@@ -21,15 +21,13 @@ One Cloudflare Worker serves both surfaces on dedicated subdomains:
 
 On the API host, paths **omit** the `/api` prefix (e.g. `GET /catalog` instead of `GET /api/catalog`). Legacy `*.workers.dev` URLs keep the `/api` and `/mcp` path prefixes for local dev and staging.
 
-Builder SIWE auth uses domain `api.clocktower.finance` (configurable via `SIWE_DOMAIN`).
-
 ## Overview
 
-- **Protocol**: Clocktower on Base mainnet today (`eip155:8453`). REST accepts optional `?chainId=` (decimal or CAIP-2); omitted uses `DEFAULT_REST_CHAIN_ID` (default 8453). MCP, x402, SIWE, and Builder entitlement stay on Base.
+- **Protocol**: Clocktower on Base mainnet today (`eip155:8453`). REST accepts optional `?chainId=` (decimal or CAIP-2); omitted uses `DEFAULT_REST_CHAIN_ID` (default 8453). MCP and x402 stay on Base.
 - **Hosting**: Cloudflare Workers + Durable Objects
 - **Interfaces**:
   - MCP Server at `mcp.clocktower.finance` (for AI agents — x402 USDC micropayments)
-  - REST API at `api.clocktower.finance` (free IP limits, free developer API keys, optional Builder)
+  - REST API at `api.clocktower.finance` (free IP limits, free developer API keys)
 
 ## Access tiers
 
@@ -37,13 +35,11 @@ Builder SIWE auth uses domain `api.clocktower.finance` (configurable via `SIWE_D
 |------|---------|------|---------------------------|
 | **Free** | REST | None (IP) | 20 rpm; expensive 3 rpm; subgraph 100/day; **prepare 2/min · 20/day**; **500 req/day**; search `first` ≤ 10; no `includeDetails` |
 | **Developer** | REST | API key `Authorization: Bearer ctk_…` | 80 rpm; expensive 40; subgraph 3k/day; **prepare 5/min · 100/day**; **5k req/day**; search `first` ≤ 25; `includeDetails` allowed |
-| **Builder** | REST | SIWE session `Bearer cts_…` | 120 rpm; subgraph 10k/day; write 30/min; wallet-scoped `:me` (optional; off until entitlement IDs set) |
 | **Agent** | MCP | x402 (USDC on Base) | 300 rpm; write 60/min — **not API keys** |
 
 - **Free**: Highly metered try-without-signup path. Exploration and light reads.
 - **Developer**: Free API keys for integrators — **higher read limits**. Keys are **hashed at rest**; plaintext shown **once** on create. Mint/list/revoke is **admin/portal-only** (`DEVELOPER_KEYS_ADMIN_SECRET`) via `POST/GET/DELETE /developer/keys`.
 - **Prepare / readiness** (free + developer): intentionally tight. Full prepare runs on-chain **simulation + gas estimate** (Alchemy cost) even though the server never relays the tx. For **production write volume**, use the **SDK with your own RPC**. Free/developer keys are not a free dry-run farm.
-- **Builder**: Optional higher tier via on-chain entitlement + SIWE. Leave `BUILDER_SUB_ID` / `BUILDER_SUB_IDS` empty to keep it off.
 - **MCP**: Unchanged x402 micropayments. Do not send `ctk_` keys to MCP for auth.
 
 **Abuse / DoS controls (REST):** request body size + JSON depth caps; per-lane Durable Object rate limits (global / expensive / write RPM / **write daily** / subgraph daily / **daily total**); secondary **IP ceiling**; **auth-fail RPM** on invalid `ctk_` keys (401, not free fallback); max keys per subject; admin create rate limits.
@@ -204,13 +200,13 @@ All MCP tools are paid using the x402 protocol. Your MCP client must support sen
 
 ## REST API
 
-The REST API provides the same capabilities as the MCP tools over standard HTTP. **No x402 payment is required** — access is controlled by tiered rate limits and optional Builder sessions.
+The REST API provides the same capabilities as the MCP tools over standard HTTP. **No x402 payment is required** — access is controlled by free rate limits and optional developer API keys.
 
-**Base URL**: `https://api.clocktower.finance` (paths omit `/api`; e.g. `GET /catalog`, `POST /auth/challenge`).
+**Base URL**: `https://api.clocktower.finance` (paths omit `/api`; e.g. `GET /catalog`).
 
 Staging / local dev: `https://your-worker.workers.dev/api/...`
 
-**Chain selection:** protocol reads, prepares, history, discovery, approved tokens, and transaction status accept optional `?chainId=8453` or `?chainId=eip155:8453`. Omitted `chainId` uses `DEFAULT_REST_CHAIN_ID` (default 8453). Unknown or unsupported values return 400. Auth, developer keys, health, and catalog are not chain-scoped (catalog still lists available chains). MCP does not take `chainId`.
+**Chain selection:** protocol reads, prepares, history, discovery, approved tokens, and transaction status accept optional `?chainId=8453` or `?chainId=eip155:8453`. Omitted `chainId` uses `DEFAULT_REST_CHAIN_ID` (default 8453). Unknown or unsupported values return 400. Developer keys, health, and catalog are not chain-scoped (catalog still lists available chains). MCP does not take `chainId`.
 
 ### Authentication
 
@@ -218,19 +214,7 @@ Staging / local dev: `https://your-worker.workers.dev/api/...`
 |--------|------|
 | None | Free tier — call any allowed endpoint directly |
 | `Authorization: Bearer ctk_…` | Developer tier — free API key |
-| `Authorization: Bearer cts_…` | Builder tier — after SIWE verify |
 | x402 | **Not used on REST** (MCP only) |
-
-**Builder auth quickstart** (requires `BUILDER_SUB_ID` or `BUILDER_SUB_IDS` configured):
-
-1. `POST https://api.clocktower.finance/auth/challenge` with `{ "address": "0x…" }` → receive `message` + `nonce`
-2. Wallet `personal_sign` on the message (domain must be `api.clocktower.finance`)
-3. `POST https://api.clocktower.finance/auth/verify` with `{ "message", "signature" }` → receive `token`
-4. Send `Authorization: Bearer <token>` on subsequent API calls
-
-Sign and verify promptly: SIWE **Issued At** must be fresh (~10 minutes). The message **URI** must match the challenge origin (same host you called for challenge). Reusing an old message or verifying against a different origin fails.
-
-Builder scope: own account (`/api/accounts/me`, …), content subs you subscribe to or created, discovery, subscriber writes for your wallet. Provider management and cross-account reads are **not** included in Builder scope (use the free tier for public cross-account reads). Auth challenge/verify remain available while holding a Builder session.
 
 Optional HTTP Basic Auth on `/api` is controlled by `API_REQUIRE_BASIC_AUTH` (default **`false`**).
 
@@ -258,7 +242,7 @@ Paths below use the production API host form (no `/api` prefix). On `*.workers.d
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /subscriptions` | Search active subscriptions. Query params: `provider`, `token`, `frequency`, `cancelled` (default `false`), `includeDetails`, `first`, `skip`. **Free:** `first` max 10, no `includeDetails`. **Developer:** `first` max 25, `includeDetails` allowed. **Builder:** `first` max 50. |
+| `GET /subscriptions` | Search active subscriptions. Query params: `provider`, `token`, `frequency`, `cancelled` (default `false`), `includeDetails`, `first`, `skip`. **Free:** `first` max 10, no `includeDetails`. **Developer:** `first` max 25, `includeDetails` allowed. |
 | `GET /subscriptions/:id/details` | Current url/description (latest DetailsLog) |
 
 #### History & Profile Endpoints (GET, subgraph-backed)
@@ -335,7 +319,7 @@ By default, browser cross-origin requests to `/api` are **not** allowed (no CORS
 API_CORS_ALLOWED_ORIGINS=https://app.example.com,http://localhost:5173
 ```
 
-CORS is **not** authentication and is **not** granted by a Builder subscription. Ops must whitelist origins in `API_CORS_ALLOWED_ORIGINS`.
+CORS is **not** authentication and is **not** granted by an API key. Ops must whitelist origins in `API_CORS_ALLOWED_ORIGINS`.
 
 ---
 
@@ -348,9 +332,9 @@ This repository is open source ([MIT License](LICENSE)) for audit and transparen
 ## Security & Rate Limiting
 
 - **REST kill switch** — set `API_ENABLED=false` to block `/api/*` without redeploying (MCP unaffected)
-- **Tier-aware rate limits** — separate buckets for free, developer, builder, and MCP lanes
+- **Tier-aware rate limits** — separate buckets for free, developer, and MCP lanes
 - **Expensive route bucket** — subgraph-heavy endpoints (history, discovery, cross-account reads)
-- **Subgraph daily caps** — per-IP (free) or per-address (builder)
+- **Subgraph daily caps** — per-IP (free) or per-key (developer)
 - Per-address write rate limiting on prepare (keyed on `from`, lane-specific)
 - Geo-blocking support
 - MCP: write simulation before x402 settlement; payments only settle on success
@@ -361,7 +345,7 @@ This repository is open source ([MIT License](LICENSE)) for audit and transparen
 | Rule | Suggested config |
 |------|------------------|
 | Rate Limiting | Block `>500 req / 5 min` per IP on `/api*` and `/mcp` |
-| WAF | Block empty `User-Agent`; challenge `/api/auth/*` at `>30/min/IP` |
+| WAF | Block empty `User-Agent` |
 | DDoS | Keep HTTP DDoS managed ruleset enabled (default) |
 | Bot Fight Mode | Enable on zone to reduce scripted free-tier abuse |
 
