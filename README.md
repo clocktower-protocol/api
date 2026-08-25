@@ -341,7 +341,7 @@ CORS is **not** authentication and is **not** granted by a Builder subscription.
 
 ## Source and hosting
 
-This repository is open source ([MIT License](LICENSE)) for audit and transparency. The hosted API at `api.clocktower.finance` and MCP at `mcp.clocktower.finance` are operated by Clocktower and governed by [Terms of Use](TERMS.md). Operational deployment is maintained by the Clocktower team.
+This repository is open source ([MIT License](LICENSE)) for audit and transparency. The hosted API at `api.clocktower.finance` and MCP at `mcp.clocktower.finance` are operated by Clocktower and governed by [Terms of Use](TERMS.md) ([clocktower.finance/terms](https://clocktower.finance/terms)). Operational deployment is maintained by the Clocktower team.
 
 ---
 
@@ -374,8 +374,8 @@ For security-related notes, see `SECURITY_FOLLOWUPS.md`.
 | Document | Applies to |
 |----------|------------|
 | [MIT License](LICENSE) | Source code in this repository (audit, fork, self-host permitted under MIT) |
-| [Terms of Use](TERMS.md) | Hosted production API at `api.clocktower.finance` and MCP at `mcp.clocktower.finance` |
+| [Terms of Use](TERMS.md) | Hosted REST API (`api.clocktower.finance`) and MCP (`mcp.clocktower.finance`); public copy at [clocktower.finance/terms](https://clocktower.finance/terms) |
 
 The **official** production API is operated by **Clocktower LLC**. This public
 repo is the reference implementation. Use of the hosted endpoints is subject to
-[TERMS.md](TERMS.md); self-hosted deployments are not supported or endorsed.
+[TERMS.md](TERMS.md) (also [clocktower.finance/terms](https://clocktower.finance/terms)); self-hosted deployments are not supported or endorsed.
