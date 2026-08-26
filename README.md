@@ -38,7 +38,7 @@ On the API host, paths **omit** the `/api` prefix (e.g. `GET /catalog` instead o
 | **Agent** | MCP | x402 (USDC on Base) | 300 rpm; write 60/min — **not API keys** |
 
 - **Free**: Highly metered try-without-signup path. Exploration and light reads.
-- **Developer**: Free API keys for integrators — **higher read limits**. Keys are **hashed at rest**; plaintext shown **once** on create. Mint/list/revoke is **admin/portal-only** (`DEVELOPER_KEYS_ADMIN_SECRET`) via `POST/GET/DELETE /developer/keys`.
+- **Developer**: Free API keys for integrators — **higher read limits**. Keys are **hashed at rest**; plaintext shown **once** on create. Mint/list/revoke is **admin/portal-only** (`DEVELOPER_KEYS_ADMIN_SECRET`) via `POST/GET/DELETE /developer/keys` (GET without `subjectId` lists all keys; GET `/:id` returns one).
 - **Prepare / readiness** (free + developer): intentionally tight. Full prepare runs on-chain **simulation + gas estimate** (Alchemy cost) even though the server never relays the tx. For **production write volume**, use the **SDK with your own RPC**. Free/developer keys are not a free dry-run farm.
 - **MCP**: Unchanged x402 micropayments. Do not send `ctk_` keys to MCP for auth.
 

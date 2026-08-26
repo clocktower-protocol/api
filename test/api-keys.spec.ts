@@ -5,6 +5,8 @@ import {
 	generateApiKeyToken,
 	isApiKeyToken,
 	isDeveloperKeysEnabled,
+	getApiKeyById,
+	listAllApiKeys,
 	listApiKeysForSubject,
 	loadApiKeyByToken,
 	revokeApiKey,
@@ -79,6 +81,12 @@ describe('api keys', () => {
 
 		const after = await loadApiKeyByToken(env as Env, token);
 		expect(after).toBeNull();
+
+		const byId = await getApiKeyById(env as Env, id);
+		expect(byId?.revokedAt).toBeTypeOf('number');
+
+		const inventory = await listAllApiKeys(env as Env);
+		expect(inventory.keys.some((k) => k.id === id)).toBe(true);
 	});
 
 	it('enforces max keys per subject', async () => {

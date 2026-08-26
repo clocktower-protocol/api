@@ -101,6 +101,27 @@ describe('developer API key access lane', () => {
 		const listed = (await listRes.json()) as { keys: Array<{ id: string }> };
 		expect(listed.keys.some((k) => k.id === created.id)).toBe(true);
 
+		const allRes = await fetchWorker('/api/developer/keys', {
+			headers: {
+				Authorization: `Bearer ${adminSecret}`,
+				'CF-Connecting-IP': '203.0.113.102',
+			},
+		});
+		expect(allRes.status).toBe(200);
+		const allListed = (await allRes.json()) as { keys: Array<{ id: string }> };
+		expect(allListed.keys.some((k) => k.id === created.id)).toBe(true);
+
+		const getRes = await fetchWorker(`/api/developer/keys/${created.id}`, {
+			headers: {
+				Authorization: `Bearer ${adminSecret}`,
+				'CF-Connecting-IP': '203.0.113.102',
+			},
+		});
+		expect(getRes.status).toBe(200);
+		const got = (await getRes.json()) as { key: { id: string; subjectId: string } };
+		expect(got.key.id).toBe(created.id);
+		expect(got.key.subjectId).toBe(subjectId);
+
 		const delRes = await fetchWorker(`/api/developer/keys/${created.id}`, {
 			method: 'DELETE',
 			headers: {

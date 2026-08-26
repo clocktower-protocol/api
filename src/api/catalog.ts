@@ -43,7 +43,9 @@ export function handleGetCatalog(env: Env) {
 					note: 'Free developer tier. Keys are minted via admin/portal (POST /developer/keys). MCP is separate (x402).',
 					management: {
 						create: `${apiOrigin}/developer/keys`,
-						list: `${apiOrigin}/developer/keys?subjectId=`,
+						list: `${apiOrigin}/developer/keys`,
+						listBySubject: `${apiOrigin}/developer/keys?subjectId=`,
+						get: `${apiOrigin}/developer/keys/:id`,
 						revoke: `${apiOrigin}/developer/keys/:id`,
 						adminAuth: 'Bearer <DEVELOPER_KEYS_ADMIN_SECRET> or X-Clocktower-Admin-Key',
 					},

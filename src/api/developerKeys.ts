@@ -1,6 +1,8 @@
 import {
 	createApiKey,
+	getApiKeyById,
 	isDeveloperKeysEnabled,
+	listAllApiKeys,
 	listApiKeysForSubject,
 	revokeApiKey,
 	toPublicMeta,
@@ -134,30 +136,85 @@ export async function handleListDeveloperKeys(request: Request, env: Env): Promi
 	if (denied) return denied;
 
 	const url = new URL(request.url);
-	const subjectId = url.searchParams.get('subjectId');
-	if (!subjectId?.trim()) {
-		return Errors.validation('subjectId query parameter is required');
-	}
-
+	const subjectId = url.searchParams.get('subjectId')?.trim() ?? '';
 	const ip = getClientIp(request);
 	try {
-		const keys = await listApiKeysForSubject(env, subjectId);
+		if (subjectId) {
+			const keys = await listApiKeysForSubject(env, subjectId);
+			recordAdminAudit(env, {
+				action: 'list',
+				status: 200,
+				subjectId,
+				ip,
+			});
+			return jsonResponse({
+				subjectId,
+				keys: keys.map(toPublicMeta),
+			});
+		}
+
+		const { keys, truncated } = await listAllApiKeys(env);
 		recordAdminAudit(env, {
 			action: 'list',
 			status: 200,
-			subjectId: subjectId.trim(),
 			ip,
 		});
 		return jsonResponse({
-			subjectId: subjectId.trim(),
 			keys: keys.map(toPublicMeta),
+			truncated,
 		});
 	} catch (err: unknown) {
 		const message = err instanceof Error ? err.message : String(err);
 		recordAdminAudit(env, {
 			action: 'list',
 			status: 500,
-			subjectId: subjectId.trim(),
+			subjectId: subjectId || undefined,
+			ip,
+			code: 'INTERNAL',
+		});
+		return jsonResponse({ error: message, code: 'INTERNAL' }, 500);
+	}
+}
+
+export async function handleGetDeveloperKey(
+	request: Request,
+	env: Env,
+	id: string,
+): Promise<Response> {
+	const denied = await requireAdmin(request, env);
+	if (denied) return denied;
+
+	if (!id?.startsWith('key_')) {
+		return Errors.validation('Invalid key id');
+	}
+
+	const ip = getClientIp(request);
+	try {
+		const record = await getApiKeyById(env, id);
+		if (!record) {
+			recordAdminAudit(env, {
+				action: 'list',
+				status: 404,
+				keyId: id,
+				ip,
+				code: 'NOT_FOUND',
+			});
+			return jsonResponse({ error: 'Key not found', code: 'NOT_FOUND' }, 404);
+		}
+		recordAdminAudit(env, {
+			action: 'list',
+			status: 200,
+			subjectId: record.subjectId,
+			keyId: id,
+			ip,
+		});
+		return jsonResponse({ key: toPublicMeta(record) });
+	} catch (err: unknown) {
+		const message = err instanceof Error ? err.message : String(err);
+		recordAdminAudit(env, {
+			action: 'list',
+			status: 500,
+			keyId: id,
 			ip,
 			code: 'INTERNAL',
 		});

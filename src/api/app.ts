@@ -22,6 +22,7 @@ import { handleSearchSubscriptions } from './discovery.js';
 import { handleAuthChallenge, handleAuthVerify } from './auth.js';
 import {
   handleCreateDeveloperKey,
+  handleGetDeveloperKey,
   handleListDeveloperKeys,
   handleRevokeDeveloperKey,
 } from './developerKeys.js';
@@ -82,7 +83,7 @@ export type ApiAppOptions = Record<string, never>;
  *   - POST /api/transactions/status
  *
  * Auth: POST /api/auth/challenge, POST /api/auth/verify
- * Developer keys (admin secret): POST/GET /api/developer/keys, DELETE /api/developer/keys/:id
+ * Developer keys (admin secret): POST/GET /api/developer/keys, GET/DELETE /api/developer/keys/:id
  *
  * Related modules:
  *   - src/api/pricing.ts   → Centralized pricing
@@ -119,6 +120,9 @@ export function createApiApp(_options: ApiAppOptions = {}) {
 
   app.post('/api/developer/keys', async (c: any) => handleCreateDeveloperKey(c.req.raw, c.env));
   app.get('/api/developer/keys', async (c: any) => handleListDeveloperKeys(c.req.raw, c.env));
+  app.get('/api/developer/keys/:id', async (c: any) =>
+    handleGetDeveloperKey(c.req.raw, c.env, c.req.param('id')),
+  );
   app.delete('/api/developer/keys/:id', async (c: any) =>
     handleRevokeDeveloperKey(c.req.raw, c.env, c.req.param('id')),
   );

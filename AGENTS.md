@@ -14,7 +14,7 @@ Full product docs: `README.md`. Deploy ops: `DEPLOY_REMINDER.md`.
 - **Builder entitlement is always checked on Base**, even when a REST call targets another protocol chain.
 - **Prepare returns unsigned calldata only.** The server never holds user keys, never relays signed txs, and never broadcasts for the user. Workflow: prepare/readiness → wallet signs → client broadcasts → optional `get_transaction_status`.
 - **REST access lanes are distinct from MCP:** free (IP), **developer** (`Bearer ctk_…` API key), Builder (`Bearer cts_…` SIWE, optional/off). **MCP stays x402** — never use API keys for MCP auth. Invalid `ctk_` keys must **401**, not fall through to free.
-- **API keys:** store SHA-256 only; plaintext once on create; mint via admin secret (`DEVELOPER_KEYS_ADMIN_SECRET`), not public unauthenticated mint.
+- **API keys:** store SHA-256 only; plaintext once on create; mint via admin secret (`DEVELOPER_KEYS_ADMIN_SECRET`), not public unauthenticated mint. Admin GET `/developer/keys` lists inventory (optional `?subjectId=`); GET/DELETE `/developer/keys/:id` for lookup/revoke.
 - **ERC-20 approve on subscribe defaults to amount-scoped** (token-native subscription amount). Use `infiniteApproval: true` only when the client opts into max allowance.
 - **Secrets stay out of git.** Use `wrangler secret` / gitignored `.dev.vars`. Never commit API keys, Graph keys, or session material.
 - **Do not force-push or rewrite shared history** unless the user explicitly asks.

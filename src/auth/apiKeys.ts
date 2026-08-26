@@ -275,6 +275,43 @@ export async function listApiKeysForSubject(
 	return out;
 }
 
+export const LIST_ALL_KEYS_LIMIT = 200;
+
+export type ListAllApiKeysResult = {
+	keys: ApiKeyRecord[];
+	truncated: boolean;
+};
+
+/** Admin inventory: KV list of metadata keys (newest first). */
+export async function listAllApiKeys(
+	env: Env,
+	limit: number = LIST_ALL_KEYS_LIMIT,
+): Promise<ListAllApiKeysResult> {
+	const kv = requireKv(env);
+	const capped = Math.min(Math.max(1, limit), LIST_ALL_KEYS_LIMIT);
+	const listed = await kv.list({ prefix: META_PREFIX, limit: capped });
+	const keys: ApiKeyRecord[] = [];
+	for (const entry of listed.keys) {
+		const meta = await kv.get(entry.name);
+		if (!meta) continue;
+		keys.push(JSON.parse(meta) as ApiKeyRecord);
+	}
+	keys.sort((a, b) => b.createdAt - a.createdAt);
+	return { keys, truncated: listed.list_complete === false };
+}
+
+export async function getApiKeyById(env: Env, id: string): Promise<ApiKeyRecord | null> {
+	if (!id?.startsWith(API_KEY_ID_PREFIX)) {
+		return null;
+	}
+	const kv = requireKv(env);
+	const meta = await kv.get(metaKey(id));
+	if (!meta) {
+		return null;
+	}
+	return JSON.parse(meta) as ApiKeyRecord;
+}
+
 export async function revokeApiKey(env: Env, id: string): Promise<ApiKeyRecord | null> {
 	const kv = requireKv(env);
 	const metaRaw = await kv.get(metaKey(id));
