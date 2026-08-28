@@ -131,7 +131,7 @@ All history results are server-side limited (max 200 records, recommended ~100 p
 - `prepare_remit` — Prepare permissionless `remit()` (earns caller fees in subscription ERC-20 tokens)
 - `get_transaction_status` — Poll confirmation status for a transaction hash after client-side broadcast
 
-**Write workflow:** prepare (or readiness check) → sign in wallet → broadcast from wallet → optionally poll `get_transaction_status`. The server returns unsigned calldata and never relays signed transactions. Each full prepare runs on-chain simulation and gas estimation on the selected REST chain (default Base, chainId 8453). MCP prepare still simulates on Base before x402 payment settles; failed simulation or validation throws so you are not charged.
+**Write workflow:** prepare (or readiness check) → sign in wallet → broadcast from wallet → optionally poll `get_transaction_status`. The server returns unsigned calldata and never relays signed transactions. Each full prepare runs on-chain simulation and gas estimation on the selected REST chain (default Base, chainId 8453). MCP prepare still simulates on Base. When x402 is on, failed simulation or validation throws so settlement does not charge you.
 
 **Remit flow:** `check_remit_readiness` → `prepare_remit` → sign → broadcast from wallet → repeat until readiness reports caught up. One `remit()` clears at most `maxRemits` subscriber payments per transaction. When the backlog needs multiple broadcasts, `preflight.expectedTransactions`, `gasSummary.backlogMultiplier`, and `warnings` describe the total gas budget. Remit can be gas-heavy on large backlogs — the caller pays gas (unlike the operator cron bot). Use `get_subscriptions_due` for a lightweight single-day read; use `check_remit_readiness` before preparing a remit tx.
 
@@ -147,14 +147,14 @@ Full prepare responses (default) include:
 | `unsignedTransactions` | Calldata for the wallet to sign (`to`, `data`, `value`, `chainId`, `from`). |
 | `signingMode` | `raw` for a single tx, or `eip5792` when multiple steps are needed (e.g. approve + subscribe). |
 | `eip5792` | Batch descriptor when `signingMode` is `eip5792`. |
-| `simulation` | On-chain simulation results (must succeed before payment settles). |
+| `simulation` | On-chain simulation results (must succeed before a full prepare is returned; when x402 is on, settlement only runs after success). |
 | `gasEstimates` | Per-transaction gas budget on the selected chain: `gasLimit`, EIP-1559 fees, `estimatedCostWei` / `estimatedCostEth`, and `source` (`simulated` or `heuristic` fallback). |
 | `gasSummary` | Aggregated totals across `gasEstimates`. For remit backlogs, includes `backlogMultiplier`, `totalBacklogEstimatedCostWei`, and `totalBacklogEstimatedCostEth` when multiple broadcasts are expected. |
 | `preflight` | Operation-specific context (allowance, remit queue size, etc.). |
 
 Optional request fields on any `prepare_*` call (REST body or MCP tool argument):
 
-- **`readinessOnly: true`** — run preflight/readiness checks only; no unsigned transactions, simulation, or gas estimates. Response uses `readinessOnly: true` with `ready`, `errors`, `warnings`, `details`, and `instructions`. On MCP, billed at the readiness tier ($0.01; remit readiness path $0.02) instead of full prepare.
+- **`readinessOnly: true`** — run preflight/readiness checks only; no unsigned transactions, simulation, or gas estimates. Response uses `readinessOnly: true` with `ready`, `errors`, `warnings`, `details`, and `instructions`. When MCP x402 is on, billed at the readiness tier ($0.01; remit readiness path $0.02) instead of full prepare.
 - **`simulateFromAddress`** — optional `0x` address passed to `eth_estimateGas` when the signing wallet differs from the account that will broadcast (defaults to `from`).
 
 Gas estimates are advisory: fees can change between prepare and broadcast. Estimation verifies the RPC reports the selected chain (REST `?chainId=` or `DEFAULT_REST_CHAIN_ID`; MCP always Base 8453). Per-transaction limits come from `eth_estimateGas` when possible; otherwise a conservative heuristic is used and a warning is added (`source: "heuristic"`).
