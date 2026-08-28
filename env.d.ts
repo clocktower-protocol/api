@@ -13,6 +13,7 @@
 declare namespace Cloudflare {
 	interface Env {
 		CLOCKTOWER_MCP: DurableObjectNamespace;
+		MCP_OBJECT?: DurableObjectNamespace;
 		RATE_LIMITER: DurableObjectNamespace;
 		SESSIONS_KV?: KVNamespace;
 		RPC_CACHE_KV?: KVNamespace;
@@ -37,9 +38,11 @@ declare namespace Cloudflare {
 		CLOCKTOWER_ADDRESS: string;
 		/** REST default when `chainId` is omitted (decimal or CAIP-2). Unset → 8453. Does not move MCP/SIWE. */
 		DEFAULT_REST_CHAIN_ID?: string;
-		CDP_API_KEY_ID: string;
-		CDP_API_KEY_SECRET: string;
-		X402_RECIPIENT: string;
+		CDP_API_KEY_ID?: string;
+		CDP_API_KEY_SECRET?: string;
+		X402_RECIPIENT?: string;
+		/** When 'true', MCP tools require x402. Unset/false = unpaid MCP (REST free + ctk_ keys). */
+		MCP_X402_ENABLED?: string;
 		/** When 'true', use in-memory mock facilitator (Vitest only). */
 		X402_USE_MOCK_FACILITATOR?: string;
 		// Subgraph (The Graph) configuration for history + provider detail endpoints.
@@ -82,7 +85,7 @@ declare namespace Cloudflare {
 		/** Comma-separated Builder entitlement subscription IDs (multiple plans, same API access). */
 		BUILDER_SUB_IDS?: string;
 		ENABLE_AUTH?: string;
-		API_REQUIRE_BASIC_AUTH?: string;   // Controls whether Basic Auth is required for /api routes (x402 is always required)
+		API_REQUIRE_BASIC_AUTH?: string;   // Controls whether Basic Auth is required for /api routes
 		/** Set to 'false' to disable REST /api routes (MCP /mcp stays up). GET /api/status remains available. */
 		API_ENABLED?: string;
 		CFP_USERNAME?: string;

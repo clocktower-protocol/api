@@ -50,16 +50,44 @@ describe('validateEnv', () => {
 		expect(() => validateEnv(validEnv)).not.toThrow();
 	});
 
+	it('accepts missing CDP credentials when MCP x402 is off', () => {
+		expect(() =>
+			validateEnv({
+				...validEnv,
+				CDP_API_KEY_ID: '',
+				CDP_API_KEY_SECRET: '',
+				X402_RECIPIENT: '',
+				MCP_X402_ENABLED: 'false',
+			}),
+		).not.toThrow();
+	});
+
+	it('rejects missing CDP credentials when MCP x402 is on', () => {
+		expect(() =>
+			validateEnv({ ...validEnv, CDP_API_KEY_ID: '', MCP_X402_ENABLED: 'true' }),
+		).toThrow('CDP_API_KEY_ID');
+		expect(() =>
+			validateEnv({ ...validEnv, X402_RECIPIENT: '', MCP_X402_ENABLED: 'true' }),
+		).toThrow('X402_RECIPIENT');
+	});
+
+	it('does not require CDP when MCP_X402_ENABLED is unset', () => {
+		expect(() =>
+			validateEnv({
+				...validEnv,
+				CDP_API_KEY_ID: undefined,
+				CDP_API_KEY_SECRET: undefined,
+				X402_RECIPIENT: undefined,
+			}),
+		).not.toThrow();
+	});
+
 	it('rejects missing alchemy key', () => {
 		expect(() => validateEnv({ ...validEnv, ALCHEMY_API_KEY: '' })).toThrow('ALCHEMY_API_KEY');
 	});
 
 	it('rejects invalid contract address', () => {
 		expect(() => validateEnv({ ...validEnv, CLOCKTOWER_ADDRESS: '0x123' })).toThrow('CLOCKTOWER_ADDRESS');
-	});
-
-	it('rejects missing CDP credentials', () => {
-		expect(() => validateEnv({ ...validEnv, CDP_API_KEY_ID: '' })).toThrow('CDP_API_KEY_ID');
 	});
 
 	it('rejects ALCHEMY_URL without trailing slash', () => {

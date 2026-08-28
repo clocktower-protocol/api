@@ -2,6 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { HTTPFacilitatorClient, x402ResourceServer } from '@x402/core/server';
 import { registerExactEvmScheme } from '@x402/evm/exact/server';
 import type { ZodTypeAny } from 'zod';
+import { isMcpX402Enabled } from '../config/mcpX402.js';
 import { clientSafeMessage } from '../sanitizeUpstream.js';
 import { buildX402Config } from '../x402.js';
 
@@ -39,6 +40,19 @@ export function registerDynamicPaidTool(
 	annotations: Record<string, unknown>,
 	handler: ToolHandler,
 ): void {
+	if (!isMcpX402Enabled(env)) {
+		server.registerTool(
+			name,
+			{
+				description,
+				inputSchema: paramsSchema,
+				annotations,
+			},
+			(async (args, extra) => handler(args as Record<string, unknown>, extra)) as never,
+		);
+		return;
+	}
+
 	const cfg = buildX402Config(env);
 	const network = normalizeNetwork(cfg.network);
 	const resourceServer = new x402ResourceServer(

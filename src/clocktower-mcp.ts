@@ -1,5 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { withX402 } from 'agents/x402';
+import { isMcpX402Enabled } from './config/mcpX402.js';
+import { asUnpaidX402Server } from './mcp/unpaidAdapter.js';
 import { registerPaidTools } from './tools/read.js';
 import { registerWriteTools } from './tools/write.js';
 import { validateEnv } from './validation.js';
@@ -9,7 +11,7 @@ import type { McpAgent } from 'agents/mcp';
 /**
  * Clocktower MCP Implementation
  *
- * This file contains the actual McpServer setup, x402 payment wrapping,
+ * This file contains the actual McpServer setup, optional x402 payment wrapping,
  * and tool registration for the Clocktower MCP server.
  *
  * It is loaded dynamically from src/mcp.ts to avoid heavy top-level imports
@@ -19,21 +21,18 @@ import type { McpAgent } from 'agents/mcp';
 export async function initializeClocktowerMCP(agent: McpAgent<Env>) {
   validateEnv(agent.env);
 
-  // Prepare tools pass `lane: 'mcp'` explicitly (see tools/write.ts); no isolate-global lane.
+  const inner = new McpServer({ name: 'clocktower-mcp', version: '1.1.0' });
+  const server = isMcpX402Enabled(agent.env)
+    ? withX402(inner, buildX402Config(agent.env))
+    : asUnpaidX402Server(inner);
 
-  // Wrap the plain McpServer with x402 micropayment support
-  const wrappedServer = withX402(
-    new McpServer({ name: 'clocktower-mcp', version: '1.1.0' }),
-    buildX402Config(agent.env),
-  );
-
-  // Assign the wrapped server back onto the agent instance
-  // (the registration functions expect the x402-augmented server)
-  (agent as any).server = wrappedServer;
+  // Assign the (optionally x402-wrapped) server back onto the agent instance
+  // (the registration functions expect the x402-augmented paidTool surface)
+  (agent as any).server = server;
 
   // Register all tools (paid + write)
   // These imports are intentionally here (inside the dynamic load)
   // so they don't interfere with DO class registration.
-  registerPaidTools(wrappedServer, agent.env);
-  registerWriteTools(wrappedServer, agent.env);
+  registerPaidTools(server, agent.env);
+  registerWriteTools(server, agent.env);
 }

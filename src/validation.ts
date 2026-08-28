@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { assertDefaultRestChainId } from './chain.js';
+import { isMcpX402Enabled } from './config/mcpX402.js';
 
 export const MAX_REQUEST_BYTES = 1024 * 1024;
 export const MAX_JSON_DEPTH = 10;
@@ -235,9 +236,11 @@ export function validateEnv(env: Env): void {
 	assertRequiredString(env.ALCHEMY_API_KEY, 'ALCHEMY_API_KEY');
 	assertHttpsUrlWithTrailingSlash(env.ALCHEMY_URL, 'ALCHEMY_URL');
 	assertAddress(env.CLOCKTOWER_ADDRESS, 'CLOCKTOWER_ADDRESS');
-	assertRequiredString(env.CDP_API_KEY_ID, 'CDP_API_KEY_ID');
-	assertRequiredString(env.CDP_API_KEY_SECRET, 'CDP_API_KEY_SECRET');
-	assertAddress(env.X402_RECIPIENT, 'X402_RECIPIENT');
+	if (isMcpX402Enabled(env)) {
+		assertRequiredString(env.CDP_API_KEY_ID, 'CDP_API_KEY_ID');
+		assertRequiredString(env.CDP_API_KEY_SECRET, 'CDP_API_KEY_SECRET');
+		assertAddress(env.X402_RECIPIENT, 'X402_RECIPIENT');
+	}
 	// Fail fast: invalid REST default must not wait until the first omitted-chainId request.
 	assertDefaultRestChainId(env);
 }
