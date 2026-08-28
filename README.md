@@ -4,9 +4,9 @@
 
 > **Status:** Pre-release. There is no public production API yet. The documentation below describes the intended interface; endpoints, limits, and auth flows may change before launch.
 
-Clocktower API is a Cloudflare Workers-based server that provides access to the Clocktower Protocol (a subscription management system) through a REST API and the Model Context Protocol (MCP). The Worker name is `clocktower-api` (see `wrangler.jsonc`). REST can select a protocol chain; MCP is Base-only because of x402.
+Clocktower API is a Cloudflare Workers-based server that provides access to the Clocktower Protocol (a subscription management system) through a REST API and the Model Context Protocol (MCP). The Worker name is `clocktower-api` (see `wrangler.jsonc`). REST can select a protocol chain; MCP is Base-only.
 
-Access uses **REST** lanes (free IP, developer API key) and **MCP** (x402 for agents — not API keys).
+Access uses **REST** lanes (free IP, developer API key) and **MCP** with the same free IP / `ctk_` developer-key lanes by default. Set `MCP_X402_ENABLED=true` to restore per-tool x402 payments on MCP.
 
 **Jump to:** [MCP Server](#mcp-server) · [REST API](#rest-api)
 
@@ -17,7 +17,7 @@ One Cloudflare Worker serves both surfaces on dedicated subdomains:
 | Host | Surface | Example |
 |------|---------|---------|
 | `https://api.clocktower.finance` | REST API | `GET /catalog`, `GET /protocol/state` |
-| `https://mcp.clocktower.finance` | MCP (x402) | `GET /` or `GET /mcp` |
+| `https://mcp.clocktower.finance` | MCP (free IP / `ctk_` keys; x402 opt-in) | `GET /` or `GET /mcp` |
 
 On the API host, paths **omit** the `/api` prefix (e.g. `GET /catalog` instead of `GET /api/catalog`). Legacy `*.workers.dev` URLs keep the `/api` and `/mcp` path prefixes for local dev and staging.
 
@@ -26,21 +26,22 @@ On the API host, paths **omit** the `/api` prefix (e.g. `GET /catalog` instead o
 - **Protocol**: Clocktower on Base mainnet today (`eip155:8453`). REST accepts optional `?chainId=` (decimal or CAIP-2); omitted uses `DEFAULT_REST_CHAIN_ID` (default 8453). MCP and x402 stay on Base.
 - **Hosting**: Cloudflare Workers + Durable Objects
 - **Interfaces**:
-  - MCP Server at `mcp.clocktower.finance` (for AI agents — x402 USDC micropayments)
+  - MCP Server at `mcp.clocktower.finance` (for AI agents — free IP or developer API keys by default; x402 when `MCP_X402_ENABLED=true`)
   - REST API at `api.clocktower.finance` (free IP limits, free developer API keys)
 
 ## Access tiers
 
 | Lane | Surface | Auth | Default limits (approx.) |
 |------|---------|------|---------------------------|
-| **Free** | REST | None (IP) | 20 rpm; expensive 3 rpm; subgraph 100/day; **prepare 2/min · 20/day**; **500 req/day**; search `first` ≤ 10; no `includeDetails` |
-| **Developer** | REST | API key `Authorization: Bearer ctk_…` | 80 rpm; expensive 40; subgraph 3k/day; **prepare 5/min · 100/day**; **5k req/day**; search `first` ≤ 25; `includeDetails` allowed |
-| **Agent** | MCP | x402 (USDC on Base) | 300 rpm; write 60/min — **not API keys** |
+| **Free** | REST and MCP (x402 off) | None (IP) | 20 rpm; expensive 3 rpm; subgraph 100/day; **prepare 2/min · 20/day**; **500 req/day**; search `first` ≤ 10; no `includeDetails` |
+| **Developer** | REST and MCP (x402 off) | API key `Authorization: Bearer ctk_…` | 80 rpm; expensive 40; subgraph 3k/day; **prepare 5/min · 100/day**; **5k req/day**; search `first` ≤ 25; `includeDetails` allowed |
+| **Agent** | MCP when `MCP_X402_ENABLED=true` | x402 (USDC on Base) | 300 rpm; write 60/min — **not API keys** |
 
 - **Free**: Highly metered try-without-signup path. Exploration and light reads.
 - **Developer**: Free API keys for integrators — **higher read limits**. Keys are **hashed at rest**; plaintext shown **once** on create. Mint/list/revoke is **admin/portal-only** (`DEVELOPER_KEYS_ADMIN_SECRET`) via `POST/GET/DELETE /developer/keys` (GET without `subjectId` lists all keys; GET `/:id` returns one).
 - **Prepare / readiness** (free + developer): intentionally tight. Full prepare runs on-chain **simulation + gas estimate** (Alchemy cost) even though the server never relays the tx. For **production write volume**, use the **SDK with your own RPC**. Free/developer keys are not a free dry-run farm.
-- **MCP**: Unchanged x402 micropayments. Do not send `ctk_` keys to MCP for auth.
+- **MCP (default)**: Same free IP and `ctk_` developer-key lanes as REST (invalid `ctk_` → 401, not free). No SIWE/Builder on MCP.
+- **MCP (x402 on)**: Set `MCP_X402_ENABLED=true` to restore per-tool USDC micropayments. Do not send `ctk_` keys to MCP for auth in that mode.
 
 **Abuse / DoS controls (REST):** request body size + JSON depth caps; per-lane Durable Object rate limits (global / expensive / write RPM / **write daily** / subgraph daily / **daily total**); secondary **IP ceiling**; **auth-fail RPM** on invalid `ctk_` keys (401, not free fallback); max keys per subject; admin create rate limits.
 
@@ -72,7 +73,7 @@ https://your-worker.your-subdomain.workers.dev/mcp
 
 Tools are organized into two categories:
 
-**MCP x402 pricing** (USD, USDC on Base). REST `/api` is free (rate-limited). Canonical values live in `src/api/pricing.ts`.
+**MCP x402 pricing when enabled** (`MCP_X402_ENABLED=true`; USD, USDC on Base). REST `/api` is free (rate-limited). Canonical values live in `src/api/pricing.ts`. When x402 is off (the shipped default), these tools run unpaid under REST free/developer limits.
 
 | Tool | MCP price |
 |------|-----------|
@@ -194,7 +195,9 @@ Include `requestId` when reporting prepare issues. Write errors from the prepare
 
 ### Payments (MCP)
 
-All MCP tools are paid using the x402 protocol. Your MCP client must support sending USDC payments on Base when calling tools.
+By default (`MCP_X402_ENABLED` unset or `false`), MCP tools are unpaid and use the same free IP / developer API key access as REST.
+
+When `MCP_X402_ENABLED=true`, MCP tools are paid using the x402 protocol. Your MCP client must support sending USDC payments on Base when calling tools.
 
 ---
 
@@ -214,7 +217,7 @@ Staging / local dev: `https://your-worker.workers.dev/api/...`
 |--------|------|
 | None | Free tier — call any allowed endpoint directly |
 | `Authorization: Bearer ctk_…` | Developer tier — free API key |
-| x402 | **Not used on REST** (MCP only) |
+| x402 | **Not used on REST**. MCP only when `MCP_X402_ENABLED=true` |
 
 Optional HTTP Basic Auth on `/api` is controlled by `API_REQUIRE_BASIC_AUTH` (default **`false`**).
 
@@ -337,7 +340,7 @@ This repository is open source ([MIT License](LICENSE)) for audit and transparen
 - **Subgraph daily caps** — per-IP (free) or per-key (developer)
 - Per-address write rate limiting on prepare (keyed on `from`, lane-specific)
 - Geo-blocking support
-- MCP: write simulation before x402 settlement; payments only settle on success
+- MCP: when x402 is on, write simulation before settlement; payments only settle on success
 - **Caching**: subgraph responses (45s TTL), public GET edge cache on free-tier protocol state
 
 ### Cloudflare edge protections (configure in dashboard)

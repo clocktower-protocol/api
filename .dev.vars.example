@@ -14,13 +14,17 @@ ALCHEMY_URL=https://base-mainnet.g.alchemy.com/v2/
 CLOCKTOWER_ADDRESS=0xFaF5fc2f77b21BC188f492b827D366B03a07c61f
 
 # REST default when clients omit ?chainId= (decimal or CAIP-2, e.g. 8453 or eip155:8453).
-# MCP, x402, SIWE, and Builder entitlement stay on Base regardless of this value.
+# MCP, SIWE, and Builder entitlement stay on Base regardless of this value.
 DEFAULT_REST_CHAIN_ID=8453
 
-CDP_API_KEY_ID=your-cdp-api-key-id
-CDP_API_KEY_SECRET=your-cdp-api-key-secret
+# MCP x402 payments (default off). Only the string "true" enables them.
+# When off, MCP uses REST free IP + Bearer ctk_… developer keys (invalid ctk_ → 401).
+MCP_X402_ENABLED=false
 
-X402_RECIPIENT=0xYourWalletAddress
+# Required when MCP_X402_ENABLED=true (can remain set for a later flip).
+# CDP_API_KEY_ID=your-cdp-api-key-id
+# CDP_API_KEY_SECRET=your-cdp-api-key-secret
+# X402_RECIPIENT=0xYourWalletAddress
 
 # =============================================================================
 # OPTIONAL - The Graph (history & provider detail endpoints)
@@ -39,7 +43,7 @@ X402_RECIPIENT=0xYourWalletAddress
 # Admin secret is required for mint/list/revoke (portal BFF or curl).
 # Same value must be used in clocktower-developers DEVELOPER_KEYS_ADMIN_SECRET.
 # Keys enabled when secret is set, unless DEVELOPER_KEYS_ENABLED=false.
-# MCP stays x402 — these secrets do not auth MCP.
+# When MCP_X402_ENABLED is off (default), the same ctk_ keys authenticate MCP.
 # =============================================================================
 # DEVELOPER_KEYS_ADMIN_SECRET=replace-with-openssl-rand-hex-32
 # DEVELOPER_KEYS_ENABLED=true
@@ -72,7 +76,7 @@ X402_RECIPIENT=0xYourWalletAddress
 # BUILDER_WRITE_RATE_LIMIT_RPM=30
 # BUILDER_DAILY_REQUEST_LIMIT=
 
-# MCP (x402 agents)
+# MCP (used when MCP_X402_ENABLED=true; unpaid MCP reuses FREE_*/DEVELOPER_* limits)
 # MCP_RATE_LIMIT_RPM=300
 # MCP_EXPENSIVE_RATE_LIMIT_RPM=300
 # MCP_WRITE_RATE_LIMIT_RPM=60
@@ -84,7 +88,7 @@ X402_RECIPIENT=0xYourWalletAddress
 # =============================================================================
 # OPTIONAL - Developer safety net (Basic Auth)
 # Set ENABLE_AUTH=true to require HTTP Basic Auth on /mcp and optionally /api.
-# Extra layer; not a replacement for x402 on MCP or REST rate limits.
+# Extra layer; not a replacement for REST rate limits or MCP x402 when that flag is on.
 # =============================================================================
 # ENABLE_AUTH=true
 # CFP_USERNAME=your-username

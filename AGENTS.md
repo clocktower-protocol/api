@@ -1,6 +1,6 @@
 # AGENTS.md — clocktower-api
 
-Cloudflare Worker that exposes the Clocktower protocol via **REST** (`api.clocktower.finance`) and **MCP** (`mcp.clocktower.finance`). Worker name in Wrangler is `clocktower-api`. Pre-release: no public production API yet. MCP, x402, SIWE, and Builder entitlement are **Base-only** (chainId 8453). REST protocol routes accept optional `?chainId=` and default to `DEFAULT_REST_CHAIN_ID` (shipped as 8453).
+Cloudflare Worker that exposes the Clocktower protocol via **REST** (`api.clocktower.finance`) and **MCP** (`mcp.clocktower.finance`). Worker name in Wrangler is `clocktower-api`. Pre-release: no public production API yet. MCP, SIWE, and Builder entitlement are **Base-only** (chainId 8453). x402 on MCP is opt-in (`MCP_X402_ENABLED=true`, also Base-only). REST protocol routes accept optional `?chainId=` and default to `DEFAULT_REST_CHAIN_ID` (shipped as 8453).
 
 Full product docs: `README.md`. Deploy ops: `DEPLOY_REMINDER.md`.
 
@@ -10,10 +10,10 @@ Full product docs: `README.md`. Deploy ops: `DEPLOY_REMINDER.md`.
 - **Protocol accounting is always 18 decimals.** Conversion path: human → token-native (`parseUnits` + approved token decimals) → protocol units. See `src/tx/amount.ts` and helpers in `src/utils.ts`.
 - **Prefer `*_by_id` write paths** when the caller already has a subscription id: `prepare_subscribe_by_id`, `check_subscribe_readiness_by_id`, `prepare_cancel_subscription_by_id`, `prepare_unsubscribe_by_id`, `prepare_unsubscribe_by_provider_by_id` (and matching REST routes under `/api/prepare/*` and readiness). Keep object-based prepares for create and for callers that already hold a full subscription object.
 - **Prepare/readiness is tightly rate-limited** on free/developer (write RPM + **write daily**). Defaults: free 2/min · 20/day; developer 5/min · 100/day. Full prepare runs simulation/gas (Alchemy cost) even without relaying. Production write volume → SDK + caller's own RPC.
-- **REST protocol chain:** optional `?chainId=` (decimal or CAIP-2 `eip155:<id>`). Omitted uses `DEFAULT_REST_CHAIN_ID` (default `8453`). Unknown or REST-disabled chains return 400. **MCP stays Base-only** (x402). `DEFAULT_REST_CHAIN_ID` does not move MCP, SIWE, or Builder entitlement.
+- **REST protocol chain:** optional `?chainId=` (decimal or CAIP-2 `eip155:<id>`). Omitted uses `DEFAULT_REST_CHAIN_ID` (default `8453`). Unknown or REST-disabled chains return 400. **MCP stays Base-only.** `DEFAULT_REST_CHAIN_ID` does not move MCP, SIWE, or Builder entitlement.
 - **Builder entitlement is always checked on Base**, even when a REST call targets another protocol chain.
 - **Prepare returns unsigned calldata only.** The server never holds user keys, never relays signed txs, and never broadcasts for the user. Workflow: prepare/readiness → wallet signs → client broadcasts → optional `get_transaction_status`.
-- **REST access lanes are distinct from MCP:** free (IP), **developer** (`Bearer ctk_…` API key), Builder (`Bearer cts_…` SIWE, optional/off). **MCP stays x402** — never use API keys for MCP auth. Invalid `ctk_` keys must **401**, not fall through to free.
+- **REST access lanes:** free (IP), **developer** (`Bearer ctk_…` API key), Builder (`Bearer cts_…` SIWE, optional/off). **MCP default (x402 off):** same free IP + `ctk_` developer keys and the same tight prepare/read limits as REST. Invalid `ctk_` keys must **401**, not fall through to free. No SIWE/Builder on MCP. **MCP when `MCP_X402_ENABLED=true`:** x402 per tool; do not use API keys for MCP auth.
 - **API keys:** store SHA-256 only; plaintext once on create; mint via admin secret (`DEVELOPER_KEYS_ADMIN_SECRET`), not public unauthenticated mint. Admin GET `/developer/keys` lists inventory (optional `?subjectId=`); GET/DELETE `/developer/keys/:id` for lookup/revoke.
 - **ERC-20 approve on subscribe defaults to amount-scoped** (token-native subscription amount). Use `infiniteApproval: true` only when the client opts into max allowance.
 - **Secrets stay out of git.** Use `wrangler secret` / gitignored `.dev.vars`. Never commit API keys, Graph keys, or session material.
@@ -68,16 +68,16 @@ Prefer full `npm test` before finishing a multi-file write-path change.
 - **By-id subscribe/cancel/unsubscribe:** load on-chain subscription via id; do not require the client to resubmit amount/token/provider when chain is source of truth.
 - **Responses:** keep amount fields consistent with existing API conventions (human vs raw where already documented in README). Do not introduce a second dual-amount input shape on create (human-only is intentional).
 - **Remit:** `check_remit_readiness` → `prepare_remit` → client broadcasts; one `remit()` clears at most `maxRemits` per tx; surface backlog warnings when multiple txs are needed.
-- **Simulation:** full prepare runs on-chain simulation + gas estimation; failed validation/simulation must fail before x402 settlement charges the agent.
+- **Simulation:** full prepare runs on-chain simulation + gas estimation; when x402 is on, failed validation/simulation must fail before x402 settlement charges the agent.
 
 ## Access lanes (summary)
 
 | Lane | Surface | Auth | Limits live in |
 |------|---------|------|----------------|
-| Free | REST | None (IP) | `config/rateLimits`, `enforceLanePolicy`; write 2/min · 20/day |
-| Developer | REST | `Bearer ctk_…` | Key id; write 5/min · 100/day; `src/auth/apiKeys.ts` |
+| Free | REST + MCP (x402 off) | None (IP) | `config/rateLimits`, `enforceLanePolicy`; write 2/min · 20/day |
+| Developer | REST + MCP (x402 off) | `Bearer ctk_…` | Key id; write 5/min · 100/day; `src/auth/apiKeys.ts` |
 | Builder | REST | `Bearer cts_…` (SIWE) | Entitlement sub IDs (`BUILDER_SUB_IDS` / `BUILDER_SUB_ID`) — may be off |
-| Agent | MCP | x402 | `src/api/pricing.ts` + MCP rate limits |
+| Agent | MCP when `MCP_X402_ENABLED=true` | x402 | `src/api/pricing.ts` + MCP rate limits |
 
 Machine-readable tier manifest: `GET /catalog` (or `/api/catalog` on workers.dev). Details: `README.md`.
 
@@ -105,9 +105,11 @@ Machine-readable tier manifest: `GET /catalog` (or `/api/catalog` on workers.dev
 - Abuse: daily totals, secondary IP ceiling, auth-fail limits, max keys/subject, search caps
 - Tests: `test/tier-rateLimit.spec.ts`, `test/api-keys.spec.ts`, `test/access-lane-apikey.spec.ts`, `test/free-tier-policy.spec.ts`
 
-**MCP pricing**
+**MCP pricing / x402 toggle**
 
-- `src/api/pricing.ts` + tests; update README if public prices change
+- Flag: `MCP_X402_ENABLED` (`src/config/mcpX402.ts`). Only `'true'` enables payments; shipped default is off.
+- When off: MCP uses REST free/developer buckets (`classifyMcpJsonRpc` in `src/config/rateLimits.ts`).
+- When on: `src/api/pricing.ts` + tests; update README if public prices change.
 
 **Auth / SIWE**
 
