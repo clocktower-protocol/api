@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	classifyMcpJsonRpc,
 	classifyRoute,
 	DEFAULT_TIER_LIMITS,
 	getTierLimits,
@@ -27,6 +28,47 @@ describe('tier rate limits config', () => {
 
 	it('classifies readiness checks', () => {
 		expect(classifyRoute('POST', '/api/check_subscribe_readiness')).toBe('readiness');
+	});
+
+	it('classifies MCP JSON-RPC tools/call names', () => {
+		expect(classifyMcpJsonRpc({ method: 'initialize' })).toBe('cheap');
+		expect(classifyMcpJsonRpc({ method: 'tools/list' })).toBe('cheap');
+		expect(
+			classifyMcpJsonRpc({ method: 'tools/call', params: { name: 'get_protocol_state' } }),
+		).toBe('cheap');
+		expect(
+			classifyMcpJsonRpc({ method: 'tools/call', params: { name: 'get_transaction_status' } }),
+		).toBe('cheap');
+		expect(
+			classifyMcpJsonRpc({ method: 'tools/call', params: { name: 'prepare_subscribe' } }),
+		).toBe('write');
+		expect(
+			classifyMcpJsonRpc({ method: 'tools/call', params: { name: 'prepare_subscribe_by_id' } }),
+		).toBe('write');
+		expect(
+			classifyMcpJsonRpc({
+				method: 'tools/call',
+				params: { name: 'check_subscribe_readiness' },
+			}),
+		).toBe('readiness');
+		expect(
+			classifyMcpJsonRpc({
+				method: 'tools/call',
+				params: { name: 'check_subscribe_readiness_by_id' },
+			}),
+		).toBe('readiness');
+		expect(
+			classifyMcpJsonRpc({ method: 'tools/call', params: { name: 'check_remit_readiness' } }),
+		).toBe('readiness');
+		expect(
+			classifyMcpJsonRpc({ method: 'tools/call', params: { name: 'search_subscriptions' } }),
+		).toBe('expensive');
+		expect(
+			classifyMcpJsonRpc({ method: 'tools/call', params: { name: 'get_account_activity' } }),
+		).toBe('expensive');
+		expect(
+			classifyMcpJsonRpc({ method: 'tools/call', params: { name: 'get_subscription_details' } }),
+		).toBe('expensive');
 	});
 
 	it('applies the write rate bucket to readiness routes', () => {

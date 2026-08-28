@@ -1,5 +1,6 @@
 import { DEFAULT_TIER_LIMITS } from '../config/rateLimits.js';
 import { isApiEnabled } from '../config/apiAccess.js';
+import { isMcpX402Enabled } from '../config/mcpX402.js';
 import {
 	getEntitlementSubscriptionIds,
 	isEntitlementAuthEnabled,
@@ -40,7 +41,9 @@ export function handleGetCatalog(env: Env) {
 					auth: 'API key (Authorization: Bearer ctk_…)',
 					enabled: developerEnabled,
 					limits: DEFAULT_TIER_LIMITS.developer,
-					note: 'Free developer tier. Keys are minted via admin/portal (POST /developer/keys). MCP is separate (x402).',
+					note: isMcpX402Enabled(env)
+						? 'Free developer tier. Keys are minted via admin/portal (POST /developer/keys). MCP uses x402 when MCP_X402_ENABLED=true.'
+						: 'Free developer tier. Keys are minted via admin/portal (POST /developer/keys). The same keys authenticate MCP when x402 is off.',
 					management: {
 						create: `${apiOrigin}/developer/keys`,
 						list: `${apiOrigin}/developer/keys`,
@@ -59,10 +62,20 @@ export function handleGetCatalog(env: Env) {
 					authEndpoints: [`${apiOrigin}/auth/challenge`, `${apiOrigin}/auth/verify`],
 				},
 			},
-			mcp: {
-				auth: 'x402 (USDC on Base)',
-				limits: DEFAULT_TIER_LIMITS.mcp,
-			},
+			mcp: isMcpX402Enabled(env)
+				? {
+						auth: 'x402 (USDC on Base)',
+						limits: DEFAULT_TIER_LIMITS.mcp,
+					}
+				: {
+						auth: 'none (free IP) or Bearer ctk_… (developer). Invalid ctk_ → 401. No SIWE/Builder.',
+						x402: false,
+						limits: {
+							free: DEFAULT_TIER_LIMITS.free,
+							developer: DEFAULT_TIER_LIMITS.developer,
+						},
+						note: 'Set MCP_X402_ENABLED=true to restore per-tool USDC payments.',
+					},
 		},
 		apiEnabled: isApiEnabled(env),
 		developerKeysEnabled: developerEnabled,

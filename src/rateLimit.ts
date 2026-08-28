@@ -83,9 +83,10 @@ export async function enforceTierRateLimits(
 	env: Env,
 	lane: AccessLane,
 	identityKey: string,
+	routeClassOverride?: RouteClass,
 ): Promise<Response | null> {
 	const url = new URL(request.url);
-	const routeClass = classifyRoute(request.method, url.pathname);
+	const routeClass = routeClassOverride ?? classifyRoute(request.method, url.pathname);
 	const limits = getTierLimits(env, lane);
 
 	const globalBucket = `${lane}:${identityKey}`;

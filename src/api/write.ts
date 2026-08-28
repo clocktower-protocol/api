@@ -2,7 +2,8 @@
  * Write Endpoints
  *
  * REST prepare/readiness handlers. Access is free with tiered rate limits, or
- * Builder SIWE session (see src/index.ts). MCP remains x402-gated.
+ * Builder SIWE session (see src/index.ts). MCP uses the same free/developer
+ * lanes when x402 is off; x402 when MCP_X402_ENABLED=true.
  * They delegate to the existing transaction preparation logic in src/tx/.
  */
 

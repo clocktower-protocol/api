@@ -73,11 +73,13 @@ export function buildAccessEvent(input: {
 	bucket?: string;
 	durationMs: number;
 	requestId?: string;
+	routeClass?: RouteClass | 'other';
 }): AccessLogEvent {
 	const routeClass =
-		input.pathname.startsWith('/api/') || input.pathname === '/api'
+		input.routeClass ??
+		(input.pathname.startsWith('/api/') || input.pathname === '/api'
 			? classifyRoute(input.request.method, input.pathname)
-			: 'other';
+			: 'other');
 
 	return {
 		type: 'api_access',

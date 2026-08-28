@@ -14,6 +14,7 @@ import {
 	getCurrentDay,
 	getFrequencyLabel,
 	getStatusLabel,
+	serializeJson,
 	textResult,
 } from '../utils.js';
 import {
@@ -46,6 +47,8 @@ import {
 	calculateSubscriptionHistoryPrice,
 } from '../api/pricing.js';
 import { registerDynamicPaidTool } from '../mcp/paidToolDynamic.js';
+import { isMcpX402Enabled, parseMcpAccessLane } from '../config/mcpX402.js';
+import { getSearchArgsPolicyError } from '../middleware/freeTierPolicy.js';
 import { z } from 'zod';
 
 type ClocktowerClient = ReturnType<typeof createClocktowerClient>;
@@ -702,9 +705,26 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 			skip: z.coerce.number().int().min(0).optional(),
 		},
 		{},
-		async (args) =>
-			safeHandler('search_subscriptions', async () =>
-				textResult(
+		async (args, extra) =>
+			safeHandler('search_subscriptions', async () => {
+				const lane = isMcpX402Enabled(env) ? 'mcp' : parseMcpAccessLane(extra);
+				const policyError = getSearchArgsPolicyError(
+					lane,
+					args.first as number | undefined,
+					args.includeDetails as boolean | undefined,
+				);
+				if (policyError) {
+					return {
+						isError: true,
+						content: [
+							{
+								type: 'text' as const,
+								text: serializeJson({ error: policyError, code: 'VALIDATION_ERROR' }),
+							},
+						],
+					};
+				}
+				return textResult(
 					await searchSubscriptions(env, {
 						provider: args.provider as `0x${string}` | undefined,
 						token: args.token as `0x${string}` | undefined,
@@ -714,8 +734,8 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 						first: args.first as number | undefined,
 						skip: args.skip as number | undefined,
 					}),
-				),
-			),
+				);
+			}),
 	);
 
 	registerDynamicPaidTool(

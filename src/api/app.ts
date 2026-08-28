@@ -41,10 +41,10 @@ export type ApiAppOptions = Record<string, never>;
  *
  * === Authentication Model ===
  * REST `/api/*`: free (IP), developer API key (Bearer ctk_…), or Builder SIWE (cts_…).
- * MCP `/mcp` remains x402-gated for agents (not API keys).
+ * MCP `/mcp`: same free/developer lanes when MCP_X402_ENABLED is off; x402 when on.
  *
  * === Current Endpoints ===
- * REST free / developer key / Builder. MCP uses x402.
+ * REST free / developer key / Builder. MCP uses REST lanes by default (x402 opt-in).
  *
  * Read:
  *   - GET /api/catalog
@@ -109,7 +109,7 @@ export function createApiApp(_options: ApiAppOptions = {}) {
       version: 'tiered-access',
       auth: {
         rest: 'free (IP limits), developer API key (ctk_…), or Builder SIWE (cts_…)',
-        mcp: 'x402 required on /mcp',
+        mcp: 'free IP or developer API key (ctk_…); x402 when MCP_X402_ENABLED=true',
         basicAuth: requireBasic ? 'optional (enabled via flag)' : 'disabled',
       },
     });

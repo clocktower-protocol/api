@@ -15,7 +15,7 @@ import { createApiApp, createApiAppForEnv } from './api/app.js';
 import { handleApiCorsPreflight, withApiCorsHeaders } from './cors.js';
 import { getRateLimitIdentity, resolveApiAccess } from './middleware/accessLane.js';
 import { enforceBuilderPolicy, rewriteMePath } from './middleware/entitlementPolicy.js';
-import { enforceLanePolicy } from './middleware/freeTierPolicy.js';
+import { enforceLanePolicy, mcpSearchPolicyResponse } from './middleware/freeTierPolicy.js';
 import { isApiKeyToken, verifyAdminSecret } from './auth/apiKeys.js';
 import { parseBearerToken } from './auth/session.js';
 import { isApiEnabled, isApiHealthCheckPath } from './config/apiAccess.js';
@@ -29,6 +29,8 @@ import {
 } from './config/hostnames.js';
 import { Errors } from './api/responses.js';
 import type { AccessLane } from './config/rateLimits.js';
+import { classifyMcpJsonRpc, type RouteClass } from './config/rateLimits.js';
+import { isMcpX402Enabled } from './config/mcpX402.js';
 import {
 	buildAccessEvent,
 	peekErrorMeta,
@@ -130,28 +132,7 @@ async function handleRequest(
 	}
 
 	if (pathname === '/mcp') {
-		const invalidRequest = await validateMcpRequest(routedRequest);
-		if (invalidRequest) {
-			return invalidRequest;
-		}
-
-		const forbiddenOrigin = enforceOriginAllowlist(routedRequest, env);
-		if (forbiddenOrigin) {
-			return forbiddenOrigin;
-		}
-
-		const unauthorized = enforceBasicAuth(routedRequest, env);
-		if (unauthorized) {
-			return unauthorized;
-		}
-
-		const rateLimited = await enforceMcpRateLimit(routedRequest, env);
-		if (rateLimited) {
-			return rateLimited;
-		}
-
-		const mcpHandler = ClocktowerMCP.serve('/mcp');
-		return await mcpHandler.fetch(routedRequest, env, ctx);
+		return handleMcpPath(routedRequest, env, ctx, started);
 	}
 
 	if (shouldHandleApiRoute(pathname, surface)) {
@@ -339,6 +320,200 @@ async function handleRequest(
 	return Response.json(buildDiscoveryPayload(env, surface));
 }
 
+async function peekJsonBody(request: Request): Promise<unknown | undefined> {
+	if (request.method !== 'POST') {
+		return undefined;
+	}
+	try {
+		const text = await request.clone().text();
+		if (!text) {
+			return undefined;
+		}
+		return JSON.parse(text) as unknown;
+	} catch {
+		return undefined;
+	}
+}
+
+async function respondMcp(
+	env: Env,
+	request: Request,
+	response: Response,
+	meta: {
+		lane: AccessLane | 'unknown';
+		identity: string;
+		keyId?: string;
+		subjectId?: string;
+		started: number;
+		routeClass?: RouteClass | 'other';
+	},
+): Promise<Response> {
+	const errMeta = await peekErrorMeta(response);
+	recordAccess(
+		env,
+		buildAccessEvent({
+			request,
+			pathname: '/mcp',
+			lane: meta.lane,
+			identity: meta.identity,
+			keyId: meta.keyId,
+			subjectId: meta.subjectId,
+			status: response.status,
+			code: errMeta.code,
+			bucket: errMeta.bucket,
+			durationMs: Date.now() - meta.started,
+			requestId: errMeta.requestId,
+			routeClass: meta.routeClass,
+		}),
+	);
+	return response;
+}
+
+async function handleMcpPath(
+	routedRequest: Request,
+	env: Env,
+	ctx: ExecutionContext,
+	started: number,
+): Promise<Response> {
+	const invalidRequest = await validateMcpRequest(routedRequest);
+	if (invalidRequest) {
+		return invalidRequest;
+	}
+
+	const forbiddenOrigin = enforceOriginAllowlist(routedRequest, env);
+	if (forbiddenOrigin) {
+		return forbiddenOrigin;
+	}
+
+	const unauthorized = enforceBasicAuth(routedRequest, env);
+	if (unauthorized) {
+		return unauthorized;
+	}
+
+	const mcpHandler = ClocktowerMCP.serve('/mcp');
+	const ip = routedRequest.headers.get('CF-Connecting-IP') ?? 'unknown';
+	const ipIdentity = `ip:${ip}`;
+
+	if (isMcpX402Enabled(env)) {
+		const rateLimited = await enforceMcpRateLimit(routedRequest, env);
+		if (rateLimited) {
+			return respondMcp(env, routedRequest, rateLimited, {
+				started,
+				lane: 'mcp',
+				identity: ipIdentity,
+			});
+		}
+		const response = await mcpHandler.fetch(routedRequest, env, ctx);
+		return respondMcp(env, routedRequest, response, {
+			started,
+			lane: 'mcp',
+			identity: ipIdentity,
+		});
+	}
+
+	const access = await resolveApiAccess(routedRequest, env);
+	const keyId = access.apiKey?.id;
+	const subjectId = access.apiKey?.subjectId;
+	const identity = getRateLimitIdentity(access, routedRequest);
+
+	if (access.lane === 'builder') {
+		const forbidden = Response.json(
+			{
+				error:
+					'MCP does not accept Builder sessions; use a developer API key or omit Authorization',
+				code: 'FORBIDDEN',
+			},
+			{ status: 403 },
+		);
+		return respondMcp(env, routedRequest, forbidden, {
+			started,
+			lane: 'builder',
+			identity,
+			keyId,
+			subjectId,
+		});
+	}
+
+	if (access.authError) {
+		const bearer = parseBearerToken(routedRequest);
+		if (bearer && isApiKeyToken(bearer)) {
+			const authLimited = await enforceAuthFailRateLimit(routedRequest, env);
+			if (authLimited) {
+				return respondMcp(env, routedRequest, authLimited, {
+					started,
+					lane: 'developer',
+					identity,
+					keyId,
+					subjectId,
+				});
+			}
+		}
+		return respondMcp(env, routedRequest, access.authError, {
+			started,
+			lane: 'developer',
+			identity,
+			keyId,
+			subjectId,
+		});
+	}
+
+	const ipCeiling = await enforceSecondaryIpRateLimit(routedRequest, env);
+	if (ipCeiling) {
+		return respondMcp(env, routedRequest, ipCeiling, {
+			started,
+			lane: access.lane,
+			identity,
+			keyId,
+			subjectId,
+		});
+	}
+
+	const rpcBody = await peekJsonBody(routedRequest);
+	const routeClass = classifyMcpJsonRpc(rpcBody);
+	const searchBlocked = mcpSearchPolicyResponse(access.lane, rpcBody);
+	if (searchBlocked) {
+		return respondMcp(env, routedRequest, searchBlocked, {
+			started,
+			lane: access.lane,
+			identity,
+			keyId,
+			subjectId,
+			routeClass,
+		});
+	}
+
+	const rateLimited = await enforceTierRateLimits(
+		routedRequest,
+		env,
+		access.lane,
+		identity,
+		routeClass,
+	);
+	if (rateLimited) {
+		return respondMcp(env, routedRequest, rateLimited, {
+			started,
+			lane: access.lane,
+			identity,
+			keyId,
+			subjectId,
+			routeClass,
+		});
+	}
+
+	const headers = new Headers(routedRequest.headers);
+	headers.set('X-Clocktower-Lane', access.lane);
+	const mcpRequest = new Request(routedRequest, { headers });
+	const mcpResponse = await mcpHandler.fetch(mcpRequest, env, ctx);
+	return respondMcp(env, routedRequest, withLaneHeaders(mcpResponse, access.lane), {
+		started,
+		lane: access.lane,
+		identity,
+		keyId,
+		subjectId,
+		routeClass,
+	});
+}
+
 function buildDiscoveryPayload(env: Env, surface: RequestSurface) {
 	const payload: Record<string, unknown> = {
 		status: 'ok',
@@ -351,10 +526,14 @@ function buildDiscoveryPayload(env: Env, surface: RequestSurface) {
 		rest: getPublicApiOrigin(env),
 		apiEnabled: isApiEnabled(env),
 		surface,
-		note: 'REST: free (IP), developer API key (ctk_…), or Builder SIWE. MCP requires x402.',
+		note: isMcpX402Enabled(env)
+			? 'REST: free (IP), developer API key (ctk_…), or Builder SIWE. MCP requires x402.'
+			: 'REST: free (IP), developer API key (ctk_…), or Builder SIWE. MCP: free IP or developer API key (same limits as REST).',
 		access: {
 			rest: 'free | developer API key | builder session',
-			mcp: 'x402 required',
+			mcp: isMcpX402Enabled(env)
+				? 'x402 required'
+				: 'free IP or developer API key (ctk_…); x402 when MCP_X402_ENABLED=true',
 		},
 	};
 

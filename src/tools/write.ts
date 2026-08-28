@@ -1,11 +1,13 @@
 /**
- * Write tools: prepare unsigned Clocktower transactions (x402).
- * Signing and broadcasting happen in the client wallet. EIP-5792 batch descriptors are
+ * Write tools: prepare unsigned Clocktower transactions.
+ * When MCP_X402_ENABLED is true, tools are x402-priced. Signing and broadcasting
+ * happen in the client wallet. EIP-5792 batch descriptors are
  * returned when multiple steps are needed (e.g. approve + subscribe). Gas is always paid
  * by the user.
  */
 import { z } from 'zod';
 import type { AccessLane } from '../config/rateLimits.js';
+import { isMcpX402Enabled, parseMcpAccessLane } from '../config/mcpX402.js';
 import {
 	checkSubscribeReadiness,
 	checkRemitReadiness,
@@ -53,8 +55,12 @@ import { normalizeSubscriptionAmount } from '../tx/amount.js';
 const writeAnnotations = { readOnlyHint: false };
 const destructiveAnnotations = { readOnlyHint: false, destructiveHint: true };
 
-/** Explicit MCP lane for write RPM (no isolate-global request lane). */
-const MCP_PREPARE_LANE = { lane: 'mcp' as AccessLane };
+function mcpWriteLane(env: Env, extra?: unknown): AccessLane {
+	if (isMcpX402Enabled(env)) {
+		return 'mcp';
+	}
+	return parseMcpAccessLane(extra);
+}
 
 function preparePrice(args: Record<string, unknown>): number {
 	return getStandardPreparePrice(args.readinessOnly as boolean | undefined);
@@ -137,7 +143,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 			simulateFromAddress: simulateFromAddressSchema,
 		},
 		writeAnnotations,
-		async (args) =>
+		async (args, extra) =>
 			safeHandler('prepare_create_subscription', async () => {
 				const parsed = createSubscriptionInputSchema.parse(args);
 
@@ -156,7 +162,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						parsed.frequency,
 						parsed.dueDay,
 						{
-							...MCP_PREPARE_LANE,
+							lane: mcpWriteLane(env, extra),
 							readinessOnly: parsed.readinessOnly,
 							simulateFromAddress: parsed.simulateFromAddress,
 						},
@@ -178,7 +184,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 			infiniteApproval: subscribeInputSchema.shape.infiniteApproval,
 		},
 		writeAnnotations,
-		async (args) =>
+		async (args, extra) =>
 			safeHandler('prepare_subscribe', async () => {
 				const parsed = subscribeInputSchema.parse(args);
 
@@ -190,7 +196,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						parsed.from,
 						toWriteSubscription(normalizedSubscription),
 						{
-							...MCP_PREPARE_LANE,
+							lane: mcpWriteLane(env, extra),
 							readinessOnly: parsed.readinessOnly,
 							simulateFromAddress: parsed.simulateFromAddress,
 							infiniteApproval: parsed.infiniteApproval,
@@ -213,7 +219,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 			infiniteApproval: subscribeByIdInputSchema.shape.infiniteApproval,
 		},
 		writeAnnotations,
-		async (args) =>
+		async (args, extra) =>
 			safeHandler('prepare_subscribe_by_id', async () => {
 				const parsed = subscribeByIdInputSchema.parse(args);
 
@@ -223,7 +229,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						parsed.from,
 						parsed.id,
 						{
-							...MCP_PREPARE_LANE,
+							lane: mcpWriteLane(env, extra),
 							readinessOnly: parsed.readinessOnly,
 							simulateFromAddress: parsed.simulateFromAddress,
 							infiniteApproval: parsed.infiniteApproval,
@@ -245,7 +251,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 			simulateFromAddress: simulateFromAddressSchema,
 		},
 		destructiveAnnotations,
-		async (args) =>
+		async (args, extra) =>
 			safeHandler('prepare_cancel_subscription', async () => {
 				const parsed = subscriptionActionInputSchema.parse(args);
 				const normalizedSubscription = await normalizeSubscriptionAmount(env, parsed.subscription);
@@ -256,7 +262,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						parsed.from,
 						toWriteSubscription(normalizedSubscription),
 						{
-							...MCP_PREPARE_LANE,
+							lane: mcpWriteLane(env, extra),
 							readinessOnly: parsed.readinessOnly,
 							simulateFromAddress: parsed.simulateFromAddress,
 						},
@@ -277,7 +283,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 			simulateFromAddress: simulateFromAddressSchema,
 		},
 		destructiveAnnotations,
-		async (args) =>
+		async (args, extra) =>
 			safeHandler('prepare_cancel_subscription_by_id', async () => {
 				const parsed = subscriptionActionByIdInputSchema.parse(args);
 				return textResult(
@@ -286,7 +292,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						parsed.from,
 						parsed.id,
 						{
-							...MCP_PREPARE_LANE,
+							lane: mcpWriteLane(env, extra),
 							readinessOnly: parsed.readinessOnly,
 							simulateFromAddress: parsed.simulateFromAddress,
 						},
@@ -307,7 +313,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 			simulateFromAddress: simulateFromAddressSchema,
 		},
 		destructiveAnnotations,
-		async (args) =>
+		async (args, extra) =>
 			safeHandler('prepare_unsubscribe', async () => {
 				const parsed = subscriptionActionInputSchema.parse(args);
 				const normalizedSubscription = await normalizeSubscriptionAmount(env, parsed.subscription);
@@ -318,7 +324,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						parsed.from,
 						toWriteSubscription(normalizedSubscription),
 						{
-							...MCP_PREPARE_LANE,
+							lane: mcpWriteLane(env, extra),
 							readinessOnly: parsed.readinessOnly,
 							simulateFromAddress: parsed.simulateFromAddress,
 						},
@@ -339,7 +345,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 			simulateFromAddress: simulateFromAddressSchema,
 		},
 		destructiveAnnotations,
-		async (args) =>
+		async (args, extra) =>
 			safeHandler('prepare_unsubscribe_by_id', async () => {
 				const parsed = subscriptionActionByIdInputSchema.parse(args);
 				return textResult(
@@ -348,7 +354,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						parsed.from,
 						parsed.id,
 						{
-							...MCP_PREPARE_LANE,
+							lane: mcpWriteLane(env, extra),
 							readinessOnly: parsed.readinessOnly,
 							simulateFromAddress: parsed.simulateFromAddress,
 						},
@@ -370,7 +376,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 			simulateFromAddress: simulateFromAddressSchema,
 		},
 		destructiveAnnotations,
-		async (args) =>
+		async (args, extra) =>
 			safeHandler('prepare_unsubscribe_by_provider', async () => {
 				const parsed = unsubscribeByProviderInputSchema.parse(args);
 				const normalizedSubscription = await normalizeSubscriptionAmount(env, parsed.subscription);
@@ -382,7 +388,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						toWriteSubscription(normalizedSubscription),
 						parsed.subscriber,
 						{
-							...MCP_PREPARE_LANE,
+							lane: mcpWriteLane(env, extra),
 							readinessOnly: parsed.readinessOnly,
 							simulateFromAddress: parsed.simulateFromAddress,
 						},
@@ -404,7 +410,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 			simulateFromAddress: simulateFromAddressSchema,
 		},
 		destructiveAnnotations,
-		async (args) =>
+		async (args, extra) =>
 			safeHandler('prepare_unsubscribe_by_provider_by_id', async () => {
 				const parsed = unsubscribeByProviderByIdInputSchema.parse(args);
 				return textResult(
@@ -414,7 +420,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						parsed.id,
 						parsed.subscriber,
 						{
-							...MCP_PREPARE_LANE,
+							lane: mcpWriteLane(env, extra),
 							readinessOnly: parsed.readinessOnly,
 							simulateFromAddress: parsed.simulateFromAddress,
 						},
@@ -436,7 +442,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 			simulateFromAddress: simulateFromAddressSchema,
 		},
 		writeAnnotations,
-		async (args) =>
+		async (args, extra) =>
 			safeHandler('prepare_edit_details', async () => {
 				const parsed = editDetailsInputSchema.parse(args);
 				return textResult(
@@ -446,7 +452,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						parsed.id,
 						toWriteDetails(parsed.details),
 						{
-							...MCP_PREPARE_LANE,
+							lane: mcpWriteLane(env, extra),
 							readinessOnly: parsed.readinessOnly,
 							simulateFromAddress: parsed.simulateFromAddress,
 						},
@@ -481,12 +487,12 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 			simulateFromAddress: simulateFromAddressSchema,
 		},
 		destructiveAnnotations,
-		async (args) =>
+		async (args, extra) =>
 			safeHandler('prepare_remit', async () => {
 				const parsed = remitInputSchema.parse(args);
 				return textResult(
 					await prepareRemit(env, parsed.from, {
-						...MCP_PREPARE_LANE,
+						lane: mcpWriteLane(env, extra),
 						readinessOnly: parsed.readinessOnly,
 						simulateFromAddress: parsed.simulateFromAddress,
 					}),

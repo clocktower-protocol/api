@@ -215,6 +215,85 @@ export function classifyRoute(method: string, pathname: string): RouteClass {
 	return 'cheap';
 }
 
+const MCP_READINESS_TOOLS = new Set([
+	'check_subscribe_readiness',
+	'check_subscribe_readiness_by_id',
+	'check_remit_readiness',
+]);
+
+const MCP_EXPENSIVE_TOOLS = new Set([
+	'search_subscriptions',
+	'get_subscription_history',
+	'get_account_activity',
+	'get_subscription_details',
+	'get_subscription_details_history',
+	'get_provider_profile',
+	'get_account',
+	'get_account_subscriptions',
+	'get_subscribers',
+]);
+
+function mcpToolNameFromJsonRpc(body: unknown): string | null {
+	if (!body || typeof body !== 'object') {
+		return null;
+	}
+	const rec = body as Record<string, unknown>;
+	if (rec.method !== 'tools/call') {
+		return null;
+	}
+	const params = rec.params;
+	if (!params || typeof params !== 'object') {
+		return null;
+	}
+	const name = (params as { name?: unknown }).name;
+	return typeof name === 'string' ? name : null;
+}
+
+/** JSON-RPC `params.arguments` for MCP `tools/call`. */
+export function mcpToolArgumentsFromJsonRpc(body: unknown): Record<string, unknown> | null {
+	if (!body || typeof body !== 'object') {
+		return null;
+	}
+	const rec = body as Record<string, unknown>;
+	if (rec.method !== 'tools/call') {
+		return null;
+	}
+	const params = rec.params;
+	if (!params || typeof params !== 'object') {
+		return null;
+	}
+	const args = (params as { arguments?: unknown }).arguments;
+	if (!args || typeof args !== 'object' || Array.isArray(args)) {
+		return {};
+	}
+	return args as Record<string, unknown>;
+}
+
+/**
+ * Classify a JSON-RPC MCP body. `initialize` / `tools/list` stay cheap so
+ * clients can connect under free RPM. `tools/call` maps to REST-equivalent buckets.
+ */
+export function classifyMcpJsonRpc(body: unknown): RouteClass {
+	const name = mcpToolNameFromJsonRpc(body);
+	if (!name) {
+		return 'cheap';
+	}
+	if (name.startsWith('prepare_')) {
+		return 'write';
+	}
+	if (MCP_READINESS_TOOLS.has(name)) {
+		return 'readiness';
+	}
+	if (MCP_EXPENSIVE_TOOLS.has(name)) {
+		return 'expensive';
+	}
+	return 'cheap';
+}
+
+export function mcpToolNameFromBody(body: unknown): string | null {
+	return mcpToolNameFromJsonRpc(body);
+}
+
 export function getUpgradeHint(lane: AccessLane): string {
 	if (lane === 'free') {
 		return 'Get a free developer API key for higher read limits. Prepare/readiness is intentionally limited — for production writes use the SDK with your own RPC.';
