@@ -4,7 +4,7 @@
 
 > **Status:** Pre-release. There is no public production API yet. The documentation below describes the intended interface; endpoints, limits, and auth flows may change before launch.
 
-Clocktower API is a Cloudflare Workers-based server that provides access to the Clocktower Protocol (a subscription management system) through a REST API and the Model Context Protocol (MCP). The Worker name is `clocktower-api` (see `wrangler.jsonc`). REST can select a protocol chain; MCP is Base-only.
+Clocktower API is a Cloudflare Workers-based server that provides access to the Clocktower Protocol (a subscription management system) through a REST API and the Model Context Protocol (MCP). The Worker name is `clocktower-api` (see `wrangler.jsonc`). REST and MCP can each select a protocol chain; both default to Base.
 
 Access uses **REST** lanes (free IP, developer API key) and **MCP** with the same free IP / `ctk_` developer-key lanes by default. Set `MCP_X402_ENABLED=true` to restore per-tool x402 payments on MCP.
 
@@ -23,7 +23,7 @@ On the API host, paths **omit** the `/api` prefix (e.g. `GET /catalog` instead o
 
 ## Overview
 
-- **Protocol**: Clocktower on Base mainnet today (`eip155:8453`). REST accepts optional `?chainId=` (decimal or CAIP-2); omitted uses `DEFAULT_REST_CHAIN_ID` (default 8453). MCP and x402 stay on Base.
+- **Protocol**: Clocktower on Base mainnet today (`eip155:8453`). REST accepts optional `?chainId=` (decimal or CAIP-2); omitted uses `DEFAULT_REST_CHAIN_ID` (default 8453). MCP protocol tools accept optional `chainId` (number, decimal, or CAIP-2); omitted uses Base `8453` (not `DEFAULT_REST_CHAIN_ID`). SIWE, Builder entitlement, and x402 payments stay on Base.
 - **Hosting**: Cloudflare Workers + Durable Objects
 - **Interfaces**:
   - MCP Server at `mcp.clocktower.finance` (for AI agents — free IP or developer API keys by default; x402 when `MCP_X402_ENABLED=true`)
@@ -69,6 +69,8 @@ Staging / local dev (path-based):
 https://your-worker.your-subdomain.workers.dev/mcp
 ```
 
+**Chain selection:** protocol tools accept optional `chainId` (`8453`, `"8453"`, or `"eip155:8453"`). Omitted uses Base (`8453`), not `DEFAULT_REST_CHAIN_ID`. Unknown or MCP-disabled values return tool error `INVALID_INPUT`. Call `list_chains` (or REST `GET /catalog` → `chains[].mcp`) to see which chains are MCP-enabled. x402 payments, when enabled, still settle in USDC on Base.
+
 ### Tools
 
 Tools are organized into two categories:
@@ -77,6 +79,7 @@ Tools are organized into two categories:
 
 | Tool | MCP price |
 |------|-----------|
+| `list_chains` | $0.01 |
 | `get_protocol_state`, `get_subscription`, `get_account_subscriptions`, `get_subscribers`, `get_approved_token`, `list_approved_tokens`, `get_fee_balance` | $0.01 |
 | `get_subscriptions_due` | $0.02 |
 | **`get_account`** (enriched; fee balance per subscribed sub) | **$0.03** |
@@ -92,6 +95,7 @@ Tools are organized into two categories:
 | `prepare_remit` full | $0.03 |
 
 **Read Tools**
+- `list_chains` — Protocol chains available to MCP (`default` is Base; pass `chainId` on other tools when `mcp` is true)
 - `get_protocol_state` — View current fee configuration
 - `get_subscription` — Fetch a single subscription by ID
 - `get_account_subscriptions` — List subscriptions for an account (as provider or subscriber)
@@ -131,7 +135,7 @@ All history results are server-side limited (max 200 records, recommended ~100 p
 - `prepare_remit` — Prepare permissionless `remit()` (earns caller fees in subscription ERC-20 tokens)
 - `get_transaction_status` — Poll confirmation status for a transaction hash after client-side broadcast
 
-**Write workflow:** prepare (or readiness check) → sign in wallet → broadcast from wallet → optionally poll `get_transaction_status`. The server returns unsigned calldata and never relays signed transactions. Each full prepare runs on-chain simulation and gas estimation on the selected REST chain (default Base, chainId 8453). MCP prepare still simulates on Base. When x402 is on, failed simulation or validation throws so settlement does not charge you.
+**Write workflow:** prepare (or readiness check) → sign in wallet → broadcast from wallet → optionally poll `get_transaction_status`. The server returns unsigned calldata and never relays signed transactions. Each full prepare runs on-chain simulation and gas estimation on the selected chain (REST `?chainId=` or `DEFAULT_REST_CHAIN_ID`; MCP optional `chainId`, default Base). When x402 is on, failed simulation or validation throws so settlement does not charge you.
 
 **Remit flow:** `check_remit_readiness` → `prepare_remit` → sign → broadcast from wallet → repeat until readiness reports caught up. One `remit()` clears at most `maxRemits` subscriber payments per transaction. When the backlog needs multiple broadcasts, `preflight.expectedTransactions`, `gasSummary.backlogMultiplier`, and `warnings` describe the total gas budget. Remit can be gas-heavy on large backlogs — the caller pays gas (unlike the operator cron bot). Use `get_subscriptions_due` for a lightweight single-day read; use `check_remit_readiness` before preparing a remit tx.
 
@@ -156,8 +160,9 @@ Optional request fields on any `prepare_*` call (REST body or MCP tool argument)
 
 - **`readinessOnly: true`** — run preflight/readiness checks only; no unsigned transactions, simulation, or gas estimates. Response uses `readinessOnly: true` with `ready`, `errors`, `warnings`, `details`, and `instructions`. When MCP x402 is on, billed at the readiness tier ($0.01; remit readiness path $0.02) instead of full prepare.
 - **`simulateFromAddress`** — optional `0x` address passed to `eth_estimateGas` when the signing wallet differs from the account that will broadcast (defaults to `from`).
+- **`chainId`** (MCP only) — optional protocol chain (`8453`, `"8453"`, or `"eip155:8453"`). Omitted uses Base. REST uses `?chainId=` on the query string, not the JSON body.
 
-Gas estimates are advisory: fees can change between prepare and broadcast. Estimation verifies the RPC reports the selected chain (REST `?chainId=` or `DEFAULT_REST_CHAIN_ID`; MCP always Base 8453). Per-transaction limits come from `eth_estimateGas` when possible; otherwise a conservative heuristic is used and a warning is added (`source: "heuristic"`).
+Gas estimates are advisory: fees can change between prepare and broadcast. Estimation verifies the RPC reports the selected chain (REST `?chainId=` or `DEFAULT_REST_CHAIN_ID`; MCP tool `chainId` or Base). Per-transaction limits come from `eth_estimateGas` when possible; otherwise a conservative heuristic is used and a warning is added (`source: "heuristic"`).
 
 Example excerpt from a full prepare response:
 
@@ -209,7 +214,7 @@ The REST API provides the same capabilities as the MCP tools over standard HTTP.
 
 Staging / local dev: `https://your-worker.workers.dev/api/...`
 
-**Chain selection:** protocol reads, prepares, history, discovery, approved tokens, and transaction status accept optional `?chainId=8453` or `?chainId=eip155:8453`. Omitted `chainId` uses `DEFAULT_REST_CHAIN_ID` (default 8453). Unknown or unsupported values return 400. Developer keys, health, and catalog are not chain-scoped (catalog still lists available chains). MCP does not take `chainId`.
+**Chain selection:** protocol reads, prepares, history, discovery, approved tokens, and transaction status accept optional `?chainId=8453` or `?chainId=eip155:8453`. Omitted `chainId` uses `DEFAULT_REST_CHAIN_ID` (default 8453). Unknown or unsupported values return 400. Developer keys, health, and catalog are not chain-scoped (catalog still lists available chains). MCP protocol tools take optional `chainId` (default Base); see MCP Server above.
 
 ### Authentication
 

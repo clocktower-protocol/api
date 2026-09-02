@@ -32,6 +32,7 @@
 
 import { BaseError, ContractFunctionRevertedError } from 'viem';
 import { ZodError } from 'zod';
+import { UnsupportedChainError } from '../chain.js';
 import { clientSafeMessage } from '../sanitizeUpstream.js';
 import { getRequestId } from '../tx/prepare-response.js';
 import { serializeJson } from '../utils.js';
@@ -84,6 +85,16 @@ export async function safeHandler<T extends SafeToolResult>(
 					path: issue.path.map(String).join('.') || '(root)',
 					message: issue.message,
 				})),
+			});
+		}
+
+		if (
+			err instanceof UnsupportedChainError ||
+			(err instanceof Error && err.message.includes('chainId must'))
+		) {
+			return asResult({
+				error: err.message,
+				code: 'INVALID_INPUT',
 			});
 		}
 

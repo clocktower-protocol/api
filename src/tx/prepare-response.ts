@@ -20,7 +20,8 @@ export type PrepareOptions = {
 	 */
 	lane?: AccessLane;
 	/**
-	 * REST-selected protocol chain. MCP omits this so prepare uses Base via resolveChain.
+	 * Protocol chain for this prepare. REST passes the `?chainId=` selection;
+	 * MCP passes the tool `chainId` (default Base via resolveMcpChain).
 	 */
 	chain?: ChainConfig;
 };

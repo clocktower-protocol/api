@@ -48,9 +48,12 @@ import {
 import { addressSchema, bytes32Schema } from '../validation.js';
 import { textResult } from '../utils.js';
 import { registerDynamicPaidTool } from '../mcp/paidToolDynamic.js';
+import { mcpChain, mcpChainIdSchema } from './mcpChain.js';
 import { safeHandler } from './safeHandler.js';
 import type { PaidToolHandler, X402McpServer } from './types.js';
 import { normalizeSubscriptionAmount } from '../tx/amount.js';
+import type { PrepareOptions } from '../tx/prepare.js';
+import type { ChainConfig } from '../chain.js';
 
 const writeAnnotations = { readOnlyHint: false };
 const destructiveAnnotations = { readOnlyHint: false, destructiveHint: true };
@@ -60,6 +63,29 @@ function mcpWriteLane(env: Env, extra?: unknown): AccessLane {
 		return 'mcp';
 	}
 	return parseMcpAccessLane(extra);
+}
+
+function mcpToolChain(env: Env, args: Record<string, unknown>): ChainConfig {
+	return mcpChain(env, args.chainId as string | number | undefined);
+}
+
+function mcpPrepareOptions(
+	env: Env,
+	extra: unknown,
+	args: Record<string, unknown>,
+	parsed: {
+		readinessOnly?: boolean;
+		simulateFromAddress?: `0x${string}`;
+		infiniteApproval?: boolean;
+	},
+): PrepareOptions {
+	return {
+		lane: mcpWriteLane(env, extra),
+		readinessOnly: parsed.readinessOnly,
+		simulateFromAddress: parsed.simulateFromAddress,
+		infiniteApproval: parsed.infiniteApproval,
+		chain: mcpToolChain(env, args),
+	};
 }
 
 function preparePrice(args: Record<string, unknown>): number {
@@ -82,22 +108,23 @@ function registerPrepareTool(
 export function registerWriteTools(server: X402McpServer, env: Env) {
 	server.paidTool(
 		'check_subscribe_readiness',
-		'Check allowance, balance, and protocol rules before subscribing on Base mainnet',
+		'Check allowance, balance, and protocol rules before subscribing. Optional chainId, default Base (8453)',
 		API_PRICES.checkSubscribeReadiness,
 		{
 			from: addressSchema,
 			subscription: subscribeInputSchema.shape.subscription,
+			chainId: mcpChainIdSchema,
 		},
 		{ readOnlyHint: true },
-		async ({ from, subscription }) =>
+		async (args) =>
 			safeHandler('check_subscribe_readiness', async () => {
-				const { resolveChain } = await import('../chain.js');
-				const normalized = await normalizeSubscriptionAmount(env, subscription);
+				const chain = mcpToolChain(env, args);
+				const normalized = await normalizeSubscriptionAmount(env, args.subscription, chain);
 				const sub = toWriteSubscription(normalized);
 				const result = await checkSubscribeReadiness(
 					env,
-					resolveChain(env),
-					from as `0x${string}`,
+					chain,
+					args.from as `0x${string}`,
 					sub,
 				);
 				return textResult(result);
@@ -106,21 +133,22 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 
 	server.paidTool(
 		'check_subscribe_readiness_by_id',
-		'Check subscribe readiness using only a subscription id (loads amount/token from chain on Base mainnet)',
+		'Check subscribe readiness using only a subscription id (loads amount/token from chain). Optional chainId, default Base (8453)',
 		API_PRICES.checkSubscribeReadiness,
 		{
 			from: addressSchema,
 			id: bytes32Schema.describe('Subscription id; amount and token are loaded from chain'),
+			chainId: mcpChainIdSchema,
 		},
 		{ readOnlyHint: true },
-		async ({ from, id }) =>
+		async (args) =>
 			safeHandler('check_subscribe_readiness_by_id', async () => {
-				const { resolveChain } = await import('../chain.js');
-				const sub = await loadWriteSubscriptionById(env, id as `0x${string}`);
+				const chain = mcpToolChain(env, args);
+				const sub = await loadWriteSubscriptionById(env, args.id as `0x${string}`, chain);
 				const result = await checkSubscribeReadiness(
 					env,
-					resolveChain(env),
-					from as `0x${string}`,
+					chain,
+					args.from as `0x${string}`,
 					sub,
 				);
 				return textResult(result);
@@ -131,7 +159,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 		server,
 		env,
 		'prepare_create_subscription',
-		'Prepare unsigned createSubscription transaction on Base mainnet',
+		'Prepare unsigned createSubscription transaction. Optional chainId, default Base (8453)',
 		{
 			from: addressSchema,
 			amount: z.string().describe('Human amount in the token\'s native decimals (e.g. "100.5" for USDC)'),
@@ -141,16 +169,22 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 			dueDay: z.number().int(),
 			readinessOnly: readinessOnlySchema,
 			simulateFromAddress: simulateFromAddressSchema,
+			chainId: mcpChainIdSchema,
 		},
 		writeAnnotations,
 		async (args, extra) =>
 			safeHandler('prepare_create_subscription', async () => {
 				const parsed = createSubscriptionInputSchema.parse(args);
+				const chain = mcpToolChain(env, args);
 
-				const normalized = await normalizeSubscriptionAmount(env, {
-					amount: parsed.amount,
-					token: parsed.token,
-				});
+				const normalized = await normalizeSubscriptionAmount(
+					env,
+					{
+						amount: parsed.amount,
+						token: parsed.token,
+					},
+					chain,
+				);
 
 				return textResult(
 					await prepareCreateSubscription(
@@ -161,11 +195,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						toWriteDetails(parsed.details),
 						parsed.frequency,
 						parsed.dueDay,
-						{
-							lane: mcpWriteLane(env, extra),
-							readinessOnly: parsed.readinessOnly,
-							simulateFromAddress: parsed.simulateFromAddress,
-						},
+						mcpPrepareOptions(env, extra, args, parsed),
 					),
 				);
 			}),
@@ -175,32 +205,33 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 		server,
 		env,
 		'prepare_subscribe',
-		'Prepare unsigned subscribe transaction(s) including ERC20 approve when needed on Base mainnet. Approves the subscription amount by default; set infiniteApproval for max allowance.',
+		'Prepare unsigned subscribe transaction(s) including ERC20 approve when needed. Optional chainId, default Base (8453). Approves the subscription amount by default; set infiniteApproval for max allowance.',
 		{
 			from: addressSchema,
 			subscription: subscribeInputSchema.shape.subscription,
 			readinessOnly: readinessOnlySchema,
 			simulateFromAddress: simulateFromAddressSchema,
 			infiniteApproval: subscribeInputSchema.shape.infiniteApproval,
+			chainId: mcpChainIdSchema,
 		},
 		writeAnnotations,
 		async (args, extra) =>
 			safeHandler('prepare_subscribe', async () => {
 				const parsed = subscribeInputSchema.parse(args);
+				const chain = mcpToolChain(env, args);
 
-				const normalizedSubscription = await normalizeSubscriptionAmount(env, parsed.subscription);
+				const normalizedSubscription = await normalizeSubscriptionAmount(
+					env,
+					parsed.subscription,
+					chain,
+				);
 
 				return textResult(
 					await prepareSubscribe(
 						env,
 						parsed.from,
 						toWriteSubscription(normalizedSubscription),
-						{
-							lane: mcpWriteLane(env, extra),
-							readinessOnly: parsed.readinessOnly,
-							simulateFromAddress: parsed.simulateFromAddress,
-							infiniteApproval: parsed.infiniteApproval,
-						},
+						mcpPrepareOptions(env, extra, args, parsed),
 					),
 				);
 			}),
@@ -210,13 +241,14 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 		server,
 		env,
 		'prepare_subscribe_by_id',
-		'Prepare unsigned subscribe by subscription id only (loads amount/token from chain). Approves the subscription amount by default; set infiniteApproval for max allowance.',
+		'Prepare unsigned subscribe by subscription id only (loads amount/token from chain). Optional chainId, default Base (8453). Approves the subscription amount by default; set infiniteApproval for max allowance.',
 		{
 			from: addressSchema,
 			id: bytes32Schema.describe('Subscription id; amount and token are loaded from chain'),
 			readinessOnly: readinessOnlySchema,
 			simulateFromAddress: simulateFromAddressSchema,
 			infiniteApproval: subscribeByIdInputSchema.shape.infiniteApproval,
+			chainId: mcpChainIdSchema,
 		},
 		writeAnnotations,
 		async (args, extra) =>
@@ -228,12 +260,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						env,
 						parsed.from,
 						parsed.id,
-						{
-							lane: mcpWriteLane(env, extra),
-							readinessOnly: parsed.readinessOnly,
-							simulateFromAddress: parsed.simulateFromAddress,
-							infiniteApproval: parsed.infiniteApproval,
-						},
+						mcpPrepareOptions(env, extra, args, parsed),
 					),
 				);
 			}),
@@ -243,29 +270,31 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 		server,
 		env,
 		'prepare_cancel_subscription',
-		'Prepare unsigned cancelSubscription for the provider on Base mainnet',
+		'Prepare unsigned cancelSubscription for the provider. Optional chainId, default Base (8453)',
 		{
 			from: addressSchema,
 			subscription: subscriptionActionInputSchema.shape.subscription,
 			readinessOnly: readinessOnlySchema,
 			simulateFromAddress: simulateFromAddressSchema,
+			chainId: mcpChainIdSchema,
 		},
 		destructiveAnnotations,
 		async (args, extra) =>
 			safeHandler('prepare_cancel_subscription', async () => {
 				const parsed = subscriptionActionInputSchema.parse(args);
-				const normalizedSubscription = await normalizeSubscriptionAmount(env, parsed.subscription);
+				const chain = mcpToolChain(env, args);
+				const normalizedSubscription = await normalizeSubscriptionAmount(
+					env,
+					parsed.subscription,
+					chain,
+				);
 
 				return textResult(
 					await prepareCancelSubscription(
 						env,
 						parsed.from,
 						toWriteSubscription(normalizedSubscription),
-						{
-							lane: mcpWriteLane(env, extra),
-							readinessOnly: parsed.readinessOnly,
-							simulateFromAddress: parsed.simulateFromAddress,
-						},
+						mcpPrepareOptions(env, extra, args, parsed),
 					),
 				);
 			}),
@@ -275,12 +304,13 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 		server,
 		env,
 		'prepare_cancel_subscription_by_id',
-		'Prepare unsigned cancelSubscription using only subscription id (preferred)',
+		'Prepare unsigned cancelSubscription using only subscription id (preferred). Optional chainId, default Base (8453)',
 		{
 			from: addressSchema,
 			id: bytes32Schema.describe('Subscription id; remaining fields loaded from chain'),
 			readinessOnly: readinessOnlySchema,
 			simulateFromAddress: simulateFromAddressSchema,
+			chainId: mcpChainIdSchema,
 		},
 		destructiveAnnotations,
 		async (args, extra) =>
@@ -291,11 +321,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						env,
 						parsed.from,
 						parsed.id,
-						{
-							lane: mcpWriteLane(env, extra),
-							readinessOnly: parsed.readinessOnly,
-							simulateFromAddress: parsed.simulateFromAddress,
-						},
+						mcpPrepareOptions(env, extra, args, parsed),
 					),
 				);
 			}),
@@ -305,29 +331,31 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 		server,
 		env,
 		'prepare_unsubscribe',
-		'Prepare unsigned unsubscribe transaction for a subscriber on Base mainnet',
+		'Prepare unsigned unsubscribe transaction for a subscriber. Optional chainId, default Base (8453)',
 		{
 			from: addressSchema,
 			subscription: subscriptionActionInputSchema.shape.subscription,
 			readinessOnly: readinessOnlySchema,
 			simulateFromAddress: simulateFromAddressSchema,
+			chainId: mcpChainIdSchema,
 		},
 		destructiveAnnotations,
 		async (args, extra) =>
 			safeHandler('prepare_unsubscribe', async () => {
 				const parsed = subscriptionActionInputSchema.parse(args);
-				const normalizedSubscription = await normalizeSubscriptionAmount(env, parsed.subscription);
+				const chain = mcpToolChain(env, args);
+				const normalizedSubscription = await normalizeSubscriptionAmount(
+					env,
+					parsed.subscription,
+					chain,
+				);
 
 				return textResult(
 					await prepareUnsubscribe(
 						env,
 						parsed.from,
 						toWriteSubscription(normalizedSubscription),
-						{
-							lane: mcpWriteLane(env, extra),
-							readinessOnly: parsed.readinessOnly,
-							simulateFromAddress: parsed.simulateFromAddress,
-						},
+						mcpPrepareOptions(env, extra, args, parsed),
 					),
 				);
 			}),
@@ -337,12 +365,13 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 		server,
 		env,
 		'prepare_unsubscribe_by_id',
-		'Prepare unsigned unsubscribe using only subscription id (preferred)',
+		'Prepare unsigned unsubscribe using only subscription id (preferred). Optional chainId, default Base (8453)',
 		{
 			from: addressSchema,
 			id: bytes32Schema.describe('Subscription id; remaining fields loaded from chain'),
 			readinessOnly: readinessOnlySchema,
 			simulateFromAddress: simulateFromAddressSchema,
+			chainId: mcpChainIdSchema,
 		},
 		destructiveAnnotations,
 		async (args, extra) =>
@@ -353,11 +382,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						env,
 						parsed.from,
 						parsed.id,
-						{
-							lane: mcpWriteLane(env, extra),
-							readinessOnly: parsed.readinessOnly,
-							simulateFromAddress: parsed.simulateFromAddress,
-						},
+						mcpPrepareOptions(env, extra, args, parsed),
 					),
 				);
 			}),
@@ -367,19 +392,25 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 		server,
 		env,
 		'prepare_unsubscribe_by_provider',
-		'Prepare unsigned unsubscribeByProvider transaction on Base mainnet',
+		'Prepare unsigned unsubscribeByProvider transaction. Optional chainId, default Base (8453)',
 		{
 			from: addressSchema,
 			subscription: unsubscribeByProviderInputSchema.shape.subscription,
 			subscriber: addressSchema,
 			readinessOnly: readinessOnlySchema,
 			simulateFromAddress: simulateFromAddressSchema,
+			chainId: mcpChainIdSchema,
 		},
 		destructiveAnnotations,
 		async (args, extra) =>
 			safeHandler('prepare_unsubscribe_by_provider', async () => {
 				const parsed = unsubscribeByProviderInputSchema.parse(args);
-				const normalizedSubscription = await normalizeSubscriptionAmount(env, parsed.subscription);
+				const chain = mcpToolChain(env, args);
+				const normalizedSubscription = await normalizeSubscriptionAmount(
+					env,
+					parsed.subscription,
+					chain,
+				);
 
 				return textResult(
 					await prepareUnsubscribeByProvider(
@@ -387,11 +418,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						parsed.from,
 						toWriteSubscription(normalizedSubscription),
 						parsed.subscriber,
-						{
-							lane: mcpWriteLane(env, extra),
-							readinessOnly: parsed.readinessOnly,
-							simulateFromAddress: parsed.simulateFromAddress,
-						},
+						mcpPrepareOptions(env, extra, args, parsed),
 					),
 				);
 			}),
@@ -401,13 +428,14 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 		server,
 		env,
 		'prepare_unsubscribe_by_provider_by_id',
-		'Prepare unsigned unsubscribeByProvider using only subscription id + subscriber (preferred)',
+		'Prepare unsigned unsubscribeByProvider using only subscription id + subscriber (preferred). Optional chainId, default Base (8453)',
 		{
 			from: addressSchema,
 			id: bytes32Schema.describe('Subscription id; remaining fields loaded from chain'),
 			subscriber: addressSchema,
 			readinessOnly: readinessOnlySchema,
 			simulateFromAddress: simulateFromAddressSchema,
+			chainId: mcpChainIdSchema,
 		},
 		destructiveAnnotations,
 		async (args, extra) =>
@@ -419,11 +447,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						parsed.from,
 						parsed.id,
 						parsed.subscriber,
-						{
-							lane: mcpWriteLane(env, extra),
-							readinessOnly: parsed.readinessOnly,
-							simulateFromAddress: parsed.simulateFromAddress,
-						},
+						mcpPrepareOptions(env, extra, args, parsed),
 					),
 				);
 			}),
@@ -433,13 +457,14 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 		server,
 		env,
 		'prepare_edit_details',
-		'Prepare unsigned editDetails transaction on Base mainnet',
+		'Prepare unsigned editDetails transaction. Optional chainId, default Base (8453)',
 		{
 			from: addressSchema,
 			id: bytes32Schema,
 			details: editDetailsInputSchema.shape.details,
 			readinessOnly: readinessOnlySchema,
 			simulateFromAddress: simulateFromAddressSchema,
+			chainId: mcpChainIdSchema,
 		},
 		writeAnnotations,
 		async (args, extra) =>
@@ -451,11 +476,7 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 						parsed.from,
 						parsed.id,
 						toWriteDetails(parsed.details),
-						{
-							lane: mcpWriteLane(env, extra),
-							readinessOnly: parsed.readinessOnly,
-							simulateFromAddress: parsed.simulateFromAddress,
-						},
+						mcpPrepareOptions(env, extra, args, parsed),
 					),
 				);
 			}),
@@ -463,16 +484,19 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 
 	server.paidTool(
 		'check_remit_readiness',
-		'Check whether remit() is callable on Base mainnet (nextUncheckedDay, due subscription scan, pagination hints)',
+		'Check whether remit() is callable (nextUncheckedDay, due subscription scan, pagination hints). Optional chainId, default Base (8453)',
 		API_PRICES.checkRemitReadiness,
 		{
 			from: addressSchema,
+			chainId: mcpChainIdSchema,
 		},
 		{ readOnlyHint: true },
-		async ({ from }) =>
+		async (args) =>
 			safeHandler('check_remit_readiness', async () => {
-				const parsed = remitInputSchema.parse({ from });
-				return textResult(await checkRemitReadiness(env, parsed.from));
+				const parsed = remitInputSchema.parse({ from: args.from });
+				return textResult(
+					await checkRemitReadiness(env, parsed.from, mcpToolChain(env, args)),
+				);
 			}),
 	);
 
@@ -480,22 +504,19 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 		server,
 		env,
 		'prepare_remit',
-		'Prepare unsigned remit() transaction on Base mainnet (permissionless; earns caller fees in subscription tokens)',
+		'Prepare unsigned remit() transaction (permissionless; earns caller fees in subscription tokens). Optional chainId, default Base (8453)',
 		{
 			from: addressSchema,
 			readinessOnly: readinessOnlySchema,
 			simulateFromAddress: simulateFromAddressSchema,
+			chainId: mcpChainIdSchema,
 		},
 		destructiveAnnotations,
 		async (args, extra) =>
 			safeHandler('prepare_remit', async () => {
 				const parsed = remitInputSchema.parse(args);
 				return textResult(
-					await prepareRemit(env, parsed.from, {
-						lane: mcpWriteLane(env, extra),
-						readinessOnly: parsed.readinessOnly,
-						simulateFromAddress: parsed.simulateFromAddress,
-					}),
+					await prepareRemit(env, parsed.from, mcpPrepareOptions(env, extra, args, parsed)),
 				);
 			}),
 		(args) => getRemitPreparePrice(args.readinessOnly as boolean | undefined),
@@ -503,15 +524,22 @@ export function registerWriteTools(server: X402McpServer, env: Env) {
 
 	server.paidTool(
 		'get_transaction_status',
-		'Get confirmation status for a transaction hash on Base mainnet',
+		'Get confirmation status for a transaction hash. Optional chainId, default Base (8453)',
 		API_PRICES.getTransactionStatus,
 		{
 			txHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/),
+			chainId: mcpChainIdSchema,
 		},
 		{ readOnlyHint: true },
-		async ({ txHash }) =>
+		async (args) =>
 			safeHandler('get_transaction_status', async () =>
-				textResult(await getTransactionStatus(env, txHash as `0x${string}`)),
+				textResult(
+					await getTransactionStatus(
+						env,
+						args.txHash as `0x${string}`,
+						mcpToolChain(env, args),
+					),
+				),
 			),
 	);
 }

@@ -31,7 +31,7 @@ export const APPROVED_TOKENS_BY_CHAIN: Record<number, ApprovedTokenInfo[]> = {
   [BASE_CHAIN_ID]: BASE_APPROVED_TOKENS,
 };
 
-/** Base mainnet list (MCP is Base-only). Prefer getApprovedTokens(chainId) on REST. */
+/** Base mainnet list. Prefer getApprovedTokens(chainId) for chain-aware callers. */
 export const APPROVED_TOKENS: ApprovedTokenInfo[] = BASE_APPROVED_TOKENS;
 
 export function getApprovedTokens(chainId: number): ApprovedTokenInfo[] {

@@ -2,7 +2,8 @@ import type { X402McpServer } from './types.js';
 import { safeHandler } from './safeHandler.js';
 import { CLOCKTOWER_READ_ABI } from '../abi/clocktower.js';
 import { ERC20_ABI } from '../abi/erc20.js';
-import { BASE_CHAIN_ID, resolveChain, type ChainConfig } from '../chain.js';
+import { BASE_CHAIN_ID, listMcpChainCatalog, resolveChain, type ChainConfig } from '../chain.js';
+import { mcpChain, mcpChainIdSchema } from './mcpChain.js';
 import { createClocktowerClient } from '../client.js';
 import {
 	buildDayFrequencyProbes,
@@ -473,71 +474,115 @@ export async function listApprovedTokens(env: Env, protocolChain?: ChainConfig) 
 
 export function registerPaidTools(server: X402McpServer, env: Env) {
 	server.paidTool(
-		'get_protocol_state',
-		'Read Clocktower protocol fee configuration on Base mainnet',
-		TOOL_PRICE,
+		'list_chains',
+		'List protocol chains available to MCP tools. default is Base (8453); optional chainId on other tools selects a row with mcp: true',
+		API_PRICES.catalog,
 		{},
-		{},
+		{ readOnlyHint: true },
 		async () =>
-			safeHandler('get_protocol_state', async () => textResult(await getProtocolState(env))),
+			safeHandler('list_chains', async () =>
+				textResult({
+					chainId: BASE_CHAIN_ID,
+					chains: listMcpChainCatalog(),
+				}),
+			),
+	);
+
+	server.paidTool(
+		'get_protocol_state',
+		'Read Clocktower protocol fee configuration. Optional chainId, default Base (8453)',
+		TOOL_PRICE,
+		{ chainId: mcpChainIdSchema },
+		{},
+		async ({ chainId }) =>
+			safeHandler('get_protocol_state', async () =>
+				textResult(await getProtocolState(env, mcpChain(env, chainId as string | number | undefined))),
+			),
 	);
 
 	server.paidTool(
 		'get_subscription',
-		'Read a subscription by id from ClockTowerSubscribe on Base mainnet',
+		'Read a subscription by id. Optional chainId, default Base (8453)',
 		TOOL_PRICE,
 		{
 			id: bytes32Schema.describe('Subscription id (bytes32 hex)'),
+			chainId: mcpChainIdSchema,
 		},
 		{},
-		async ({ id }) =>
+		async ({ id, chainId }) =>
 			safeHandler('get_subscription', async () =>
-				textResult(await getSubscription(env, id as `0x${string}`)),
+				textResult(
+					await getSubscription(
+						env,
+						id as `0x${string}`,
+						mcpChain(env, chainId as string | number | undefined),
+					),
+				),
 			),
 	);
 
 	server.paidTool(
 		'get_account_subscriptions',
-		'List subscriptions for an account as provider or subscriber on Base mainnet',
+		'List subscriptions for an account as provider or subscriber. Optional chainId, default Base (8453)',
 		TOOL_PRICE,
 		{
 			bySubscriber: bySubscriberSchema,
 			account: addressSchema,
+			chainId: mcpChainIdSchema,
 		},
 		{},
-		async ({ bySubscriber, account }) =>
+		async ({ bySubscriber, account, chainId }) =>
 			safeHandler('get_account_subscriptions', async () =>
 				textResult(
-					await getAccountSubscriptions(env, bySubscriber as boolean, account as `0x${string}`),
+					await getAccountSubscriptions(
+						env,
+						bySubscriber as boolean,
+						account as `0x${string}`,
+						mcpChain(env, chainId as string | number | undefined),
+					),
 				),
 			),
 	);
 
 	server.paidTool(
 		'get_subscribers',
-		'List subscribers and fee balances for a subscription id on Base mainnet',
+		'List subscribers and fee balances for a subscription id. Optional chainId, default Base (8453)',
 		TOOL_PRICE,
 		{
 			id: bytes32Schema,
+			chainId: mcpChainIdSchema,
 		},
 		{},
-		async ({ id }) =>
+		async ({ id, chainId }) =>
 			safeHandler('get_subscribers', async () =>
-				textResult(await getSubscribers(env, id as `0x${string}`)),
+				textResult(
+					await getSubscribers(
+						env,
+						id as `0x${string}`,
+						mcpChain(env, chainId as string | number | undefined),
+					),
+				),
 			),
 	);
 
 	server.paidTool(
 		'get_approved_token',
-		'Read approved ERC20 token configuration from the Clocktower contract on Base mainnet',
+		'Read approved ERC20 token configuration from the Clocktower contract. Optional chainId, default Base (8453)',
 		TOOL_PRICE,
 		{
 			token: addressSchema,
+			chainId: mcpChainIdSchema,
 		},
 		{},
-		async ({ token }) =>
+		async ({ token, chainId }) =>
 			safeHandler('get_approved_token', async () =>
-				textResult(await getApprovedToken(env, token as `0x${string}`)),
+				textResult(
+					await getApprovedToken(
+						env,
+						token as `0x${string}`,
+						mcpChain(env, chainId as string | number | undefined),
+					),
+				),
 			),
 	);
 
@@ -545,59 +590,83 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 	// on-chain approvedERC20 mapping is not enumerable).
 	server.paidTool(
 		'list_approved_tokens',
-		'List ERC-20 tokens currently approved for use with Clocktower subscriptions',
+		'List ERC-20 tokens currently approved for Clocktower subscriptions. Optional chainId, default Base (8453)',
 		TOOL_PRICE,
+		{ chainId: mcpChainIdSchema },
 		{},
-		{},
-		async () =>
-			safeHandler('list_approved_tokens', async () => textResult(await listApprovedTokens(env))),
+		async ({ chainId }) =>
+			safeHandler('list_approved_tokens', async () =>
+				textResult(
+					await listApprovedTokens(env, mcpChain(env, chainId as string | number | undefined)),
+				),
+			),
 	);
 
 	server.paidTool(
 		'get_fee_balance',
-		'Get current fee balance for a subscriber on a specific subscription',
+		'Get current fee balance for a subscriber on a specific subscription. Optional chainId, default Base (8453)',
 		TOOL_PRICE,
 		{
 			id: bytes32Schema,
 			address: addressSchema,
+			chainId: mcpChainIdSchema,
 		},
 		{},
-		async ({ id, address }) =>
+		async ({ id, address, chainId }) =>
 			safeHandler('get_fee_balance', async () =>
-				textResult(await getFeeBalance(env, id as `0x${string}`, address as `0x${string}`)),
+				textResult(
+					await getFeeBalance(
+						env,
+						id as `0x${string}`,
+						address as `0x${string}`,
+						mcpChain(env, chainId as string | number | undefined),
+					),
+				),
 			),
 	);
 
 	server.paidTool(
 		'get_account',
-		'Get a complete enriched view of an account: subscriptions the address pays into (as subscribedTo, with personal fee balances) and subscriptions it created as provider (as created). Includes full token metadata, human-readable amounts, labels, and subscriber counts.',
+		'Get a complete enriched view of an account: subscriptions the address pays into (as subscribedTo, with personal fee balances) and subscriptions it created as provider (as created). Includes full token metadata, human-readable amounts, labels, and subscriber counts. Optional chainId, default Base (8453)',
 		API_PRICES.getAccount,
 		{
 			address: addressSchema,
+			chainId: mcpChainIdSchema,
 		},
 		{},
-		async ({ address }) =>
+		async ({ address, chainId }) =>
 			safeHandler('get_account', async () =>
-				textResult(await getAccount(env, address as `0x${string}`)),
+				textResult(
+					await getAccount(
+						env,
+						address as `0x${string}`,
+						mcpChain(env, chainId as string | number | undefined),
+					),
+				),
 			),
 	);
 
 	server.paidTool(
 		'get_subscriptions_due',
-		'Find subscription ids due on a given day by frequency on Base mainnet (mirrors caller remit scanning)',
+		'Find subscription ids due on a given day by frequency (mirrors caller remit scanning). Optional chainId, default Base (8453)',
 		API_PRICES.getSubscriptionsDue,
 		{
 			dayNumber: dayNumberSchema,
 			frequency: frequencySchema,
+			chainId: mcpChainIdSchema,
 		},
 		{},
-		async ({ dayNumber, frequency }) =>
+		async ({ dayNumber, frequency, chainId }) =>
 			safeHandler('get_subscriptions_due', async () =>
 				textResult(
-					await getSubscriptionsDue(env, {
-						dayNumber: dayNumber as number | undefined,
-						frequency: frequency as number | undefined,
-					}),
+					await getSubscriptionsDue(
+						env,
+						{
+							dayNumber: dayNumber as number | undefined,
+							frequency: frequency as number | undefined,
+						},
+						mcpChain(env, chainId as string | number | undefined),
+					),
 				),
 			),
 	);
@@ -609,7 +678,7 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 		server,
 		env,
 		'get_subscription_history',
-		'Get activity history (SubLog) for a specific subscription with formatting and pagination',
+		'Get activity history (SubLog) for a specific subscription with formatting and pagination. Optional chainId, default Base (8453)',
 		(args) =>
 			calculateSubscriptionHistoryPrice(
 				(args.first as number | undefined) ?? HISTORY_DEFAULT_LIMIT,
@@ -618,24 +687,26 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 			id: bytes32Schema,
 			first: z.coerce.number().int().min(1).max(200).optional(),
 			skip: z.coerce.number().int().min(0).optional(),
+			chainId: mcpChainIdSchema,
 		},
 		{},
-		async ({ id, first, skip }) =>
-			safeHandler('get_subscription_history', async () =>
-				textResult(
-					await getSubscriptionHistory(env, id as `0x${string}`, BASE_CHAIN_ID, {
+		async ({ id, first, skip, chainId }) =>
+			safeHandler('get_subscription_history', async () => {
+				const chain = mcpChain(env, chainId as string | number | undefined);
+				return textResult(
+					await getSubscriptionHistory(env, id as `0x${string}`, chain.chainId, {
 						first: first as number | undefined,
 						skip: skip as number | undefined,
 					}),
-				),
-			),
+				);
+			}),
 	);
 
 	registerDynamicPaidTool(
 		server,
 		env,
 		'get_account_activity',
-		'Get combined activity history across all subscriptions an account participates in (as subscriber or provider)',
+		'Get combined activity history across all subscriptions an account participates in (as subscriber or provider). Optional chainId, default Base (8453)',
 		(args) =>
 			calculateAccountActivityPrice(
 				(args.first as number | undefined) ?? HISTORY_DEFAULT_LIMIT,
@@ -644,52 +715,58 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 			address: addressSchema,
 			first: z.coerce.number().int().min(1).max(200).optional(),
 			skip: z.coerce.number().int().min(0).optional(),
+			chainId: mcpChainIdSchema,
 		},
 		{},
-		async ({ address, first, skip }) =>
-			safeHandler('get_account_activity', async () =>
-				textResult(
-					await getAccountActivity(env, address as `0x${string}`, BASE_CHAIN_ID, {
+		async ({ address, first, skip, chainId }) =>
+			safeHandler('get_account_activity', async () => {
+				const chain = mcpChain(env, chainId as string | number | undefined);
+				return textResult(
+					await getAccountActivity(env, address as `0x${string}`, chain.chainId, {
 						first: first as number | undefined,
 						skip: skip as number | undefined,
 					}),
-				),
-			),
+				);
+			}),
 	);
 
 	server.paidTool(
 		'get_provider_profile',
-		'Get the latest provider profile details (ProvDetailsLog)',
+		'Get the latest provider profile details (ProvDetailsLog). Optional chainId, default Base (8453)',
 		API_PRICES.providerProfile,
 		{
 			address: addressSchema,
+			chainId: mcpChainIdSchema,
 		},
 		{},
-		async ({ address }) =>
-			safeHandler('get_provider_profile', async () =>
-				textResult(await getProviderProfile(env, address as `0x${string}`, BASE_CHAIN_ID)),
-			),
+		async ({ address, chainId }) =>
+			safeHandler('get_provider_profile', async () => {
+				const chain = mcpChain(env, chainId as string | number | undefined);
+				return textResult(await getProviderProfile(env, address as `0x${string}`, chain.chainId));
+			}),
 	);
 
 	server.paidTool(
 		'get_subscription_details',
-		'Get current subscription url and description (latest DetailsLog)',
+		'Get current subscription url and description (latest DetailsLog). Optional chainId, default Base (8453)',
 		API_PRICES.subscriptionDetails,
 		{
 			id: bytes32Schema,
+			chainId: mcpChainIdSchema,
 		},
 		{},
-		async ({ id }) =>
-			safeHandler('get_subscription_details', async () =>
-				textResult(await getSubscriptionDetails(env, id as `0x${string}`, BASE_CHAIN_ID)),
-			),
+		async ({ id, chainId }) =>
+			safeHandler('get_subscription_details', async () => {
+				const chain = mcpChain(env, chainId as string | number | undefined);
+				return textResult(await getSubscriptionDetails(env, id as `0x${string}`, chain.chainId));
+			}),
 	);
 
 	registerDynamicPaidTool(
 		server,
 		env,
 		'search_subscriptions',
-		'Search and discover subscriptions (Create events + on-chain enrichment)',
+		'Search and discover subscriptions (Create events + on-chain enrichment). Optional chainId, default Base (8453)',
 		(args) =>
 			calculateSearchSubscriptionsPrice({
 				first: args.first as number | undefined,
@@ -703,6 +780,7 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 			includeDetails: z.boolean().optional(),
 			first: z.coerce.number().int().min(1).max(50).optional(),
 			skip: z.coerce.number().int().min(0).optional(),
+			chainId: mcpChainIdSchema,
 		},
 		{},
 		async (args, extra) =>
@@ -725,15 +803,19 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 					};
 				}
 				return textResult(
-					await searchSubscriptions(env, {
-						provider: args.provider as `0x${string}` | undefined,
-						token: args.token as `0x${string}` | undefined,
-						frequency: args.frequency as number | undefined,
-						cancelled: args.cancelled as boolean | undefined,
-						includeDetails: args.includeDetails as boolean | undefined,
-						first: args.first as number | undefined,
-						skip: args.skip as number | undefined,
-					}),
+					await searchSubscriptions(
+						env,
+						{
+							provider: args.provider as `0x${string}` | undefined,
+							token: args.token as `0x${string}` | undefined,
+							frequency: args.frequency as number | undefined,
+							cancelled: args.cancelled as boolean | undefined,
+							includeDetails: args.includeDetails as boolean | undefined,
+							first: args.first as number | undefined,
+							skip: args.skip as number | undefined,
+						},
+						mcpChain(env, args.chainId as string | number | undefined),
+					),
 				);
 			}),
 	);
@@ -742,7 +824,7 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 		server,
 		env,
 		'get_subscription_details_history',
-		'Get history of description/URL changes for a subscription (DetailsLog)',
+		'Get history of description/URL changes for a subscription (DetailsLog). Optional chainId, default Base (8453)',
 		(args) =>
 			calculateSubscriptionDetailsHistoryPrice(
 				(args.first as number | undefined) ?? HISTORY_DEFAULT_LIMIT,
@@ -751,16 +833,18 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 			id: bytes32Schema,
 			first: z.coerce.number().int().min(1).max(200).optional(),
 			skip: z.coerce.number().int().min(0).optional(),
+			chainId: mcpChainIdSchema,
 		},
 		{},
-		async ({ id, first, skip }) =>
-			safeHandler('get_subscription_details_history', async () =>
-				textResult(
-					await getSubscriptionDetailsHistory(env, id as `0x${string}`, BASE_CHAIN_ID, {
+		async ({ id, first, skip, chainId }) =>
+			safeHandler('get_subscription_details_history', async () => {
+				const chain = mcpChain(env, chainId as string | number | undefined);
+				return textResult(
+					await getSubscriptionDetailsHistory(env, id as `0x${string}`, chain.chainId, {
 						first: first as number | undefined,
 						skip: skip as number | undefined,
 					}),
-				),
-			),
+				);
+			}),
 	);
 }

@@ -6,10 +6,13 @@ import {
 	UnsupportedChainError,
 	getDefaultRestChainId,
 	listChainCatalog,
+	listMcpChainCatalog,
 	parseChainIdParam,
 	resolveChain,
+	resolveMcpChain,
 	resolveRestChain,
 } from '../src/chain.js';
+import { mcpChainIdSchema } from '../src/tools/mcpChain.js';
 import { validateEnv } from '../src/validation.js';
 
 const baseEnv = {
@@ -98,10 +101,74 @@ describe('resolveRestChain', () => {
 	});
 });
 
+describe('resolveMcpChain', () => {
+	it('defaults to Base when omitted or empty', () => {
+		expect(resolveMcpChain(baseEnv).chainId).toBe(BASE_CHAIN_ID);
+		expect(resolveMcpChain(baseEnv, null).chainId).toBe(BASE_CHAIN_ID);
+		expect(resolveMcpChain(baseEnv, undefined).chainId).toBe(BASE_CHAIN_ID);
+		expect(resolveMcpChain(baseEnv, '').chainId).toBe(BASE_CHAIN_ID);
+		expect(resolveMcpChain(baseEnv, '  ').chainId).toBe(BASE_CHAIN_ID);
+	});
+
+	it('accepts decimal, CAIP-2, and numeric Base ids', () => {
+		expect(resolveMcpChain(baseEnv, '8453').chainId).toBe(BASE_CHAIN_ID);
+		expect(resolveMcpChain(baseEnv, 'eip155:8453').caip2).toBe(BASE_CAIP2);
+		expect(resolveMcpChain(baseEnv, 8453).chainId).toBe(BASE_CHAIN_ID);
+	});
+
+	it('rejects unknown chains', () => {
+		expect(() => resolveMcpChain(baseEnv, '1')).toThrow(UnsupportedChainError);
+		expect(() => resolveMcpChain(baseEnv, 1)).toThrow(/Unsupported chainId 1/);
+		expect(() => resolveMcpChain(baseEnv, 'eip155:1')).toThrow(/Unsupported chainId 1/);
+	});
+
+	it('rejects malformed chainId values', () => {
+		expect(() => resolveMcpChain(baseEnv, 'not-a-chain')).toThrow(/chainId must/);
+		expect(() => resolveMcpChain(baseEnv, '0x2105')).toThrow(/chainId must/);
+	});
+
+	it('does not follow DEFAULT_REST_CHAIN_ID', () => {
+		expect(
+			resolveMcpChain({ ...baseEnv, DEFAULT_REST_CHAIN_ID: '1' }).chainId,
+		).toBe(BASE_CHAIN_ID);
+	});
+});
+
+describe('mcpChainIdSchema', () => {
+	it('accepts omitted, number, decimal string, and CAIP-2', () => {
+		expect(mcpChainIdSchema.parse(undefined)).toBeUndefined();
+		expect(mcpChainIdSchema.parse(8453)).toBe(8453);
+		expect(mcpChainIdSchema.parse('8453')).toBe('8453');
+		expect(mcpChainIdSchema.parse('eip155:8453')).toBe('eip155:8453');
+	});
+
+	it('rejects empty string, zero, and non-integers', () => {
+		expect(() => mcpChainIdSchema.parse('')).toThrow();
+		expect(() => mcpChainIdSchema.parse(0)).toThrow();
+		expect(() => mcpChainIdSchema.parse(8453.5)).toThrow();
+		expect(() => mcpChainIdSchema.parse({})).toThrow();
+	});
+});
+
 describe('listChainCatalog', () => {
 	it('marks Base as the REST default', () => {
 		const catalog = listChainCatalog(baseEnv);
 		expect(catalog).toEqual([
+			{
+				chainId: BASE_CHAIN_ID,
+				caip2: BASE_CAIP2,
+				name: 'base',
+				rest: true,
+				mcp: true,
+				default: true,
+			},
+		]);
+	});
+});
+
+describe('listMcpChainCatalog', () => {
+	it('marks Base as the MCP default', () => {
+		expect(listMcpChainCatalog()).toEqual([
 			{
 				chainId: BASE_CHAIN_ID,
 				caip2: BASE_CAIP2,

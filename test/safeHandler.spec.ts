@@ -7,6 +7,7 @@ import {
 } from 'viem';
 import { attachRequestId } from '../src/tx/prepare-response.js';
 import { safeHandler } from '../src/tools/safeHandler.js';
+import { UnsupportedChainError } from '../src/chain.js';
 
 const SAMPLE_ABI = [
 	{
@@ -103,6 +104,30 @@ describe('safeHandler', () => {
 		expect(payload.issues!.some((issue) => issue.message === 'Invalid Ethereum address')).toBe(
 			true,
 		);
+		expect(errorSpy).not.toHaveBeenCalled();
+	});
+
+	it('maps UnsupportedChainError to INVALID_INPUT without a requestId', async () => {
+		const result = await safeHandler('get_protocol_state', async () => {
+			throw new UnsupportedChainError('Unsupported chainId 1');
+		});
+
+		const payload = parseResult(result);
+		expect(payload.code).toBe('INVALID_INPUT');
+		expect(payload.error).toBe('Unsupported chainId 1');
+		expect(payload.requestId).toBeUndefined();
+		expect(errorSpy).not.toHaveBeenCalled();
+	});
+
+	it('maps chainId parse failures to INVALID_INPUT', async () => {
+		const result = await safeHandler('get_protocol_state', async () => {
+			throw new Error('chainId must be a decimal chain id or CAIP-2 eip155:<id>');
+		});
+
+		const payload = parseResult(result);
+		expect(payload.code).toBe('INVALID_INPUT');
+		expect(payload.error).toMatch(/chainId must/);
+		expect(payload.requestId).toBeUndefined();
 		expect(errorSpy).not.toHaveBeenCalled();
 	});
 

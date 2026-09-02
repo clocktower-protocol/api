@@ -1,7 +1,7 @@
 import type { Chain } from 'viem';
 import { base } from 'viem/chains';
 
-/** Base mainnet (CAIP-2: eip155:8453). MCP, x402, SIWE, and Builder always use this chain. */
+/** Base mainnet (CAIP-2: eip155:8453). MCP default, x402 payments, SIWE, and Builder. */
 export const BASE_CHAIN_ID = 8453 as const;
 
 export type BaseChainId = typeof BASE_CHAIN_ID;
@@ -80,9 +80,15 @@ export function parseChainIdParam(raw: string): number {
 	return chainId;
 }
 
+export type ChainIdInput = string | number | null | undefined;
+
+function parseChainIdInput(raw: string | number): number {
+	return parseChainIdParam(typeof raw === 'number' ? String(raw) : raw);
+}
+
 /**
  * REST default when the client omits `chainId`. Unset/empty → Base.
- * Does not apply to MCP, x402, SIWE, or Builder entitlement.
+ * Does not apply to MCP protocol tools, x402, SIWE, or Builder entitlement.
  */
 export function getDefaultRestChainId(env: Env): number {
 	const raw = env.DEFAULT_REST_CHAIN_ID?.trim();
@@ -130,9 +136,27 @@ export function getSubgraphUrl(env: Env, chainId: number): string | undefined {
 	return undefined;
 }
 
-/** Base mainnet only. Used by MCP, SIWE, and Builder entitlement. Ignores DEFAULT_REST_CHAIN_ID. */
+/** Base mainnet only. Used by SIWE and Builder entitlement. Ignores DEFAULT_REST_CHAIN_ID. */
 export function resolveChain(env: Env): ChainConfig {
 	return hydrateChain(env, BASE_SPEC);
+}
+
+function resolveRegisteredChain(
+	env: Env,
+	chainId: number,
+	surface: 'rest' | 'mcp',
+): ChainConfig {
+	const spec = getChainSpec(chainId);
+	if (!spec) {
+		throw new UnsupportedChainError(`Unsupported chainId ${chainId}`);
+	}
+	if (surface === 'rest' && !spec.restEnabled) {
+		throw new UnsupportedChainError(`Chain ${chainId} is not enabled for REST`);
+	}
+	if (surface === 'mcp' && !spec.mcpEnabled) {
+		throw new UnsupportedChainError(`Chain ${chainId} is not enabled for MCP`);
+	}
+	return hydrateChain(env, spec);
 }
 
 /**
@@ -142,14 +166,18 @@ export function resolveChain(env: Env): ChainConfig {
 export function resolveRestChain(env: Env, raw?: string | null): ChainConfig {
 	const chainId =
 		raw == null || raw.trim() === '' ? getDefaultRestChainId(env) : parseChainIdParam(raw);
-	const spec = getChainSpec(chainId);
-	if (!spec) {
-		throw new UnsupportedChainError(`Unsupported chainId ${chainId}`);
+	return resolveRegisteredChain(env, chainId, 'rest');
+}
+
+/**
+ * MCP protocol chain. Omitted/empty `raw` uses Base (8453), not DEFAULT_REST_CHAIN_ID.
+ * Accepts decimal, CAIP-2, or JSON number. Rejects unknown and MCP-disabled chains.
+ */
+export function resolveMcpChain(env: Env, raw?: ChainIdInput): ChainConfig {
+	if (raw == null || (typeof raw === 'string' && raw.trim() === '')) {
+		return resolveRegisteredChain(env, BASE_CHAIN_ID, 'mcp');
 	}
-	if (!spec.restEnabled) {
-		throw new UnsupportedChainError(`Chain ${chainId} is not enabled for REST`);
-	}
-	return hydrateChain(env, spec);
+	return resolveRegisteredChain(env, parseChainIdInput(raw), 'mcp');
 }
 
 export function listChainCatalog(env: Env): Array<{
@@ -168,5 +196,24 @@ export function listChainCatalog(env: Env): Array<{
 		rest: spec.restEnabled,
 		mcp: spec.mcpEnabled,
 		default: spec.chainId === defaultId,
+	}));
+}
+
+/** MCP `list_chains` catalog. `default` is always Base, not DEFAULT_REST_CHAIN_ID. */
+export function listMcpChainCatalog(): Array<{
+	chainId: number;
+	caip2: string;
+	name: string;
+	rest: boolean;
+	mcp: boolean;
+	default: boolean;
+}> {
+	return listChainSpecs().map((spec) => ({
+		chainId: spec.chainId,
+		caip2: spec.caip2,
+		name: spec.name,
+		rest: spec.restEnabled,
+		mcp: spec.mcpEnabled,
+		default: spec.chainId === BASE_CHAIN_ID,
 	}));
 }

@@ -1,6 +1,6 @@
 # Clocktower API Terms of Use
 
-**Last updated:** August 28, 2026
+**Last updated:** September 2, 2026
 
 These Terms of Use ("Terms") govern access to the hosted Clocktower API and MCP
 services operated by **Clocktower LLC** ("Clocktower", "we", "us"). They apply to
@@ -42,9 +42,11 @@ write helpers (unsigned calldata) for protocol operations.
 - **REST** defaults to **Base** (chain ID 8453). Protocol routes may accept
   optional `?chainId=` (decimal or CAIP-2) for REST-enabled chains listed in
   `GET /catalog`. Omitted `chainId` uses the server default (currently 8453).
-- **MCP**, **SIWE**, and **Builder entitlement** (when that lane is enabled)
-  stay on Base regardless of REST `chainId`. **x402** on MCP, when enabled,
-  is also Base-only.
+- **MCP** protocol tools may accept optional `chainId` (decimal, CAIP-2, or
+  JSON number) for MCP-enabled chains listed in `GET /catalog` / `list_chains`.
+  Omitted MCP `chainId` uses Base (8453) and does not follow the REST default.
+  **SIWE** and **Builder entitlement** (when that lane is enabled) stay on
+  Base. **x402** on MCP, when enabled, is also Base-only.
 - The server **does not** custody user keys, relay signed transactions, or
   broadcast transactions on your behalf. You sign and submit from your own
   wallet.
