@@ -8,6 +8,7 @@ import {
 } from '../config/entitlementBuilder.js';
 import { parseAccountSubscriptionRecord, parseSubscriptionRecord } from '../validation.js';
 import type { SessionRecord } from '../auth/session.js';
+import { STATUS_TYPES } from '../utils.js';
 
 async function isSubscribedToContent(
 	env: Env,
@@ -25,7 +26,10 @@ async function isSubscribedToContent(
 	const target = subscriptionId.toLowerCase();
 	return (raw as unknown[]).some((entry) => {
 		const parsed = parseAccountSubscriptionRecord(entry);
-		return parsed.subscription.id.toLowerCase() === target;
+		return (
+			parsed.subscription.id.toLowerCase() === target &&
+			parsed.status === STATUS_TYPES.ACTIVE
+		);
 	});
 }
 
