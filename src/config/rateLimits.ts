@@ -65,6 +65,7 @@ export const DEFAULT_TIER_LIMITS: Record<AccessLane, TierLimitConfig> = {
 
 const READINESS_PATHS = new Set([
 	'/api/check_subscribe_readiness',
+	'/api/check_subscribe_readiness_by_id',
 	'/api/check_remit_readiness',
 ]);
 

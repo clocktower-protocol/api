@@ -28,6 +28,11 @@ describe('tier rate limits config', () => {
 
 	it('classifies readiness checks', () => {
 		expect(classifyRoute('POST', '/api/check_subscribe_readiness')).toBe('readiness');
+		expect(classifyRoute('POST', '/api/check_subscribe_readiness_by_id')).toBe('readiness');
+		expect(classifyRoute('POST', '/api/check_remit_readiness')).toBe('readiness');
+		expect(usesWriteRateBucket(classifyRoute('POST', '/api/check_subscribe_readiness_by_id'))).toBe(
+			true,
+		);
 	});
 
 	it('classifies MCP JSON-RPC tools/call names', () => {
