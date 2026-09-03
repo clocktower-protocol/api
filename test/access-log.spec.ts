@@ -65,6 +65,9 @@ describe('access observability', () => {
 		expect(log).toHaveBeenCalled();
 		const line = String(log.mock.calls[0][0]);
 		expect(line).toContain('"type":"api_access"');
+		expect(line).toContain('"keyId":"key_1"');
+		expect(line).not.toContain('tokenHash');
+		expect(line).not.toContain('ctk_');
 		log.mockRestore();
 	});
 

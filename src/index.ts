@@ -13,7 +13,7 @@ import { withSecurityHeaders } from './securityHeaders.js';
 import { validateApiPostRequest, validateEnv, validateMcpRequest } from './validation.js';
 import { createApiApp, createApiAppForEnv } from './api/app.js';
 import { handleApiCorsPreflight, withApiCorsHeaders } from './cors.js';
-import { getRateLimitIdentity, resolveApiAccess } from './middleware/accessLane.js';
+import { accessLogKeyFields, getRateLimitIdentity, resolveApiAccess } from './middleware/accessLane.js';
 import { enforceBuilderPolicy, rewriteMePath } from './middleware/entitlementPolicy.js';
 import { enforceLanePolicy, mcpSearchPolicyResponse } from './middleware/freeTierPolicy.js';
 import { isApiKeyToken, verifyAdminSecret } from './auth/apiKeys.js';
@@ -206,8 +206,7 @@ async function handleRequest(
 		}
 
 		const access = await resolveApiAccess(routedRequest, env);
-		const keyId = access.apiKey?.id;
-		const subjectId = access.apiKey?.subjectId;
+		const { keyId, subjectId } = accessLogKeyFields(access);
 		const identity = getRateLimitIdentity(access, routedRequest);
 
 		if (access.authError) {
@@ -412,8 +411,7 @@ async function handleMcpPath(
 	}
 
 	const access = await resolveApiAccess(routedRequest, env);
-	const keyId = access.apiKey?.id;
-	const subjectId = access.apiKey?.subjectId;
+	const { keyId, subjectId } = accessLogKeyFields(access);
 	const identity = getRateLimitIdentity(access, routedRequest);
 
 	if (access.lane === 'builder') {

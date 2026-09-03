@@ -100,11 +100,31 @@ export function buildAccessEvent(input: {
 	};
 }
 
+function toLogPayload(event: AccessLogEvent): Record<string, string | number | null | undefined> {
+	return {
+		type: event.type,
+		ts: event.ts,
+		method: event.method,
+		route: event.route,
+		routeClass: event.routeClass,
+		lane: event.lane,
+		identity: event.identity,
+		keyId: event.keyId,
+		subjectId: event.subjectId,
+		status: event.status,
+		code: event.code,
+		bucket: event.bucket,
+		durationMs: event.durationMs,
+		requestId: event.requestId,
+		cfRay: event.cfRay,
+	};
+}
+
 export function recordAccess(env: Env, event: AccessLogEvent): void {
 	if (!observabilityEnabled(env)) return;
 
-	// Structured line for wrangler tail / Workers Logs / Logpush.
-	console.log(JSON.stringify(event));
+	// Allowlisted fields only — never stringify a key record (tokenHash) or bearer token.
+	console.log(JSON.stringify(toLogPayload(event)));
 
 	const dataset = env.API_ANALYTICS;
 	if (!dataset || typeof dataset.writeDataPoint !== 'function') return;

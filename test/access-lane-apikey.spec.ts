@@ -31,7 +31,7 @@ describe('developer API key access lane', () => {
 		const access = await resolveApiAccess(req, testEnv);
 		expect(access.authError).toBeUndefined();
 		expect(access.lane).toBe('developer');
-		expect(access.apiKey?.id).toBeTruthy();
+		expect(access.developerKey?.id).toBeTruthy();
 	});
 
 	it('returns 401 for invalid ctk_ key (not free)', async () => {
