@@ -58,15 +58,17 @@ export async function checkSubscribeReadiness(
 		return emptySubscribeReadiness(warnings, ['Subscription not found on chain']);
 	}
 
-	// ERC20 allowance/balance are read from the subscription token contract, not Clocktower.
-	const tokenAddress = subscription.token;
+	// ERC20 allowance/balance are read from the on-chain token, never a caller-supplied address.
+	const tokenAddress = onChainSubscription.token;
 	if (tokenAddress === ZERO_ADDRESS) {
 		return emptySubscribeReadiness(warnings, ['Subscription token is required']);
 	}
 
-	if (onChainSubscription.token !== ZERO_ADDRESS &&
-		onChainSubscription.token.toLowerCase() !== tokenAddress.toLowerCase()) {
-		errors.push('Subscription token does not match on-chain token');
+	if (
+		subscription.token !== ZERO_ADDRESS &&
+		onChainSubscription.token.toLowerCase() !== subscription.token.toLowerCase()
+	) {
+		return emptySubscribeReadiness(warnings, ['Subscription token does not match on-chain token']);
 	}
 
 	if (onChainSubscription.cancelled) {

@@ -178,4 +178,36 @@ describe('checkSubscribeReadiness', () => {
 		expect(result.needsApproval).toBe(false);
 		expect(result.ready).toBe(true);
 	});
+
+	it('does not eth_call a caller-supplied token that differs from chain', async () => {
+		const onChainProvider = '0x000000000000000000000000000000000000abcd';
+		const attackerToken = '0x000000000000000000000000000000000000beef' as const;
+		const fetchMock = createGasAwareFetch([mockIdSubMapResult(onChainProvider, USDC)]);
+		globalThis.fetch = fetchMock;
+
+		const result = await checkSubscribeReadiness(
+			testEnv,
+			resolveChain(testEnv),
+			FROM,
+			{
+				id: SUB_ID,
+				amount: 1n,
+				provider: onChainProvider,
+				token: attackerToken,
+				cancelled: false,
+				frequency: 1,
+				dueDay: 15,
+			},
+		);
+
+		expect(result.ready).toBe(false);
+		expect(result.errors).toContain('Subscription token does not match on-chain token');
+
+		const ethCallTargets = fetchMock.mock.calls
+			.map(([, init]) => parseEthCallTarget(init))
+			.filter((target): target is string => target !== null);
+
+		expect(ethCallTargets).toEqual([CLOCKTOWER.toLowerCase()]);
+		expect(ethCallTargets).not.toContain(attackerToken.toLowerCase());
+	});
 });
