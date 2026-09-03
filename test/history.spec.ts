@@ -11,6 +11,7 @@ import {
   searchSubscriptionCreates,
   HISTORY_DEFAULT_LIMIT,
   HISTORY_MAX_LIMIT,
+  HISTORY_MAX_SKIP,
 } from '../src/tools/history.js';
 
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
@@ -71,9 +72,10 @@ describe('history helpers (pure)', () => {
     expect(calculateSubscriptionHistoryPrice(200)).toBe(0.06);
   });
 
-  it('exports sane limit constants', () => {
+	it('exports sane limit constants', () => {
     expect(HISTORY_DEFAULT_LIMIT).toBe(100);
     expect(HISTORY_MAX_LIMIT).toBe(200);
+    expect(HISTORY_MAX_SKIP).toBe(10_000);
   });
 
   it('formatSubLogEvent produces frontend-style fields and applies view filtering', () => {
@@ -251,6 +253,34 @@ describe('history functions (mocked subgraph)', () => {
       expect.objectContaining({
         body: expect.stringContaining('"skip":10'),
       })
+    );
+  });
+
+  it('caps skip at HISTORY_MAX_SKIP before calling the subgraph', async () => {
+    await getSubscriptionHistory(baseEnv, sampleSubLog.internal_id as `0x${string}`, 8453, {
+      first: 5,
+      skip: 50_000,
+    });
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        body: expect.stringContaining('"skip":10000'),
+      }),
+    );
+  });
+
+  it('treats non-finite skip as 0', async () => {
+    await getSubscriptionHistory(baseEnv, sampleSubLog.internal_id as `0x${string}`, 8453, {
+      first: 5,
+      skip: Number.POSITIVE_INFINITY,
+    });
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        body: expect.stringContaining('"skip":0'),
+      }),
     );
   });
 

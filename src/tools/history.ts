@@ -450,17 +450,26 @@ export interface SearchCreatesOptions {
 
 const DEFAULT_HISTORY_LIMIT = 100;
 const MAX_HISTORY_LIMIT = 200;
+/** Max GraphQL offset. Unbounded skip forces The Graph to walk that many ordered rows. */
+const MAX_HISTORY_SKIP = 10_000;
 
 /**
  * Defense-in-depth normalization of pagination options.
  * Enforces non-negative values and hard caps even if callers bypass Zod.
  */
+function clampPageInt(value: number, max: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(Math.floor(value), max));
+}
+
 function normalizeHistoryOptions(options: HistoryOptions = {}): { first: number; skip: number } {
   const rawFirst = options.first ?? DEFAULT_HISTORY_LIMIT;
   const rawSkip = options.skip ?? 0;
 
-  const first = Math.max(0, Math.min(Math.floor(rawFirst), MAX_HISTORY_LIMIT));
-  const skip = Math.max(0, Math.floor(rawSkip));
+  const first = clampPageInt(rawFirst, MAX_HISTORY_LIMIT);
+  const skip = clampPageInt(rawSkip, MAX_HISTORY_SKIP);
 
   return { first, skip };
 }
@@ -807,6 +816,7 @@ export async function getSubscriptionDetailsHistory(
 
 export const HISTORY_DEFAULT_LIMIT = DEFAULT_HISTORY_LIMIT;
 export const HISTORY_MAX_LIMIT = MAX_HISTORY_LIMIT;
+export const HISTORY_MAX_SKIP = MAX_HISTORY_SKIP;
 
 export {
 	calculateAccountActivityPrice,

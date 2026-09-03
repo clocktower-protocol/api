@@ -38,6 +38,7 @@ import {
   getSubscriptionDetails,
   getSubscriptionDetailsHistory,
   HISTORY_DEFAULT_LIMIT,
+  HISTORY_MAX_SKIP,
 } from './history.js';
 import { searchSubscriptions } from './discovery.js';
 import {
@@ -686,7 +687,7 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 		{
 			id: bytes32Schema,
 			first: z.coerce.number().int().min(1).max(200).optional(),
-			skip: z.coerce.number().int().min(0).optional(),
+			skip: z.coerce.number().int().min(0).max(HISTORY_MAX_SKIP).optional(),
 			chainId: mcpChainIdSchema,
 		},
 		{},
@@ -714,7 +715,7 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 		{
 			address: addressSchema,
 			first: z.coerce.number().int().min(1).max(200).optional(),
-			skip: z.coerce.number().int().min(0).optional(),
+			skip: z.coerce.number().int().min(0).max(HISTORY_MAX_SKIP).optional(),
 			chainId: mcpChainIdSchema,
 		},
 		{},
@@ -832,7 +833,7 @@ export function registerPaidTools(server: X402McpServer, env: Env) {
 		{
 			id: bytes32Schema,
 			first: z.coerce.number().int().min(1).max(200).optional(),
-			skip: z.coerce.number().int().min(0).optional(),
+			skip: z.coerce.number().int().min(0).max(HISTORY_MAX_SKIP).optional(),
 			chainId: mcpChainIdSchema,
 		},
 		{},
