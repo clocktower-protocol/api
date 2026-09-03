@@ -6,7 +6,7 @@
 
 Clocktower API is a Cloudflare Workers-based server that provides access to the Clocktower Protocol (a subscription management system) through a REST API and the Model Context Protocol (MCP). The Worker name is `clocktower-api` (see `wrangler.jsonc`). REST and MCP can each select a protocol chain; both default to Base.
 
-Access uses **REST** lanes (free IP, developer API key) and **MCP** with the same free IP / `ctk_` developer-key lanes by default. Set `MCP_X402_ENABLED=true` to restore per-tool x402 payments on MCP.
+Access uses **REST** and **MCP** with the same lanes: free IP limits, or a developer API key (`Authorization: Bearer ctk_…`).
 
 **Jump to:** [MCP Server](#mcp-server) · [REST API](#rest-api)
 
@@ -17,31 +17,29 @@ One Cloudflare Worker serves both surfaces on dedicated subdomains:
 | Host | Surface | Example |
 |------|---------|---------|
 | `https://api.clocktower.finance` | REST API | `GET /catalog`, `GET /protocol/state` |
-| `https://mcp.clocktower.finance` | MCP (free IP / `ctk_` keys; x402 opt-in) | `GET /` or `GET /mcp` |
+| `https://mcp.clocktower.finance` | MCP (free IP / `ctk_` keys) | `GET /` or `GET /mcp` |
 
 On the API host, paths **omit** the `/api` prefix (e.g. `GET /catalog` instead of `GET /api/catalog`). Legacy `*.workers.dev` URLs keep the `/api` and `/mcp` path prefixes for local dev and staging.
 
 ## Overview
 
-- **Protocol**: Clocktower on Base mainnet today (`eip155:8453`). REST accepts optional `?chainId=` (decimal or CAIP-2); omitted uses `DEFAULT_REST_CHAIN_ID` (default 8453). MCP protocol tools accept optional `chainId` (number, decimal, or CAIP-2); omitted uses Base `8453` (not `DEFAULT_REST_CHAIN_ID`). SIWE, Builder entitlement, and x402 payments stay on Base.
+- **Protocol**: Clocktower on Base mainnet today (`eip155:8453`). REST accepts optional `?chainId=` (decimal or CAIP-2); omitted uses `DEFAULT_REST_CHAIN_ID` (default 8453). MCP protocol tools accept optional `chainId` (number, decimal, or CAIP-2); omitted uses Base `8453` (not `DEFAULT_REST_CHAIN_ID`). SIWE and Builder entitlement stay on Base.
 - **Hosting**: Cloudflare Workers + Durable Objects
 - **Interfaces**:
-  - MCP Server at `mcp.clocktower.finance` (for AI agents — free IP or developer API keys by default; x402 when `MCP_X402_ENABLED=true`)
+  - MCP Server at `mcp.clocktower.finance` (for AI agents — free IP or developer API keys)
   - REST API at `api.clocktower.finance` (free IP limits, free developer API keys)
 
 ## Access tiers
 
 | Lane | Surface | Auth | Default limits (approx.) |
 |------|---------|------|---------------------------|
-| **Free** | REST and MCP (x402 off) | None (IP) | 20 rpm; expensive 3 rpm; subgraph 100/day; **prepare 2/min · 20/day**; **500 req/day**; search `first` ≤ 10; no `includeDetails` |
-| **Developer** | REST and MCP (x402 off) | API key `Authorization: Bearer ctk_…` | 80 rpm; expensive 40; subgraph 3k/day; **prepare 5/min · 100/day**; **5k req/day**; search `first` ≤ 25; `includeDetails` allowed |
-| **Agent** | MCP when `MCP_X402_ENABLED=true` | x402 (USDC on Base) | 300 rpm; write 60/min — **not API keys** |
+| **Free** | REST and MCP | None (IP) | 20 rpm; expensive 3 rpm; subgraph 100/day; **prepare 2/min · 20/day**; **500 req/day**; search `first` ≤ 10; no `includeDetails` |
+| **Developer** | REST and MCP | API key `Authorization: Bearer ctk_…` | 80 rpm; expensive 40; subgraph 3k/day; **prepare 5/min · 100/day**; **5k req/day**; search `first` ≤ 25; `includeDetails` allowed |
 
 - **Free**: Highly metered try-without-signup path. Exploration and light reads.
 - **Developer**: Free API keys for integrators — **higher read limits**. Keys are **hashed at rest**; plaintext shown **once** on create. Mint/list/revoke is **admin/portal-only** (`DEVELOPER_KEYS_ADMIN_SECRET`) via `POST/GET/DELETE /developer/keys` (GET without `subjectId` lists all keys; GET `/:id` returns one).
 - **Prepare / readiness** (free + developer): intentionally tight. Full prepare runs on-chain **simulation + gas estimate** (Alchemy cost) even though the server never relays the tx. For **production write volume**, use the **SDK with your own RPC**. Free/developer keys are not a free dry-run farm.
-- **MCP (default)**: Same free IP and `ctk_` developer-key lanes as REST (invalid `ctk_` → 401, not free). No SIWE/Builder on MCP.
-- **MCP (x402 on)**: Set `MCP_X402_ENABLED=true` to restore per-tool USDC micropayments. Do not send `ctk_` keys to MCP for auth in that mode.
+- **MCP**: Same free IP and `ctk_` developer-key lanes as REST (invalid `ctk_` → 401, not free). No SIWE/Builder on MCP.
 
 **Abuse / DoS controls (REST):** request body size + JSON depth caps; per-lane Durable Object rate limits (global / expensive / write RPM / **write daily** / subgraph daily / **daily total**); secondary **IP ceiling**; **auth-fail RPM** on invalid `ctk_` keys (401, not free fallback); max keys per subject; admin create rate limits.
 
@@ -69,30 +67,9 @@ Staging / local dev (path-based):
 https://your-worker.your-subdomain.workers.dev/mcp
 ```
 
-**Chain selection:** protocol tools accept optional `chainId` (`8453`, `"8453"`, or `"eip155:8453"`). Omitted uses Base (`8453`), not `DEFAULT_REST_CHAIN_ID`. Unknown or MCP-disabled values return tool error `INVALID_INPUT`. Call `list_chains` (or REST `GET /catalog` → `chains[].mcp`) to see which chains are MCP-enabled. x402 payments, when enabled, still settle in USDC on Base.
+**Chain selection:** protocol tools accept optional `chainId` (`8453`, `"8453"`, or `"eip155:8453"`). Omitted uses Base (`8453`), not `DEFAULT_REST_CHAIN_ID`. Unknown or MCP-disabled values return tool error `INVALID_INPUT`. Call `list_chains` (or REST `GET /catalog` → `chains[].mcp`) to see which chains are MCP-enabled.
 
 ### Tools
-
-Tools are organized into two categories:
-
-**MCP x402 pricing when enabled** (`MCP_X402_ENABLED=true`; USD, USDC on Base). REST `/api` is free (rate-limited). Canonical values live in `src/api/pricing.ts`. When x402 is off (the shipped default), these tools run unpaid under REST free/developer limits.
-
-| Tool | MCP price |
-|------|-----------|
-| `list_chains` | $0.01 |
-| `get_protocol_state`, `get_subscription`, `get_account_subscriptions`, `get_subscribers`, `get_approved_token`, `list_approved_tokens`, `get_fee_balance` | $0.01 |
-| `get_subscriptions_due` | $0.02 |
-| **`get_account`** (enriched; fee balance per subscribed sub) | **$0.03** |
-| `get_subscription_details`, `get_provider_profile` | $0.02 |
-| `get_subscription_history` | **$0.03** + **$0.01 per 50 rows** (`first`, max 200 → $0.06) |
-| `get_subscription_details_history` | **$0.02** + **$0.01 per 50 rows** (max → $0.05) |
-| `get_account_activity` | **$0.04** + **$0.01 per 50 rows** (max → $0.07; two subgraph queries) |
-| `search_subscriptions` | **$0.05** + **$0.01 × `first`** (max 50) + **$0.01** if `includeDetails` |
-| `check_subscribe_readiness`, `get_transaction_status` | $0.01 |
-| `check_remit_readiness` | $0.02 |
-| `prepare_*` full (simulation + gas) | $0.02 |
-| `prepare_*` with `readinessOnly: true` | $0.01 (remit: $0.02) |
-| `prepare_remit` full | $0.03 |
 
 **Read Tools**
 - `list_chains` — Protocol chains available to MCP (`default` is Base; pass `chainId` on other tools when `mcp` is true)
@@ -135,7 +112,7 @@ All history results are server-side limited (max 200 records, recommended ~100 p
 - `prepare_remit` — Prepare permissionless `remit()` (earns caller fees in subscription ERC-20 tokens)
 - `get_transaction_status` — Poll confirmation status for a transaction hash after client-side broadcast
 
-**Write workflow:** prepare (or readiness check) → sign in wallet → broadcast from wallet → optionally poll `get_transaction_status`. The server returns unsigned calldata and never relays signed transactions. Each full prepare runs on-chain simulation and gas estimation on the selected chain (REST `?chainId=` or `DEFAULT_REST_CHAIN_ID`; MCP optional `chainId`, default Base). When x402 is on, failed simulation or validation throws so settlement does not charge you.
+**Write workflow:** prepare (or readiness check) → sign in wallet → broadcast from wallet → optionally poll `get_transaction_status`. The server returns unsigned calldata and never relays signed transactions. Each full prepare runs on-chain simulation and gas estimation on the selected chain (REST `?chainId=` or `DEFAULT_REST_CHAIN_ID`; MCP optional `chainId`, default Base).
 
 **Remit flow:** `check_remit_readiness` → `prepare_remit` → sign → broadcast from wallet → repeat until readiness reports caught up. One `remit()` clears at most `maxRemits` subscriber payments per transaction. When the backlog needs multiple broadcasts, `preflight.expectedTransactions`, `gasSummary.backlogMultiplier`, and `warnings` describe the total gas budget. Remit can be gas-heavy on large backlogs — the caller pays gas (unlike the operator cron bot). Use `get_subscriptions_due` for a lightweight single-day read; use `check_remit_readiness` before preparing a remit tx.
 
@@ -151,14 +128,14 @@ Full prepare responses (default) include:
 | `unsignedTransactions` | Calldata for the wallet to sign (`to`, `data`, `value`, `chainId`, `from`). |
 | `signingMode` | `raw` for a single tx, or `eip5792` when multiple steps are needed (e.g. approve + subscribe). |
 | `eip5792` | Batch descriptor when `signingMode` is `eip5792`. |
-| `simulation` | On-chain simulation results (must succeed before a full prepare is returned; when x402 is on, settlement only runs after success). |
+| `simulation` | On-chain simulation results (must succeed before a full prepare is returned). |
 | `gasEstimates` | Per-transaction gas budget on the selected chain: `gasLimit`, EIP-1559 fees, `estimatedCostWei` / `estimatedCostEth`, and `source` (`simulated` or `heuristic` fallback). |
 | `gasSummary` | Aggregated totals across `gasEstimates`. For remit backlogs, includes `backlogMultiplier`, `totalBacklogEstimatedCostWei`, and `totalBacklogEstimatedCostEth` when multiple broadcasts are expected. |
 | `preflight` | Operation-specific context (allowance, remit queue size, etc.). |
 
 Optional request fields on any `prepare_*` call (REST body or MCP tool argument):
 
-- **`readinessOnly: true`** — run preflight/readiness checks only; no unsigned transactions, simulation, or gas estimates. Response uses `readinessOnly: true` with `ready`, `errors`, `warnings`, `details`, and `instructions`. When MCP x402 is on, billed at the readiness tier ($0.01; remit readiness path $0.02) instead of full prepare.
+- **`readinessOnly: true`** — run preflight/readiness checks only; no unsigned transactions, simulation, or gas estimates. Response uses `readinessOnly: true` with `ready`, `errors`, `warnings`, `details`, and `instructions`. Counts against the same write/prepare limits as a full prepare.
 - **`simulateFromAddress`** — optional `0x` address passed to `eth_estimateGas` when the signing wallet differs from the account that will broadcast (defaults to `from`).
 - **`chainId`** (MCP only) — optional protocol chain (`8453`, `"8453"`, or `"eip155:8453"`). Omitted uses Base. REST uses `?chainId=` on the query string, not the JSON body.
 
@@ -198,17 +175,11 @@ For remit backlogs, `gasSummary` may also include `backlogMultiplier`, `totalBac
 
 Include `requestId` when reporting prepare issues. Write errors from the prepare layer may also return `requestId` for log correlation.
 
-### Payments (MCP)
-
-By default (`MCP_X402_ENABLED` unset or `false`), MCP tools are unpaid and use the same free IP / developer API key access as REST.
-
-When `MCP_X402_ENABLED=true`, MCP tools are paid using the x402 protocol. Your MCP client must support sending USDC payments on Base when calling tools.
-
 ---
 
 ## REST API
 
-The REST API provides the same capabilities as the MCP tools over standard HTTP. **No x402 payment is required** — access is controlled by free rate limits and optional developer API keys.
+The REST API provides the same capabilities as the MCP tools over standard HTTP. Access is controlled by free rate limits and optional developer API keys.
 
 **Base URL**: `https://api.clocktower.finance` (paths omit `/api`; e.g. `GET /catalog`).
 
@@ -222,7 +193,6 @@ Staging / local dev: `https://your-worker.workers.dev/api/...`
 |--------|------|
 | None | Free tier — call any allowed endpoint directly |
 | `Authorization: Bearer ctk_…` | Developer tier — free API key |
-| x402 | **Not used on REST**. MCP only when `MCP_X402_ENABLED=true` |
 
 Optional HTTP Basic Auth on `/api` is controlled by `API_REQUIRE_BASIC_AUTH` (default **`false`**).
 
@@ -272,7 +242,7 @@ Subgraph errors return a graceful response containing an `error` field rather th
 
 **Design Notes**
 - **Cost Model**: History endpoints hit the **expensive rate bucket** and subgraph daily cap because they perform external The Graph queries + data transfer.
-- **No Raw GraphQL Proxy**: We intentionally did **not** expose a low-level `/graph` passthrough proxy. All access goes through high-level, shaped, paid endpoints with formatting, limits, and normalization. This matches the original design goal of consistency and cost control.
+- **No Raw GraphQL Proxy**: We intentionally did **not** expose a low-level `/graph` passthrough proxy. All access goes through high-level, shaped, rate-limited endpoints with formatting, limits, and normalization. This matches the original design goal of consistency and cost control.
 
 **Security Notes (History Endpoints)**
 - All subgraph errors are sanitized. No `GRAPH_API_KEY` or sensitive material is ever returned to clients.
@@ -340,12 +310,11 @@ This repository is open source ([MIT License](LICENSE)) for audit and transparen
 ## Security & Rate Limiting
 
 - **REST kill switch** — set `API_ENABLED=false` to block `/api/*` without redeploying (MCP unaffected)
-- **Tier-aware rate limits** — separate buckets for free, developer, and MCP lanes
+- **Tier-aware rate limits** — separate buckets for free and developer lanes (REST and MCP share them)
 - **Expensive route bucket** — subgraph-heavy endpoints (history, discovery, cross-account reads)
 - **Subgraph daily caps** — per-IP (free) or per-key (developer)
 - Per-address write rate limiting on prepare (keyed on `from`, lane-specific)
 - Geo-blocking support
-- MCP: when x402 is on, write simulation before settlement; payments only settle on success
 - **Caching**: subgraph responses (45s TTL), public GET edge cache on free-tier protocol state
 
 ### Cloudflare edge protections (configure in dashboard)

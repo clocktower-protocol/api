@@ -110,7 +110,7 @@ Machine-readable tier manifest: `GET /catalog` (or `/api/catalog` on workers.dev
 
 - Flag: `MCP_X402_ENABLED` (`src/config/mcpX402.ts`). Only `'true'` enables payments; shipped default is off.
 - When off: MCP uses REST free/developer buckets (`classifyMcpJsonRpc` in `src/config/rateLimits.ts`).
-- When on: `src/api/pricing.ts` + tests; update README if public prices change.
+- When on: `src/api/pricing.ts` + tests. Keep x402 prices out of README while the shipped default is off.
 
 **Auth / SIWE**
 
