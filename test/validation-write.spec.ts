@@ -3,6 +3,7 @@ import {
 	createSubscriptionInputSchema,
 	detailsSchema,
 	humanAmountSchema,
+	HUMAN_AMOUNT_MAX_CHARS,
 	remitInputSchema,
 	subscribeByIdInputSchema,
 	subscriptionActionByIdInputSchema,
@@ -15,6 +16,15 @@ describe('validation-write', () => {
 	it('accepts human-readable decimal amount strings', () => {
 		expect(humanAmountSchema.parse('1.5')).toBe('1.5');
 		expect(humanAmountSchema.parse('10')).toBe('10');
+		expect(humanAmountSchema.parse('1'.repeat(HUMAN_AMOUNT_MAX_CHARS))).toBe(
+			'1'.repeat(HUMAN_AMOUNT_MAX_CHARS),
+		);
+	});
+
+	it('rejects amount strings longer than HUMAN_AMOUNT_MAX_CHARS', () => {
+		expect(humanAmountSchema.safeParse('1'.repeat(HUMAN_AMOUNT_MAX_CHARS + 1)).success).toBe(
+			false,
+		);
 	});
 
 	it('subscription.amount accepts human strings only (not protocol bigint / numbers)', () => {

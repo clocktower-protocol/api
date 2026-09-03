@@ -83,8 +83,12 @@ export function validateDueDayForFrequency(frequency: number, dueDay: number): s
 	return null;
 }
 
+/** Caps parseUnits CPU. 78 chars covers uint256 decimal integers and normal human amounts. */
+export const HUMAN_AMOUNT_MAX_CHARS = 78;
+
 export const humanAmountSchema = z
 	.string()
+	.max(HUMAN_AMOUNT_MAX_CHARS, `Amount must be at most ${HUMAN_AMOUNT_MAX_CHARS} characters`)
 	.regex(/^\d+(\.\d+)?$/, 'Amount must be a decimal string')
 	.describe(
 		'Human-readable token amount (e.g. "10" or "100.5"), not protocol 18-dec wei and not amountRaw',
