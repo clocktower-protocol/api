@@ -74,6 +74,14 @@ describe('tier rate limits config', () => {
 		expect(
 			classifyMcpJsonRpc({ method: 'tools/call', params: { name: 'get_subscription_details' } }),
 		).toBe('expensive');
+		expect(
+			classifyMcpJsonRpc([
+				{
+					method: 'tools/call',
+					params: { name: 'prepare_subscribe' },
+				},
+			]),
+		).toBe('cheap');
 	});
 
 	it('applies the write rate bucket to readiness routes', () => {

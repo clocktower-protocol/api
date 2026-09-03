@@ -155,7 +155,7 @@ async function validateJsonPostBody(request: Request): Promise<Response | null> 
 		return Response.json({ error: 'Invalid JSON in request body' }, { status: 400 });
 	}
 
-	if (typeof body !== 'object' || body === null) {
+	if (typeof body !== 'object' || body === null || Array.isArray(body)) {
 		return Response.json({ error: 'Request body must be a JSON object' }, { status: 400 });
 	}
 

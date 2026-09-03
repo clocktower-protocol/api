@@ -235,7 +235,7 @@ const MCP_EXPENSIVE_TOOLS = new Set([
 ]);
 
 function mcpToolNameFromJsonRpc(body: unknown): string | null {
-	if (!body || typeof body !== 'object') {
+	if (!body || typeof body !== 'object' || Array.isArray(body)) {
 		return null;
 	}
 	const rec = body as Record<string, unknown>;
@@ -252,7 +252,7 @@ function mcpToolNameFromJsonRpc(body: unknown): string | null {
 
 /** JSON-RPC `params.arguments` for MCP `tools/call`. */
 export function mcpToolArgumentsFromJsonRpc(body: unknown): Record<string, unknown> | null {
-	if (!body || typeof body !== 'object') {
+	if (!body || typeof body !== 'object' || Array.isArray(body)) {
 		return null;
 	}
 	const rec = body as Record<string, unknown>;

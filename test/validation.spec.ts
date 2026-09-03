@@ -128,6 +128,16 @@ describe('validateApiPostRequest', () => {
 		const response = await validateApiPostRequest(request);
 		expect(response?.status).toBe(413);
 	});
+
+	it('rejects JSON array bodies', async () => {
+		const request = new Request('http://example.com/api/prepare/subscribe', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify([{ from: '0x0000000000000000000000000000000000000001' }]),
+		});
+		const response = await validateApiPostRequest(request);
+		expect(response?.status).toBe(400);
+	});
 });
 
 describe('validateMcpRequest', () => {
@@ -175,6 +185,25 @@ describe('validateMcpRequest', () => {
 	it('allows GET requests without a body', async () => {
 		const request = new Request('http://example.com/mcp', { method: 'GET' });
 		expect(await validateMcpRequest(request)).toBeNull();
+	});
+
+	it('rejects JSON-RPC batch arrays', async () => {
+		const request = new Request('http://example.com/mcp', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify([
+				{
+					jsonrpc: '2.0',
+					method: 'tools/call',
+					params: { name: 'prepare_subscribe', arguments: {} },
+					id: 1,
+				},
+			]),
+		});
+		const response = await validateMcpRequest(request);
+		expect(response?.status).toBe(400);
+		const body = (await response!.json()) as { error?: string };
+		expect(body.error).toMatch(/JSON object/i);
 	});
 
 	// M6: chunked POST with no content-length must still be rejected before
