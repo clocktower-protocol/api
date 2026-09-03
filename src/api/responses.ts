@@ -22,6 +22,11 @@ export type ApiError = {
 };
 
 export function jsonResponse(data: unknown, status = 200): Response {
+  // Never serialize an Error (message/stack/cause) into the HTTP body.
+  if (data instanceof Error) {
+    console.error('jsonResponse refused Error instance', data);
+    return errorResponse('Upstream error', 'UPSTREAM_ERROR', 500);
+  }
   return new Response(serializeJson(data), {
     status,
     headers: { 'Content-Type': 'application/json' },

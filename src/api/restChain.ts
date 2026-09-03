@@ -1,5 +1,6 @@
 import type { Context, Next } from 'hono';
 import {
+	parseChainIdParam,
 	resolveRestChain,
 	UnsupportedChainError,
 	type ChainConfig,
@@ -11,22 +12,28 @@ export type ApiBindings = {
 	Variables: { chain: ChainConfig };
 };
 
-export function restChainErrorResponse(err: unknown): Response {
+export function restChainErrorResponse(err: unknown, rawChainId?: string): Response {
 	if (err instanceof UnsupportedChainError) {
-		return Errors.validation(err.message);
+		const raw = rawChainId?.trim();
+		if (raw) {
+			try {
+				return Errors.validation(`Unsupported chainId ${parseChainIdParam(raw)}`);
+			} catch {
+				return Errors.validation('Unsupported or disabled chainId');
+			}
+		}
+		return Errors.validation('Unsupported or disabled chainId');
 	}
-	if (err instanceof Error) {
-		return Errors.validation(err.message);
-	}
-	return Errors.validation('Invalid chainId');
+	return Errors.validation('chainId must be a decimal chain id or CAIP-2 eip155:<id>');
 }
 
 /** Resolve `?chainId=` (or DEFAULT_REST_CHAIN_ID) onto the Hono context. */
 export async function restChainMiddleware(c: Context<ApiBindings>, next: Next) {
+	const raw = c.req.query('chainId');
 	try {
-		c.set('chain', resolveRestChain(c.env, c.req.query('chainId')));
+		c.set('chain', resolveRestChain(c.env, raw));
 	} catch (err) {
-		return restChainErrorResponse(err);
+		return restChainErrorResponse(err, raw);
 	}
 	await next();
 }

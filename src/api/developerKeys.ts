@@ -1,6 +1,7 @@
 import {
 	createApiKey,
 	getApiKeyById,
+	getMaxKeysPerSubject,
 	isDeveloperKeysEnabled,
 	listAllApiKeys,
 	listApiKeysForSubject,
@@ -109,8 +110,8 @@ export async function handleCreateDeveloperKey(request: Request, env: Env): Prom
 			201,
 		);
 	} catch (err: unknown) {
-		const e = err as Error & { code?: string };
-		if (e.code === 'MAX_KEYS') {
+		const code = err instanceof Error ? (err as Error & { code?: string }).code : undefined;
+		if (code === 'MAX_KEYS') {
 			recordAdminAudit(env, {
 				action: 'create',
 				status: 409,
@@ -118,16 +119,43 @@ export async function handleCreateDeveloperKey(request: Request, env: Env): Prom
 				ip,
 				code: 'MAX_KEYS',
 			});
-			return jsonResponse({ error: e.message, code: 'MAX_KEYS' }, 409);
+			return jsonResponse(
+				{
+					error: `Maximum of ${getMaxKeysPerSubject(env)} active API keys per subject`,
+					code: 'MAX_KEYS',
+				},
+				409,
+			);
 		}
+		if (err instanceof Error && err.message === 'Invalid subjectId') {
+			recordAdminAudit(env, {
+				action: 'create',
+				status: 400,
+				subjectId: subjectId.trim(),
+				ip,
+				code: 'VALIDATION_ERROR',
+			});
+			return Errors.validation('Invalid subjectId');
+		}
+		if (err instanceof Error && err.message === 'label too long (max 100)') {
+			recordAdminAudit(env, {
+				action: 'create',
+				status: 400,
+				subjectId: subjectId.trim(),
+				ip,
+				code: 'VALIDATION_ERROR',
+			});
+			return Errors.validation('label too long (max 100)');
+		}
+		console.error('create developer key failed', err);
 		recordAdminAudit(env, {
 			action: 'create',
-			status: 400,
+			status: 500,
 			subjectId: subjectId.trim(),
 			ip,
-			code: 'VALIDATION_ERROR',
+			code: 'INTERNAL',
 		});
-		return Errors.validation(e.message ?? 'Failed to create API key');
+		return jsonResponse({ error: 'Failed to create API key', code: 'INTERNAL' }, 500);
 	}
 }
 
@@ -164,7 +192,7 @@ export async function handleListDeveloperKeys(request: Request, env: Env): Promi
 			truncated,
 		});
 	} catch (err: unknown) {
-		const message = err instanceof Error ? err.message : String(err);
+		console.error('list developer keys failed', err);
 		recordAdminAudit(env, {
 			action: 'list',
 			status: 500,
@@ -172,7 +200,7 @@ export async function handleListDeveloperKeys(request: Request, env: Env): Promi
 			ip,
 			code: 'INTERNAL',
 		});
-		return jsonResponse({ error: message, code: 'INTERNAL' }, 500);
+		return jsonResponse({ error: 'Failed to list API keys', code: 'INTERNAL' }, 500);
 	}
 }
 
@@ -210,7 +238,7 @@ export async function handleGetDeveloperKey(
 		});
 		return jsonResponse({ key: toPublicMeta(record) });
 	} catch (err: unknown) {
-		const message = err instanceof Error ? err.message : String(err);
+		console.error('get developer key failed', err);
 		recordAdminAudit(env, {
 			action: 'list',
 			status: 500,
@@ -218,7 +246,7 @@ export async function handleGetDeveloperKey(
 			ip,
 			code: 'INTERNAL',
 		});
-		return jsonResponse({ error: message, code: 'INTERNAL' }, 500);
+		return jsonResponse({ error: 'Failed to look up API key', code: 'INTERNAL' }, 500);
 	}
 }
 
@@ -256,7 +284,7 @@ export async function handleRevokeDeveloperKey(
 		});
 		return jsonResponse({ key: toPublicMeta(revoked), revoked: true });
 	} catch (err: unknown) {
-		const message = err instanceof Error ? err.message : String(err);
+		console.error('revoke developer key failed', err);
 		recordAdminAudit(env, {
 			action: 'revoke',
 			status: 500,
@@ -264,6 +292,6 @@ export async function handleRevokeDeveloperKey(
 			ip,
 			code: 'INTERNAL',
 		});
-		return jsonResponse({ error: message, code: 'INTERNAL' }, 500);
+		return jsonResponse({ error: 'Failed to revoke API key', code: 'INTERNAL' }, 500);
 	}
 }

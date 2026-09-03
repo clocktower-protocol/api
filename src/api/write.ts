@@ -7,7 +7,7 @@
  * They delegate to the existing transaction preparation logic in src/tx/.
  */
 
-import { jsonResponse } from './responses.js';
+import { Errors, jsonResponse } from './responses.js';
 import type { Context } from 'hono';
 import { z } from 'zod';
 import { parseUnits } from 'viem';
@@ -37,15 +37,38 @@ import {
   prepareRemit,
   loadWriteSubscriptionById,
 } from '../tx/prepare.js';
-import { getRequestId, type PrepareOptions } from '../tx/prepare-response.js';
+import { createRequestId, getRequestId, type PrepareOptions } from '../tx/prepare-response.js';
 import { getTransactionStatus } from '../tx/status.js';
 import { enforceWriteRateLimitForAddress } from '../rateLimit.js';
 import { parseAccessLane } from '../requestLane.js';
-import { clientSafeMessage } from '../sanitizeUpstream.js';
 
 /** Server-set lane from Worker middleware (never trust client-supplied elevation). */
 function requestLane(c: Context): AccessLane {
   return parseAccessLane(c.req.header('X-Clocktower-Lane'));
+}
+
+async function parseWriteJson<T>(c: Context, schema: z.ZodType<T>): Promise<T | Response> {
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return Errors.validation('Invalid JSON body');
+  }
+  const parsed = schema.safeParse(body);
+  if (!parsed.success) {
+    return jsonResponse(
+      {
+        error: 'Validation failed',
+        code: 'VALIDATION_ERROR',
+        issues: parsed.error.issues.map((issue) => ({
+          path: issue.path.join('.'),
+          message: issue.message,
+        })),
+      },
+      400,
+    );
+  }
+  return parsed.data;
 }
 
 function prepareOpts(c: Context, parsed: {
@@ -85,12 +108,12 @@ import {
 // 1. Check subscribe readiness
 export async function handleCheckSubscribeReadiness(c: Context) {
   try {
-    const body = await c.req.json();
     const schema = z.object({
       from: z.string(),
       subscription: subscribeInputSchema.shape.subscription,
     });
-    const parsed = schema.parse(body);
+    const parsed = await parseWriteJson(c, schema);
+    if (parsed instanceof Response) return parsed;
 
     await enforceWriteRateLimitForAddress(
       c.env,
@@ -112,7 +135,7 @@ export async function handleCheckSubscribeReadiness(c: Context) {
     );
 
     return jsonResponse(result);
-  } catch (err: any) {
+  } catch (err: unknown) {
     return handleWriteError(err, 'check_subscribe_readiness');
   }
 }
@@ -120,8 +143,8 @@ export async function handleCheckSubscribeReadiness(c: Context) {
 // 1b. Check subscribe readiness by id only
 export async function handleCheckSubscribeReadinessById(c: Context) {
   try {
-    const body = await c.req.json();
-    const parsed = checkSubscribeReadinessByIdInputSchema.parse(body);
+    const parsed = await parseWriteJson(c, checkSubscribeReadinessByIdInputSchema);
+    if (parsed instanceof Response) return parsed;
 
     await enforceWriteRateLimitForAddress(
       c.env,
@@ -139,7 +162,7 @@ export async function handleCheckSubscribeReadinessById(c: Context) {
     );
 
     return jsonResponse(result);
-  } catch (err: any) {
+  } catch (err: unknown) {
     return handleWriteError(err, 'check_subscribe_readiness_by_id');
   }
 }
@@ -147,8 +170,8 @@ export async function handleCheckSubscribeReadinessById(c: Context) {
 // 2. Prepare create subscription
 export async function handlePrepareCreateSubscription(c: Context) {
   try {
-    const body = await c.req.json();
-    const parsed = createSubscriptionInputSchema.parse(body);
+    const parsed = await parseWriteJson(c, createSubscriptionInputSchema);
+    if (parsed instanceof Response) return parsed;
 
     // Fetch token decimals from the protocol
     const chain = requestChain(c);
@@ -180,7 +203,7 @@ export async function handlePrepareCreateSubscription(c: Context) {
     );
 
     return jsonResponse(result);
-  } catch (err: any) {
+  } catch (err: unknown) {
     return handleWriteError(err, 'prepare_create_subscription');
   }
 }
@@ -188,8 +211,8 @@ export async function handlePrepareCreateSubscription(c: Context) {
 // 3. Prepare subscribe
 export async function handlePrepareSubscribe(c: Context) {
   try {
-    const body = await c.req.json();
-    const parsed = subscribeInputSchema.parse(body);
+    const parsed = await parseWriteJson(c, subscribeInputSchema);
+    if (parsed instanceof Response) return parsed;
 
     let subscription = parsed.subscription;
 
@@ -208,7 +231,7 @@ export async function handlePrepareSubscribe(c: Context) {
     );
 
     return jsonResponse(result);
-  } catch (err: any) {
+  } catch (err: unknown) {
     return handleWriteError(err, 'prepare_subscribe');
   }
 }
@@ -216,8 +239,8 @@ export async function handlePrepareSubscribe(c: Context) {
 // 3b. Prepare subscribe by id only
 export async function handlePrepareSubscribeById(c: Context) {
   try {
-    const body = await c.req.json();
-    const parsed = subscribeByIdInputSchema.parse(body);
+    const parsed = await parseWriteJson(c, subscribeByIdInputSchema);
+    if (parsed instanceof Response) return parsed;
 
     const result = await prepareSubscribeById(
       c.env,
@@ -227,7 +250,7 @@ export async function handlePrepareSubscribeById(c: Context) {
     );
 
     return jsonResponse(result);
-  } catch (err: any) {
+  } catch (err: unknown) {
     return handleWriteError(err, 'prepare_subscribe_by_id');
   }
 }
@@ -235,8 +258,8 @@ export async function handlePrepareSubscribeById(c: Context) {
 // 4. Prepare cancel subscription
 export async function handlePrepareCancelSubscription(c: Context) {
   try {
-    const body = await c.req.json();
-    const parsed = subscriptionActionInputSchema.parse(body);
+    const parsed = await parseWriteJson(c, subscriptionActionInputSchema);
+    if (parsed instanceof Response) return parsed;
 
     const chain = requestChain(c);
     const normalizedSubscription = await normalizeSubscriptionAmount(
@@ -253,7 +276,7 @@ export async function handlePrepareCancelSubscription(c: Context) {
     );
 
     return jsonResponse(result);
-  } catch (err: any) {
+  } catch (err: unknown) {
     return handleWriteError(err, 'prepare_cancel_subscription');
   }
 }
@@ -261,8 +284,8 @@ export async function handlePrepareCancelSubscription(c: Context) {
 // 4b. Prepare cancel by id only
 export async function handlePrepareCancelSubscriptionById(c: Context) {
   try {
-    const body = await c.req.json();
-    const parsed = subscriptionActionByIdInputSchema.parse(body);
+    const parsed = await parseWriteJson(c, subscriptionActionByIdInputSchema);
+    if (parsed instanceof Response) return parsed;
 
     const result = await prepareCancelSubscriptionById(
       c.env,
@@ -272,7 +295,7 @@ export async function handlePrepareCancelSubscriptionById(c: Context) {
     );
 
     return jsonResponse(result);
-  } catch (err: any) {
+  } catch (err: unknown) {
     return handleWriteError(err, 'prepare_cancel_subscription_by_id');
   }
 }
@@ -280,8 +303,8 @@ export async function handlePrepareCancelSubscriptionById(c: Context) {
 // 5. Prepare unsubscribe
 export async function handlePrepareUnsubscribe(c: Context) {
   try {
-    const body = await c.req.json();
-    const parsed = subscriptionActionInputSchema.parse(body);
+    const parsed = await parseWriteJson(c, subscriptionActionInputSchema);
+    if (parsed instanceof Response) return parsed;
 
     const chain = requestChain(c);
     const normalizedSubscription = await normalizeSubscriptionAmount(
@@ -298,7 +321,7 @@ export async function handlePrepareUnsubscribe(c: Context) {
     );
 
     return jsonResponse(result);
-  } catch (err: any) {
+  } catch (err: unknown) {
     return handleWriteError(err, 'prepare_unsubscribe');
   }
 }
@@ -306,8 +329,8 @@ export async function handlePrepareUnsubscribe(c: Context) {
 // 5b. Prepare unsubscribe by id only
 export async function handlePrepareUnsubscribeById(c: Context) {
   try {
-    const body = await c.req.json();
-    const parsed = subscriptionActionByIdInputSchema.parse(body);
+    const parsed = await parseWriteJson(c, subscriptionActionByIdInputSchema);
+    if (parsed instanceof Response) return parsed;
 
     const result = await prepareUnsubscribeById(
       c.env,
@@ -317,7 +340,7 @@ export async function handlePrepareUnsubscribeById(c: Context) {
     );
 
     return jsonResponse(result);
-  } catch (err: any) {
+  } catch (err: unknown) {
     return handleWriteError(err, 'prepare_unsubscribe_by_id');
   }
 }
@@ -325,8 +348,8 @@ export async function handlePrepareUnsubscribeById(c: Context) {
 // 6. Prepare unsubscribe by provider
 export async function handlePrepareUnsubscribeByProvider(c: Context) {
   try {
-    const body = await c.req.json();
-    const parsed = unsubscribeByProviderInputSchema.parse(body);
+    const parsed = await parseWriteJson(c, unsubscribeByProviderInputSchema);
+    if (parsed instanceof Response) return parsed;
 
     const chain = requestChain(c);
     const normalizedSubscription = await normalizeSubscriptionAmount(
@@ -344,7 +367,7 @@ export async function handlePrepareUnsubscribeByProvider(c: Context) {
     );
 
     return jsonResponse(result);
-  } catch (err: any) {
+  } catch (err: unknown) {
     return handleWriteError(err, 'prepare_unsubscribe_by_provider');
   }
 }
@@ -352,8 +375,8 @@ export async function handlePrepareUnsubscribeByProvider(c: Context) {
 // 6b. Prepare unsubscribe by provider using id only
 export async function handlePrepareUnsubscribeByProviderById(c: Context) {
   try {
-    const body = await c.req.json();
-    const parsed = unsubscribeByProviderByIdInputSchema.parse(body);
+    const parsed = await parseWriteJson(c, unsubscribeByProviderByIdInputSchema);
+    if (parsed instanceof Response) return parsed;
 
     const result = await prepareUnsubscribeByProviderById(
       c.env,
@@ -364,7 +387,7 @@ export async function handlePrepareUnsubscribeByProviderById(c: Context) {
     );
 
     return jsonResponse(result);
-  } catch (err: any) {
+  } catch (err: unknown) {
     return handleWriteError(err, 'prepare_unsubscribe_by_provider_by_id');
   }
 }
@@ -372,8 +395,8 @@ export async function handlePrepareUnsubscribeByProviderById(c: Context) {
 // 7. Prepare edit details
 export async function handlePrepareEditDetails(c: Context) {
   try {
-    const body = await c.req.json();
-    const parsed = editDetailsInputSchema.parse(body);
+    const parsed = await parseWriteJson(c, editDetailsInputSchema);
+    if (parsed instanceof Response) return parsed;
 
     const result = await prepareEditDetails(
       c.env,
@@ -384,7 +407,7 @@ export async function handlePrepareEditDetails(c: Context) {
     );
 
     return jsonResponse(result);
-  } catch (err: any) {
+  } catch (err: unknown) {
     return handleWriteError(err, 'prepare_edit_details');
   }
 }
@@ -392,15 +415,15 @@ export async function handlePrepareEditDetails(c: Context) {
 // 8. Check remit readiness
 export async function handleCheckRemitReadiness(c: Context) {
   try {
-    const body = await c.req.json();
-    const parsed = remitInputSchema.parse(body);
+    const parsed = await parseWriteJson(c, remitInputSchema);
+    if (parsed instanceof Response) return parsed;
 
     await enforceWriteRateLimitForAddress(c.env, parsed.from, requestLane(c));
 
     const result = await checkRemitReadiness(c.env, parsed.from, requestChain(c));
 
     return jsonResponse(result);
-  } catch (err: any) {
+  } catch (err: unknown) {
     return handleWriteError(err, 'check_remit_readiness');
   }
 }
@@ -408,13 +431,13 @@ export async function handleCheckRemitReadiness(c: Context) {
 // 9. Prepare remit
 export async function handlePrepareRemit(c: Context) {
   try {
-    const body = await c.req.json();
-    const parsed = remitInputSchema.parse(body);
+    const parsed = await parseWriteJson(c, remitInputSchema);
+    if (parsed instanceof Response) return parsed;
 
     const result = await prepareRemit(c.env, parsed.from, prepareOpts(c, parsed));
 
     return jsonResponse(result);
-  } catch (err: any) {
+  } catch (err: unknown) {
     return handleWriteError(err, 'prepare_remit');
   }
 }
@@ -422,16 +445,18 @@ export async function handlePrepareRemit(c: Context) {
 // 10. Get transaction status
 export async function handleGetTransactionStatus(c: Context) {
   try {
-    const body = await c.req.json();
-    const schema = z.object({
-      txHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/),
-    });
-    const parsed = schema.parse(body);
+    const parsed = await parseWriteJson(
+      c,
+      z.object({
+        txHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/),
+      }),
+    );
+    if (parsed instanceof Response) return parsed;
 
     const result = await getTransactionStatus(c.env, parsed.txHash as `0x${string}`, requestChain(c));
 
     return jsonResponse(result);
-  } catch (err: any) {
+  } catch (err: unknown) {
     return handleWriteError(err, 'get_transaction_status');
   }
 }
@@ -439,80 +464,51 @@ export async function handleGetTransactionStatus(c: Context) {
 /* =====================================================
    Shared Error Handler for Write Endpoints
    ===================================================== */
-function handleWriteError(err: any, operation: string) {
-  const requestId = getRequestId(err);
+function handleWriteError(err: unknown, operation: string) {
+  const prepareRequestId = getRequestId(err);
+  const message = err instanceof Error ? err.message : '';
 
-  // If the error is already one of our structured error responses, return it directly
-  // (preserve appropriate status based on the error code for consistency with read handlers)
-  if (err && typeof err === 'object' && 'error' in err && 'code' in err) {
-    const status = err.code === 'NOT_FOUND' ? 404 : 400;
-    return jsonResponse(requestId ? { ...err, requestId } : err, status);
-  }
-
-  // Zod validation errors → return rich validation error with issues array
   if (err instanceof z.ZodError) {
-    return jsonResponse({
-      error: 'Validation failed',
-      code: 'VALIDATION_ERROR',
-      ...(requestId ? { requestId } : {}),
-      issues: err.issues.map((issue) => ({
-        path: issue.path.join('.'),
-        message: issue.message,
-      })),
-    }, 400);
+    return Errors.validation('Validation failed');
   }
 
-  const message = err?.message || String(err);
-  const withRequestId = (body: Record<string, unknown>, status: number) =>
-    jsonResponse(requestId ? { ...body, requestId } : body, status);
-
-  if (err instanceof UnsupportedChainError || message.includes('chainId must')) {
-    return withRequestId({ error: message, code: 'VALIDATION_ERROR' }, 400);
+  if (err instanceof UnsupportedChainError) {
+    return Errors.validation('Unsupported or disabled chainId');
+  }
+  if (message.includes('chainId must')) {
+    return Errors.validation('chainId must be a decimal chain id or CAIP-2 eip155:<id>');
   }
 
-  // Common domain errors from the tx layer (map to appropriate error codes)
   if (message.includes('Subscription not found')) {
-    return withRequestId(
-      { error: 'Subscription not found on chain', code: 'NOT_FOUND' },
-      404,
-    );
+    return Errors.notFound('Subscription not found on chain');
   }
   if (message.includes('Token is paused')) {
-    return withRequestId(
-      { error: 'Token is paused on protocol', code: 'VALIDATION_ERROR' },
-      400,
-    );
+    return Errors.validation('Token is paused on protocol');
   }
   if (message.includes('Amount below token minimum')) {
-    return withRequestId(
-      {
-        error: clientSafeMessage(message, 'Amount below token minimum'),
-        code: 'VALIDATION_ERROR',
-      },
-      400,
-    );
+    return Errors.validation('Amount below token minimum');
   }
   if (message.includes('Write rate limit exceeded')) {
-    return withRequestId({ error: message, code: 'VALIDATION_ERROR' }, 400);
+    return Errors.validation('Write rate limit exceeded');
   }
   if (message.includes('Remit not due') || message.includes('No due subscriptions')) {
-    return withRequestId(
-      {
-        error: clientSafeMessage(message, 'Remit readiness check failed'),
-        code: 'VALIDATION_ERROR',
-      },
-      400,
-    );
+    return Errors.validation('Remit readiness check failed');
   }
   if (message.includes('Simulation failed')) {
-    return withRequestId(
-      { error: clientSafeMessage(message, 'Simulation failed'), code: 'VALIDATION_ERROR' },
+    const requestId = createRequestId();
+    console.error(`[write] ${operation} simulation failed`, {
+      requestId,
+      prepareRequestId,
+      err,
+    });
+    return jsonResponse(
+      { error: 'Simulation failed', code: 'VALIDATION_ERROR', requestId },
       400,
     );
   }
 
-  console.error(`[write] ${operation} failed`, { requestId, err });
-
-  return withRequestId({ error: 'Upstream error', code: 'UPSTREAM_ERROR' }, 500);
+  const requestId = createRequestId();
+  console.error(`[write] ${operation} failed`, { requestId, prepareRequestId, err });
+  return jsonResponse({ error: 'Upstream error', code: 'UPSTREAM_ERROR', requestId }, 500);
 }
 
