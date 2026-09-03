@@ -50,11 +50,8 @@ function ensureApiEnvValidated(env: Env): Response | null {
 		apiEnvValidated = true;
 		return null;
 	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
-		return Response.json(
-			{ error: message, code: 'CONFIG_ERROR' },
-			{ status: 500, headers: { 'Content-Type': 'application/json' } },
-		);
+		console.error('API env validation failed', err);
+		return Errors.config();
 	}
 }
 

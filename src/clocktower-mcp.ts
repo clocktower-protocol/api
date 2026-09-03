@@ -19,7 +19,12 @@ import type { McpAgent } from 'agents/mcp';
  * errors with Wrangler's Durable Object registration.
  */
 export async function initializeClocktowerMCP(agent: McpAgent<Env>) {
-  validateEnv(agent.env);
+  try {
+    validateEnv(agent.env);
+  } catch (err) {
+    console.error('MCP env validation failed', err);
+    throw new Error('Service configuration error');
+  }
 
   const inner = new McpServer({ name: 'clocktower-mcp', version: '1.1.0' });
   const server = isMcpX402Enabled(agent.env)

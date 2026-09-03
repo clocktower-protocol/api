@@ -91,4 +91,12 @@ describe('Errors helpers', () => {
 		const body = await res.json();
 		expect(body).toEqual({ error: 'Invalid Ethereum address', code: 'VALIDATION_ERROR' });
 	});
+
+	it('config errors do not include exception text', async () => {
+		const res = Errors.config();
+		expect(res.status).toBe(500);
+		const body = await res.json();
+		expect(body).toEqual({ error: 'Service configuration error', code: 'CONFIG_ERROR' });
+		expect(JSON.stringify(body)).not.toContain('ALCHEMY');
+	});
 });

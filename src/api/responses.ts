@@ -12,7 +12,8 @@ export type ApiErrorCode =
   | 'NOT_FOUND'
   | 'UPSTREAM_ERROR'
   | 'RATE_LIMITED'
-  | 'API_DISABLED';
+  | 'API_DISABLED'
+  | 'CONFIG_ERROR';
 
 export type ApiError = {
   error: string;
@@ -45,4 +46,5 @@ export const Errors = {
   rateLimited: (message: string) => errorResponse(message, 'RATE_LIMITED', 429),
   apiDisabled: () =>
     errorResponse('REST API is temporarily unavailable', 'API_DISABLED', 503),
+  config: () => errorResponse('Service configuration error', 'CONFIG_ERROR', 500),
 };
