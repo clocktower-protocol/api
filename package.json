@@ -41,9 +41,8 @@
     "browserslist": ">=4.28.7 <5"
   },
   "allowScripts": {
-    "esbuild@0.28.1": true,
-    "workerd@1.20260815.1": true,
-    "workerd@1.20260820.1": true,
+    "esbuild": true,
+    "workerd": true,
     "core-js-pure": false,
     "@coinbase/x402": false
   }
