@@ -22,7 +22,7 @@
     "@x402/hono": "^2.23.0",
     "agents": "^0.13.2",
     "dayjs": "^1.11.23",
-    "hono": "^4.13.4",
+    "hono": "^4.13.7",
     "viem": "^2.55.19",
     "zod": "^4.4.3"
   },
@@ -35,12 +35,16 @@
   },
   "overrides": {
     "esbuild": "0.28.1",
-    "undici": "7.29.0",
+    "undici": "7.30.0",
     "axios": ">=1.20.0 <2",
     "ws": "8.21.0",
     "browserslist": ">=4.28.7 <5",
     "proxy-addr": ">=2.0.8 <3",
     "source-map-js": ">=1.2.2 <2",
+    "fast-uri": ">=3.1.8 <4",
+    "ip-address": ">=10.7.1 <11",
+    "sharp": "0.35.5",
+    "ai": ">=6.0.214 <7",
     "@modelcontextprotocol/sdk": "^1.31.0"
   },
   "allowScripts": {
